@@ -1,4 +1,4 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
@@ -16,7 +16,7 @@ export async function middleware(request: NextRequest) {
         get(name: string) {
           return request.cookies.get(name)?.value
         },
-        set(name: string, value: string, options: CookieOptions) {
+        set(name: string, value: string, options: any) {
           request.cookies.set({ name, value, ...options })
           response = NextResponse.next({
             request: {
@@ -25,7 +25,7 @@ export async function middleware(request: NextRequest) {
           })
           response.cookies.set({ name, value, ...options })
         },
-        remove(name: string, options: CookieOptions) {
+        remove(name: string, options: any) {
           request.cookies.set({ name, value: '', ...options })
           response = NextResponse.next({
             request: {
@@ -38,22 +38,27 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { session } } = await supabase.auth.getSession()
+  // Recupera o utilizador atual para validar a sessão
+  const { data: { user } } = await supabase.auth.getUser()
 
-  // Redirecionamento lógico:
-  // Se não estiver logado e tentar aceder a qualquer página (exceto login), vai para /login
-  if (!session && !request.nextUrl.pathname.startsWith('/login')) {
+  // LÓGICA DE REDIRECIONAMENTO [cite: 2026-02-01]
+  // Se não houver utilizador e não estiver na página de login, força o redirecionamento
+  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
     return NextResponse.redirect(new URL('/login', request.url))
-  }
-
-  // Se já estiver logado e tentar ir ao login, vai para a página principal
-  if (session && request.nextUrl.pathname.startsWith('/login')) {
-    return NextResponse.redirect(new URL('/', request.url))
   }
 
   return response
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    /*
+     * Aplica-se a todas as rotas exceto:
+     * - api routes
+     * - _next/static (ficheiros estáticos)
+     * - _next/image (otimização de imagem)
+     * - favicon.ico e imagens (svg, png, etc.)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }
