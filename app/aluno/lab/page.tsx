@@ -83,3 +83,4 @@ export default function LabAI() {
     </main> 
   );
 }
+// deploy final com api key
