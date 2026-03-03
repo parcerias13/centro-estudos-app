@@ -39,7 +39,7 @@ export default function LabAI() {
       if (upError) throw upError;
 
       // 2. Preparar os dados para a IA (O "Pulo do Gato")
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Nome exato do modelo
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }); // Nome exato do modelo
       const filePart = await fileToGenerativePart(file);
       
       const prompt = `Analisa este material de estudo e cria um resumo estruturado por pontos chave. No final, gera 3 perguntas de revisão para testar o conhecimento do aluno.`;
