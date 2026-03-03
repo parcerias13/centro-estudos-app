@@ -80,6 +80,6 @@ export default function LabAI() {
           </div>
         )}
       </div>
-    </main>
+    </main> 
   );
 }
