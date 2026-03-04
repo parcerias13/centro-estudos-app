@@ -131,7 +131,7 @@ export default function LabAI() {
                   <BookOpen size={14} /> Modo de Leitura
                 </div>
                 <div className="text-[10px] font-black text-orange-500 uppercase tracking-widest">IA Flash 3.0</div>
-              </div>
+              </div> 
               
               <div className="flex-1 overflow-y-auto p-12 scrollbar-thin scrollbar-thumb-slate-200">
                 <div className="prose prose-slate max-w-none">
