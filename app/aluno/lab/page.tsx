@@ -1,97 +1,117 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { UploadCloud, Sparkles, BrainCircuit, Loader2, CheckCircle2, AlertTriangle, FileText } from 'lucide-react';
+import { UploadCloud, Sparkles, BrainCircuit, Loader2, CheckCircle2, FileText, LayoutDashboard, ListChecks, Network } from 'lucide-react';
 
 export default function LabAI() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [resumo, setResumo] = useState("");
+  const [activeTab, setActiveTab] = useState<'resumo' | 'exercicios' | 'mapa'>('resumo');
+  const [resultado, setResultado] = useState<{ resumo: string, exercicios: string, mapa: string } | null>(null);
+  const [creditos, setCreditos] = useState<number>(0);
   const [debug, setDebug] = useState<string | null>(null);
 
-  // Inicialização da IA - Usa a chave que configuraste na Vercel
+  // Inicialização com Gemini Flash (Geração 3)
   const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
 
-  // Função para converter o PDF em dados que a IA consegue ler
+  useEffect(() => {
+    buscarCreditos();
+  }, []);
+
+  async function buscarCreditos() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data } = await supabase.from('alunos').select('creditos_ia').eq('id', user.id).single();
+      setCreditos(data?.creditos_ia || 0);
+    }
+  }
+
+  // --- BOTÃO DE DIAGNÓSTICO (Atualizado para Gemini 3) ---
+  const testarConexao = async () => {
+    setLoading(true);
+    setDebug("A testar ligação...");
+    try {
+      const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+      const result = await model.generateContent("Olá! Responde apenas 'LIGAÇÃO OK'.");
+      const response = await result.response;
+      setDebug(`Sucesso: ${response.text()}`);
+    } catch (err: any) {
+      setDebug(`FALHA NA API: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   async function fileToGenerativePart(file: File) {
     const base64EncodedDataPromise = new Promise((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
       reader.readAsDataURL(file);
     });
-    return {
-      inlineData: { data: await base64EncodedDataPromise as string, mimeType: file.type },
-    };
+    return { inlineData: { data: await base64EncodedDataPromise as string, mimeType: file.type } };
   }
 
-  // --- BOTÃO DE DIAGNÓSTICO (O que tens de clicar primeiro!) ---
-  const testarConexao = async () => {
-    setLoading(true);
-    setDebug("A testar ligação com Google AI...");
-    try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const result = await model.generateContent("Olá! Responde apenas 'LIGAÇÃO OK'.");
-      const response = await result.response;
-      setDebug(`Sucesso: ${response.text()}`);
-    } catch (err: any) {
-      setDebug(`FALHA NA API: ${err.message}`);
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const processarMaterial = async () => {
-    if (!file) return;
+    if (!file || creditos <= 0) return alert("Sem créditos ou ficheiro selecionado!");
+    
+    // Sustentabilidade: Limite de 10MB
+    if (file.size > 10 * 1024 * 1024) return alert("Ficheiro muito grande! Máximo 10MB para manter a performance.");
+
     setLoading(true);
-    setResumo("");
-    setDebug("A iniciar processamento...");
+    setDebug("A processar material...");
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Sessão expirada. Faz login.");
+      if (!user) throw new Error("Sessão expirada.");
 
-      // 1. Limpeza de Nome (Resolve o erro 'Invalid Key')
-      const cleanName = file.name
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "") 
-        .replace(/[^a-zA-Z0-9.]/g, "_");
-      
+      // 1. Sanitização de Nome (Resolve o erro 'Invalid Key')
+      const cleanName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.]/g, "_");
       const filePath = `${user.id}/${Date.now()}_${cleanName}`;
 
-      // 2. Upload para o Storage
-      const { error: upError } = await supabase.storage
-        .from('lab_privado')
-        .upload(filePath, file);
+      // 2. Upload para Storage
+      const { error: upError } = await supabase.storage.from('lab_privado').upload(filePath, file);
+      if (upError) throw upError;
 
-      if (upError) throw new Error(`Erro Storage: ${upError.message}`);
-
-      // 3. Processamento IA (Modelo Estável)
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      // 3. IA Multimodal (Prompt All-in-One para economia de tokens)
+      const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
       const filePart = await fileToGenerativePart(file);
       
-      const prompt = `Analisa este material escolar e:
-      1. Faz um resumo executivo.
-      2. Cria 3 perguntas de revisão para o aluno.`;
+      const prompt = `Age como um tutor de elite. Analisa este material e gera três secções separadas pela tag [DIVIDER]:
+      1. RESUMO: Um resumo executivo por pontos.
+      [DIVIDER]
+      2. EXERCICIOS: 5 perguntas de exame (escolha múltipla e desenvolvimento) com soluções.
+      [DIVIDER]
+      3. MAPA MENTAL: Uma estrutura hierárquica dos conceitos.`;
 
       const result = await model.generateContent([prompt, filePart]);
-      const response = await result.response;
-      const text = response.text();
-      setResumo(text);
-      setDebug("Material processado com sucesso!");
+      const sections = result.response.text().split('[DIVIDER]');
 
-      // 4. Salvar na DB (Garante que a tabela lab_ai está corrigida!)
+      const dataFinal = {
+        resumo: sections[0]?.trim() || "Erro no resumo",
+        exercicios: sections[1]?.trim() || "Erro nos exercícios",
+        mapa: sections[2]?.trim() || "Erro no mapa"
+      };
+
+      setResultado(dataFinal);
+
+      // 4. Gestão Financeira: Descontar crédito
+      await supabase.from('alunos').update({ creditos_ia: creditos - 1 }).eq('id', user.id);
+      
+      // 5. Guardar Resumo (Usando JSON para facilitar o histórico futuro)
       await supabase.from('lab_ai').insert({
         aluno_id: user.id,
         titulo: file.name,
         url_original: filePath,
-        resumo_ia: text
+        resumo_ia: JSON.stringify(dataFinal)
       });
+      
+      setCreditos(prev => prev - 1);
+      setDebug("Sucesso!");
 
     } catch (err: any) {
-      setDebug(`ERRO: ${err.message}`);
+      setDebug(`Erro: ${err.message}`);
       alert(err.message);
     } finally {
       setLoading(false);
@@ -100,60 +120,74 @@ export default function LabAI() {
 
   return (
     <main className="min-h-screen bg-[#020617] p-6 text-white font-sans">
-      <div className="max-w-2xl mx-auto space-y-8">
+      <div className="max-w-3xl mx-auto space-y-8">
         
-        <header className="text-center pt-6">
-          <BrainCircuit className="text-orange-500 mx-auto mb-4" size={48} />
-          <h1 className="text-4xl font-black uppercase italic tracking-tighter">My Personal Lab</h1>
-          <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest mt-2 italic">Dubai AI Automation Edition</p>
+        <header className="flex justify-between items-center bg-slate-900/50 p-6 rounded-3xl border border-slate-800 shadow-xl">
+          <div>
+            <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none">
+              My Personal <span className="text-orange-500">Lab</span>
+            </h1>
+            <div className="flex items-center gap-2 mt-2">
+               <span className="text-[10px] bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest border border-orange-500/20">
+                 {creditos} Créditos Restantes
+               </span>
+            </div>
+          </div>
+          <BrainCircuit className="text-orange-500" size={40} />
         </header>
 
-        {/* STATUS / DIAGNÓSTICO */}
-        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between shadow-lg">
-          <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${debug?.includes('Sucesso') ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-orange-500 animate-pulse'}`} />
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status: {debug || "Pronto para teste"}</span>
-          </div>
-          <button 
-            onClick={testarConexao}
-            className="text-[10px] bg-white/5 hover:bg-orange-500 hover:text-white px-4 py-2 rounded-xl font-black transition-all border border-white/10"
-          >
-            TESTAR API
-          </button>
+        {/* DIAGNÓSTICO */}
+        <div className="bg-slate-900/80 border border-slate-800 p-3 rounded-2xl flex items-center justify-between">
+          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 ml-2">Status: {debug || "Sistema Pronto"}</span>
+          <button onClick={testarConexao} className="text-[9px] bg-white/5 hover:bg-orange-500 px-3 py-1.5 rounded-lg font-black transition-all border border-white/5 uppercase">Testar API</button>
         </div>
 
-        <section className="bg-slate-900/50 border border-slate-800 p-10 rounded-[3rem] shadow-2xl backdrop-blur-md">
-          <div className="relative border-2 border-dashed border-slate-800 rounded-4xl p-12 text-center group hover:border-orange-500/50 transition-all">
-            <input 
-              type="file" 
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
-              accept=".pdf" 
-              onChange={(e) => setFile(e.target.files?.[0] || null)} 
-            />
-            <UploadCloud size={60} className="mx-auto mb-4 text-slate-700 group-hover:text-orange-500 transition-colors" />
-            <p className="text-lg font-bold">{file ? file.name : "Carrega o teu PDF de estudo"}</p>
-          </div>
+        {!resultado ? (
+          <section className="bg-slate-900/30 border border-slate-800 p-10 rounded-[3rem] shadow-2xl backdrop-blur-sm">
+            <div className="relative border-2 border-dashed border-slate-800 rounded-[2rem] p-12 text-center group hover:border-orange-500/30 transition-all">
+              <input type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+              <UploadCloud size={60} className="mx-auto mb-4 text-slate-700 group-hover:text-orange-500 transition-colors" />
+              <p className="text-lg font-bold">{file ? file.name : "Solta o teu material aqui"}</p>
+              <p className="text-[10px] text-slate-500 mt-2 uppercase tracking-widest italic">Apenas PDFs até 10MB</p>
+            </div>
 
-          <button 
-            onClick={processarMaterial}
-            disabled={loading || !file}
-            className="w-full mt-8 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-800 text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95"
-          >
-            {loading ? <Loader2 className="animate-spin" /> : <><Sparkles size={20} /> GERAR RESUMO IA</>}
-          </button>
-        </section>
+            <button 
+              onClick={processarMaterial}
+              disabled={loading || !file || creditos <= 0}
+              className="w-full mt-8 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-800 text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-xl shadow-orange-900/20"
+            >
+              {loading ? <Loader2 className="animate-spin" /> : <><Sparkles size={20} /> ATIVAR INTELIGÊNCIA</>}
+            </button>
+          </section>
+        ) : (
+          <section className="space-y-4 animate-in fade-in duration-700">
+            {/* TABS DE NAVEGAÇÃO */}
+            <div className="flex gap-2 bg-slate-900 p-2 rounded-2xl border border-slate-800 sticky top-4 z-20">
+              <button onClick={() => setActiveTab('resumo')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'resumo' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40' : 'text-slate-500 hover:bg-slate-800'}`}>
+                <FileText size={16} /> Resumo
+              </button>
+              <button onClick={() => setActiveTab('exercicios')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'exercicios' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40' : 'text-slate-500 hover:bg-slate-800'}`}>
+                <ListChecks size={16} /> Exercícios
+              </button>
+              <button onClick={() => setActiveTab('mapa')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'mapa' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40' : 'text-slate-500 hover:bg-slate-800'}`}>
+                <Network size={16} /> Mapa Mental
+              </button>
+            </div>
 
-        {resumo && (
-          <section className="bg-slate-900 border border-orange-500/30 p-8 rounded-[2.5rem] animate-in fade-in slide-in-from-bottom-6">
-             <div className="flex items-center gap-2 text-orange-500 mb-6 font-black uppercase text-xs tracking-widest">
-                <CheckCircle2 size={18} /> Resumo Pronto
-             </div>
-             <div className="text-slate-300 whitespace-pre-wrap leading-relaxed border-t border-slate-800 pt-6">
-               {resumo}
-             </div>
+            <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] min-h-[500px] shadow-2xl relative overflow-hidden">
+               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-3xl rounded-full -mr-16 -mt-16"></div>
+               <div className="text-slate-300 whitespace-pre-wrap leading-relaxed text-sm font-medium">
+                  {activeTab === 'resumo' && resultado.resumo}
+                  {activeTab === 'exercicios' && resultado.exercicios}
+                  {activeTab === 'mapa' && resultado.mapa}
+               </div>
+            </div>
+            
+            <button onClick={() => setResultado(null)} className="w-full py-4 text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] hover:text-white transition-colors border border-dashed border-slate-800 rounded-2xl">
+               Analisar Novo Conteúdo
+            </button>
           </section>
         )}
-
       </div>
     </main>
   );
