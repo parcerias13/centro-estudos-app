@@ -3,17 +3,17 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { UploadCloud, Sparkles, BrainCircuit, Loader2, FileText, CheckCircle2 } from 'lucide-react';
+import { UploadCloud, Sparkles, BrainCircuit, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 export default function LabAI() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [resumo, setResumo] = useState("");
+  const [debug, setDebug] = useState<string | null>(null);
 
-  // Inicializa a IA com a chave de ambiente (Garante que está na Vercel!)
+  // Inicialização Robusta
   const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
 
-  // Converte o ficheiro para Base64 para a IA ler o conteúdo real
   async function fileToGenerativePart(file: File) {
     const base64EncodedDataPromise = new Promise((resolve) => {
       const reader = new FileReader();
@@ -25,46 +25,55 @@ export default function LabAI() {
     };
   }
 
+  // TESTE DE SAÚDE DA IA (Apenas Texto)
+  const testarConexao = async () => {
+    setLoading(true);
+    setDebug("A testar ligação com Google AI...");
+    try {
+      // Forçamos o modelo estável v1
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContent("Olá! Se estás a ler isto, a ligação está ativa. Responde apenas 'OK'.");
+      setDebug(`Sucesso: ${result.response.text()}`);
+    } catch (err: any) {
+      setDebug(`FALHA NA LIGAÇÃO: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const processarMaterial = async () => {
     if (!file) return;
     setLoading(true);
     setResumo("");
+    setDebug("A iniciar processamento multimodal...");
 
     try {
-      // 1. Validar utilizador para segurança RLS [cite: 2025-12-04]
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Sessão expirada. Faz login novamente.");
+      if (!user) throw new Error("Sessão expirada.");
 
-      // 2. SUPER SANITIZAÇÃO (Dubai Style): Remove acentos, espaços e "ª"
-      const cleanName = file.name
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "") 
-        .replace(/[^a-zA-Z0-9.]/g, "_");
-      
+      // 1. Super Sanitização (Prevenção de Erros de Key)
+      const cleanName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.]/g, "_");
       const filePath = `${user.id}/${Date.now()}_${cleanName}`;
 
-      // 3. Upload para o Bucket Privado [cite: 2025-12-04]
-      const { error: upError } = await supabase.storage
-        .from('lab_privado')
-        .upload(filePath, file);
+      // 2. Upload para Storage
+      const { error: upError } = await supabase.storage.from('lab_privado').upload(filePath, file);
+      if (upError) throw new Error(`Storage: ${upError.message}`);
 
-      if (upError) throw new Error(`Erro no Storage: ${upError.message}`);
-
-      // 4. Ativar o Cérebro IA (Modelo estável para evitar 404)
+      // 3. IA com Parâmetros de Segurança
+      // Tentamos o modelo gemini-1.5-flash (padrão estável)
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       const filePart = await fileToGenerativePart(file);
       
-      const prompt = `Age como um tutor académico de elite. Analisa este material e:
-      1. Cria um resumo executivo por pontos.
-      2. Identifica os 3 conceitos fundamentais.
-      3. Gera 3 perguntas de revisão de nível difícil para teste.`;
+      const result = await model.generateContent([
+        "Resume este material escolar por pontos e gera 3 perguntas de estudo.",
+        filePart
+      ]);
 
-      const result = await model.generateContent([prompt, filePart]);
-      const response = await result.response;
-      const text = response.text();
+      const text = result.response.text();
       setResumo(text);
+      setDebug("Processamento concluído com sucesso.");
 
-      // 5. Guardar na tabela lab_ai (Compatível com BIGINT)
+      // 4. Salvar na BD
       await supabase.from('lab_ai').insert({
         aluno_id: user.id,
         titulo: file.name,
@@ -73,8 +82,9 @@ export default function LabAI() {
       });
 
     } catch (err: any) {
-      console.error("Erro no Lab:", err);
-      alert(err.message || "Erro desconhecido ao processar IA.");
+      console.error(err);
+      setDebug(`ERRO CRÍTICO: ${err.message}`);
+      alert(`Falha no Lab: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -82,68 +92,50 @@ export default function LabAI() {
 
   return (
     <main className="min-h-screen bg-[#020617] p-6 text-white font-sans">
-      <div className="max-w-2xl mx-auto space-y-10">
+      <div className="max-w-2xl mx-auto space-y-6">
         
-        <header className="text-center pt-10">
-          <div className="inline-block p-4 bg-orange-500/10 rounded-3xl border border-orange-500/20 mb-6">
-            <BrainCircuit className="text-orange-500" size={40} />
-          </div>
-          <h1 className="text-4xl font-black uppercase italic tracking-tighter leading-none">
-            My Personal <span className="text-orange-500">Lab</span>
-          </h1>
-          <p className="text-slate-500 font-bold text-[10px] uppercase tracking-[0.3em] mt-2">
-            Inteligência Artificial de Alta Performance
-          </p>
+        <header className="text-center pt-6">
+          <BrainCircuit className="text-orange-500 mx-auto mb-4" size={40} />
+          <h1 className="text-4xl font-black uppercase italic tracking-tighter">My Personal Lab</h1>
         </header>
 
-        <section className="bg-slate-900/50 border border-slate-800 p-8 rounded-[3rem] shadow-2xl backdrop-blur-sm">
-          <div className="relative border-2 border-dashed border-slate-800 rounded-4xl p-12 text-center hover:border-orange-500/40 transition-all group">
-            <input 
-              type="file" 
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
-              accept=".pdf" 
-              onChange={(e) => setFile(e.target.files?.[0] || null)} 
-            />
-            <UploadCloud size={50} className="mx-auto mb-4 text-slate-600 group-hover:text-orange-500 transition-colors" />
-            <p className="text-lg font-bold text-slate-200">
-              {file ? file.name : "Solta o teu material aqui"}
-            </p>
-            <p className="text-slate-500 text-xs mt-2 italic">Apenas ficheiros PDF escolares</p>
+        {/* PAINEL DE DIAGNÓSTICO */}
+        <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full ${debug?.includes('Sucesso') ? 'bg-green-500' : 'bg-orange-500 animate-pulse'}`} />
+            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Status: {debug || "A aguardar teste"}</span>
+          </div>
+          <button 
+            onClick={testarConexao}
+            className="text-[10px] bg-white/5 hover:bg-white/10 px-3 py-1 rounded-lg transition-all"
+          >
+            TESTAR API
+          </button>
+        </div>
+
+        <section className="bg-slate-900/50 border border-slate-800 p-8 rounded-[3rem] shadow-2xl">
+          <div className="relative border-2 border-dashed border-slate-800 rounded-4xl p-12 text-center group">
+            <input type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <UploadCloud size={50} className="mx-auto mb-4 text-slate-600 group-hover:text-orange-500" />
+            <p className="font-bold">{file ? file.name : "Solta o PDF aqui"}</p>
           </div>
 
           <button 
             onClick={processarMaterial}
             disabled={loading || !file}
-            className="w-full mt-8 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-xl shadow-orange-900/20"
+            className="w-full mt-8 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-800 py-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all"
           >
-            {loading ? (
-              <>
-                <Loader2 className="animate-spin" size={20} />
-                <span>A PROCESSAR CONHECIMENTO...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles size={20} />
-                <span>ATIVAR INTELIGÊNCIA</span>
-              </>
-            )}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : <><Sparkles size={20} /> ATIVAR IA</>}
           </button>
         </section>
 
         {resumo && (
-          <section className="bg-slate-900 border border-orange-500/30 p-8 rounded-[2.5rem] animate-in fade-in slide-in-from-bottom-6 duration-500 shadow-2xl">
-             <div className="flex items-center justify-between mb-6">
-                <h2 className="text-orange-500 font-black text-xs uppercase tracking-widest flex items-center gap-2">
-                  <CheckCircle2 size={16} /> Relatório Gerado
-                </h2>
-                <span className="text-[10px] bg-orange-500/10 text-orange-500 px-3 py-1 rounded-full font-bold">AI FLASH 1.5</span>
-             </div>
-             <div className="text-slate-300 whitespace-pre-wrap leading-relaxed max-w-none text-sm border-t border-slate-800 pt-6">
+          <section className="bg-slate-900 border border-orange-500/30 p-8 rounded-[2.5rem] animate-in fade-in slide-in-from-bottom-6">
+             <div className="text-slate-300 whitespace-pre-wrap leading-relaxed text-sm">
                {resumo}
              </div>
           </section>
         )}
-
       </div>
     </main>
   );
