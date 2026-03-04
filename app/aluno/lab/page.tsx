@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { UploadCloud, Sparkles, BrainCircuit, Loader2, CheckCircle2, FileText, LayoutDashboard, ListChecks, Network } from 'lucide-react';
+import { UploadCloud, Sparkles, BrainCircuit, Loader2, FileText, ListChecks, Network, ChevronRight, BookOpen } from 'lucide-react';
 
 export default function LabAI() {
   const [file, setFile] = useState<File | null>(null);
@@ -11,9 +11,7 @@ export default function LabAI() {
   const [activeTab, setActiveTab] = useState<'resumo' | 'exercicios' | 'mapa'>('resumo');
   const [resultado, setResultado] = useState<{ resumo: string, exercicios: string, mapa: string } | null>(null);
   const [creditos, setCreditos] = useState<number>(0);
-  const [debug, setDebug] = useState<string | null>(null);
 
-  // Inicialização com Gemini Flash (Geração 3)
   const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
 
   useEffect(() => {
@@ -28,165 +26,139 @@ export default function LabAI() {
     }
   }
 
-  // --- BOTÃO DE DIAGNÓSTICO (Atualizado para Gemini 3) ---
-  const testarConexao = async () => {
-    setLoading(true);
-    setDebug("A testar ligação...");
-    try {
-      const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-      const result = await model.generateContent("Olá! Responde apenas 'LIGAÇÃO OK'.");
-      const response = await result.response;
-      setDebug(`Sucesso: ${response.text()}`);
-    } catch (err: any) {
-      setDebug(`FALHA NA API: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  async function fileToGenerativePart(file: File) {
-    const base64EncodedDataPromise = new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-      reader.readAsDataURL(file);
-    });
-    return { inlineData: { data: await base64EncodedDataPromise as string, mimeType: file.type } };
-  }
-
   const processarMaterial = async () => {
-    if (!file || creditos <= 0) return alert("Sem créditos ou ficheiro selecionado!");
-    
-    // Sustentabilidade: Limite de 10MB
-    if (file.size > 10 * 1024 * 1024) return alert("Ficheiro muito grande! Máximo 10MB para manter a performance.");
-
+    if (!file || creditos <= 0) return alert("Verifica créditos ou ficheiro!");
     setLoading(true);
-    setDebug("A processar material...");
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Sessão expirada.");
-
-      // 1. Sanitização de Nome (Resolve o erro 'Invalid Key')
-      const cleanName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.]/g, "_");
-      const filePath = `${user.id}/${Date.now()}_${cleanName}`;
-
-      // 2. Upload para Storage
-      const { error: upError } = await supabase.storage.from('lab_privado').upload(filePath, file);
-      if (upError) throw upError;
-
-      // 3. IA Multimodal (Prompt All-in-One para economia de tokens)
       const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-      const filePart = await fileToGenerativePart(file);
       
-      const prompt = `Age como um tutor de elite. Analisa este material e gera três secções separadas pela tag [DIVIDER]:
-      1. RESUMO: Um resumo executivo por pontos.
-      [DIVIDER]
-      2. EXERCICIOS: 5 perguntas de exame (escolha múltipla e desenvolvimento) com soluções.
-      [DIVIDER]
-      3. MAPA MENTAL: Uma estrutura hierárquica dos conceitos.`;
+      const reader = new FileReader();
+      const filePart = await new Promise((resolve) => {
+        reader.onloadend = () => resolve({ inlineData: { data: (reader.result as string).split(',')[1], mimeType: file.type } });
+        reader.readAsDataURL(file);
+      });
+      
+      // PROMPT BLINDADO [cite: 2025-12-04]
+      const prompt = `Age como um especialista em pedagogia. Analisa o PDF e gera 3 blocos. 
+      Usa obrigatoriamente a tag de separação ###NEXT_SECTION### entre eles.
+      Bloco 1: Resumo em Bullet Points com títulos em Negrito.
+      Bloco 2: 5 Questões de Exame com as soluções no fim.
+      Bloco 3: Mapa Mental estruturado por indentação (ex: Central -> Tópico -> Detalhe).
+      NÃO uses caracteres especiais como # ou * fora do padrão Markdown.`;
 
-      const result = await model.generateContent([prompt, filePart]);
-      const sections = result.response.text().split('[DIVIDER]');
+      const result = await model.generateContent([prompt, filePart as any]);
+      const sections = result.response.text().split('###NEXT_SECTION###');
 
-      const dataFinal = {
+      setResultado({
         resumo: sections[0]?.trim() || "Erro no resumo",
         exercicios: sections[1]?.trim() || "Erro nos exercícios",
         mapa: sections[2]?.trim() || "Erro no mapa"
-      };
-
-      setResultado(dataFinal);
-
-      // 4. Gestão Financeira: Descontar crédito
-      await supabase.from('alunos').update({ creditos_ia: creditos - 1 }).eq('id', user.id);
-      
-      // 5. Guardar Resumo (Usando JSON para facilitar o histórico futuro)
-      await supabase.from('lab_ai').insert({
-        aluno_id: user.id,
-        titulo: file.name,
-        url_original: filePath,
-        resumo_ia: JSON.stringify(dataFinal)
       });
-      
-      setCreditos(prev => prev - 1);
-      setDebug("Sucesso!");
 
-    } catch (err: any) {
-      setDebug(`Erro: ${err.message}`);
-      alert(err.message);
+      await supabase.from('alunos').update({ creditos_ia: creditos - 1 }).eq('id', user?.id);
+      setCreditos(prev => prev - 1);
+    } catch (err) {
+      alert("Erro na análise. Tenta um ficheiro mais pequeno.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen bg-[#020617] p-6 text-white font-sans">
-      <div className="max-w-3xl mx-auto space-y-8">
+    <main className="min-h-screen bg-[#020617] text-slate-200 font-sans selection:bg-orange-500/30">
+      <div className="max-w-4xl mx-auto p-6 space-y-8">
         
-        <header className="flex justify-between items-center bg-slate-900/50 p-6 rounded-3xl border border-slate-800 shadow-xl">
+        {/* HEADER PRESTIGIO [cite: 2026-03-05] */}
+        <header className="flex justify-between items-end border-b border-slate-800 pb-8 pt-4">
           <div>
-            <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none">
-              My Personal <span className="text-orange-500">Lab</span>
-            </h1>
-            <div className="flex items-center gap-2 mt-2">
-               <span className="text-[10px] bg-orange-500/10 text-orange-500 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest border border-orange-500/20">
-                 {creditos} Créditos Restantes
-               </span>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="bg-orange-500 p-2 rounded-lg shadow-lg shadow-orange-900/40">
+                <BrainCircuit size={24} className="text-white" />
+              </div>
+              <h1 className="text-3xl font-black tracking-tighter italic uppercase">Personal <span className="text-orange-500">Lab</span></h1>
             </div>
+            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em]">Sistemas de Automação AI v3.5</p>
           </div>
-          <BrainCircuit className="text-orange-500" size={40} />
+          <div className="bg-slate-900 border border-slate-800 px-4 py-2 rounded-2xl flex items-center gap-4">
+            <span className="text-[10px] font-black text-slate-500 uppercase">Plafond</span>
+            <span className="text-orange-500 font-black text-xl">{creditos}</span>
+          </div>
         </header>
 
-        {/* DIAGNÓSTICO */}
-        <div className="bg-slate-900/80 border border-slate-800 p-3 rounded-2xl flex items-center justify-between">
-          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 ml-2">Status: {debug || "Sistema Pronto"}</span>
-          <button onClick={testarConexao} className="text-[9px] bg-white/5 hover:bg-orange-500 px-3 py-1.5 rounded-lg font-black transition-all border border-white/5 uppercase">Testar API</button>
-        </div>
-
         {!resultado ? (
-          <section className="bg-slate-900/30 border border-slate-800 p-10 rounded-[3rem] shadow-2xl backdrop-blur-sm">
-            <div className="relative border-2 border-dashed border-slate-800 rounded-[2rem] p-12 text-center group hover:border-orange-500/30 transition-all">
-              <input type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-              <UploadCloud size={60} className="mx-auto mb-4 text-slate-700 group-hover:text-orange-500 transition-colors" />
-              <p className="text-lg font-bold">{file ? file.name : "Solta o teu material aqui"}</p>
-              <p className="text-[10px] text-slate-500 mt-2 uppercase tracking-widest italic">Apenas PDFs até 10MB</p>
+          <section className="py-20 text-center space-y-8 animate-in fade-in zoom-in duration-500">
+            <div className="max-w-md mx-auto relative group">
+              <div className="absolute -inset-1 bg-linear-to-r from-orange-600 to-amber-600 rounded-[2.5rem] blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
+              <div className="relative bg-slate-900 border border-slate-800 rounded-[2.5rem] p-12 space-y-6">
+                <div className="bg-slate-950 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto border border-slate-800">
+                  <UploadCloud size={32} className="text-orange-500" />
+                </div>
+                <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                <h2 className="text-xl font-bold">{file ? file.name : "Solta o PDF de estudo"}</h2>
+                <p className="text-slate-500 text-xs uppercase tracking-widest font-bold">Máximo 10MB • PDF</p>
+              </div>
             </div>
 
-            <button 
-              onClick={processarMaterial}
-              disabled={loading || !file || creditos <= 0}
-              className="w-full mt-8 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-800 text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-xl shadow-orange-900/20"
-            >
-              {loading ? <Loader2 className="animate-spin" /> : <><Sparkles size={20} /> ATIVAR INTELIGÊNCIA</>}
+            <button onClick={processarMaterial} disabled={loading || !file || creditos <= 0} className="bg-orange-600 hover:bg-orange-500 disabled:bg-slate-800 text-white px-12 py-5 rounded-2xl font-black uppercase italic tracking-tighter flex items-center gap-3 mx-auto transition-all active:scale-95 shadow-2xl shadow-orange-900/20">
+              {loading ? <Loader2 className="animate-spin" /> : <><Sparkles size={20} /> Ativar Inteligência</>}
             </button>
           </section>
         ) : (
-          <section className="space-y-4 animate-in fade-in duration-700">
-            {/* TABS DE NAVEGAÇÃO */}
-            <div className="flex gap-2 bg-slate-900 p-2 rounded-2xl border border-slate-800 sticky top-4 z-20">
-              <button onClick={() => setActiveTab('resumo')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'resumo' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40' : 'text-slate-500 hover:bg-slate-800'}`}>
-                <FileText size={16} /> Resumo
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-in slide-in-from-bottom-10 duration-700">
+            {/* SIDEBAR TABS [cite: 2026-03-05] */}
+            <nav className="space-y-2">
+              <button onClick={() => setActiveTab('resumo')} className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all font-bold uppercase text-[10px] tracking-widest ${activeTab === 'resumo' ? 'bg-orange-600 text-white shadow-xl shadow-orange-900/20' : 'bg-slate-900 text-slate-500 hover:bg-slate-800 border border-slate-800'}`}>
+                <div className="flex items-center gap-3"><FileText size={18} /> Resumo</div>
+                <ChevronRight size={14} />
               </button>
-              <button onClick={() => setActiveTab('exercicios')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'exercicios' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40' : 'text-slate-500 hover:bg-slate-800'}`}>
-                <ListChecks size={16} /> Exercícios
+              <button onClick={() => setActiveTab('exercicios')} className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all font-bold uppercase text-[10px] tracking-widest ${activeTab === 'exercicios' ? 'bg-orange-600 text-white shadow-xl shadow-orange-900/20' : 'bg-slate-900 text-slate-500 hover:bg-slate-800 border border-slate-800'}`}>
+                <div className="flex items-center gap-3"><ListChecks size={18} /> Exercícios</div>
+                <ChevronRight size={14} />
               </button>
-              <button onClick={() => setActiveTab('mapa')} className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'mapa' ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/40' : 'text-slate-500 hover:bg-slate-800'}`}>
-                <Network size={16} /> Mapa Mental
+              <button onClick={() => setActiveTab('mapa')} className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all font-bold uppercase text-[10px] tracking-widest ${activeTab === 'mapa' ? 'bg-orange-600 text-white shadow-xl shadow-orange-900/20' : 'bg-slate-900 text-slate-500 hover:bg-slate-800 border border-slate-800'}`}>
+                <div className="flex items-center gap-3"><Network size={18} /> Mapa Mental</div>
+                <ChevronRight size={14} />
               </button>
-            </div>
+              <button onClick={() => setResultado(null)} className="w-full mt-10 p-4 text-slate-600 text-[9px] font-black uppercase tracking-[0.3em] hover:text-orange-500 transition-colors">Novo Material</button>
+            </nav>
 
-            <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] min-h-[500px] shadow-2xl relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-3xl rounded-full -mr-16 -mt-16"></div>
-               <div className="text-slate-300 whitespace-pre-wrap leading-relaxed text-sm font-medium">
-                  {activeTab === 'resumo' && resultado.resumo}
-                  {activeTab === 'exercicios' && resultado.exercicios}
-                  {activeTab === 'mapa' && resultado.mapa}
-               </div>
+            {/* CONTENT VIEWER (Estética de Página) [cite: 2026-03-05] */}
+            <div className="md:col-span-3 bg-white text-slate-900 rounded-4xl shadow-2xl overflow-hidden flex flex-col h-175">
+              <div className="bg-slate-50 border-b p-6 flex justify-between items-center">
+                <div className="flex items-center gap-2 text-slate-400 font-bold text-[9px] uppercase tracking-widest">
+                  <BookOpen size={14} /> Modo de Leitura
+                </div>
+                <div className="text-[10px] font-black text-orange-500 uppercase tracking-widest">IA Flash 3.0</div>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-12 scrollbar-thin scrollbar-thumb-slate-200">
+                <div className="prose prose-slate max-w-none">
+                  <h3 className="text-2xl font-black uppercase italic tracking-tighter mb-8 border-b-4 border-orange-500 w-fit pb-1">
+                    {activeTab === 'resumo' && "Resumo Executivo"}
+                    {activeTab === 'exercicios' && "Simulador de Exame"}
+                    {activeTab === 'mapa' && "Estrutura Cognitiva"}
+                  </h3>
+                  
+                  <div className="text-slate-700 leading-relaxed whitespace-pre-wrap font-medium">
+                    {activeTab === 'resumo' && resultado.resumo}
+                    {activeTab === 'exercicios' && resultado.exercicios}
+                    {activeTab === 'mapa' && (
+                      <div className="bg-slate-50 p-6 rounded-2xl border-2 border-dashed border-slate-200 font-mono text-xs">
+                        {resultado.mapa}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* RODAPÉ DE PAGINAÇÃO [cite: 2026-03-05] */}
+              <div className="bg-slate-50 border-t p-4 text-center text-[9px] font-bold text-slate-400 uppercase tracking-[0.5em]">
+                Página 1 de 1 • My Personal Lab
+              </div>
             </div>
-            
-            <button onClick={() => setResultado(null)} className="w-full py-4 text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] hover:text-white transition-colors border border-dashed border-slate-800 rounded-2xl">
-               Analisar Novo Conteúdo
-            </button>
-          </section>
+          </div>
         )}
       </div>
     </main>
