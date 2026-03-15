@@ -19,8 +19,8 @@ export default function AdminLayout({
 
   return (
     <div className="flex min-h-screen bg-[#0f172a]">
-      {/* Sidebar - Menu Lateral Fixo */}
-      <aside className="w-64 bg-[#1e293b] border-r border-slate-800 flex flex-col fixed h-full shadow-2xl">
+      {/* Sidebar - Agora com 'hidden' por padrão e 'md:flex' para PC */}
+      <aside className="hidden md:flex w-64 bg-[#1e293b] border-r border-slate-800 flex-col fixed h-full shadow-2xl z-50">
         <div className="p-6 border-b border-slate-800/50">
           <h2 className="text-xl font-black text-white tracking-tighter italic">
             CENTRO<span className="text-blue-500">AI</span>
@@ -51,9 +51,17 @@ export default function AdminLayout({
         </div>
       </aside>
 
-      {/* Área de Conteúdo Principal */}
-      <main className="flex-1 ml-64 min-h-screen">
-        <div className="p-8">
+      {/* Área de Conteúdo Principal - ml-0 no telemóvel, ml-64 no PC */}
+      <main className="flex-1 md:ml-64 min-h-screen w-full">
+        {/* Header Mobile - Só aparece quando o sidebar está escondido */}
+        <div className="md:hidden bg-[#1e293b] p-4 border-b border-slate-800 flex justify-between items-center">
+          <h2 className="text-lg font-black text-white italic">
+            CENTRO<span className="text-blue-500">AI</span>
+          </h2>
+          <span className="text-2xl text-white">☰</span> 
+        </div>
+
+        <div className="p-4 md:p-8">
           {children}
         </div>
       </main>
