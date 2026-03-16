@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createBrowserClient } from '@supabase/ssr';
-import { ArrowLeft, BarChart3, TrendingUp, Award, Clock, Loader2, BookOpen, Calendar } from 'lucide-react';
+import { ArrowLeft, BarChart3, TrendingUp, Award, Clock, Loader2, BookOpen, Calendar as CalendarIcon } from 'lucide-react';
 
 export default function AdminStats() {
   const [loading, setLoading] = useState(true);
@@ -40,7 +40,8 @@ export default function AdminStats() {
     let totalMilliseconds = 0;
     const studentMap: Record<string, { name: string, ms: number, visits: number }> = {};
     const subjectMap: Record<string, number> = {};
-    const dayMap: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }; // Foco Seg a Sex
+    // Inicializar Seg a Sex com 0
+    const dayMap: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 
     if (entries && entries.length > 0) {
       entries.forEach(entry => {
@@ -63,7 +64,6 @@ export default function AdminStats() {
         const subName = entry.subject_name || 'Sessão Livre';
         subjectMap[subName] = (subjectMap[subName] || 0) + 1;
 
-        // Contabilizar apenas se for dia de semana (1-5)
         if (dayMap.hasOwnProperty(dayOfWeek)) {
           dayMap[dayOfWeek] += 1;
         }
@@ -74,13 +74,13 @@ export default function AdminStats() {
     const sortedSubjects = Object.entries(subjectMap).sort((a, b) => b[1] - a[1]);
     const daysNames = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
     
-    // Escala dinâmica: o dia com mais entradas define o 100% da altura
-    const maxEntradas = Math.max(...Object.values(dayMap), 1);
+    // Escala dinâmica baseada no maior valor real
+    const maxReal = Math.max(...Object.values(dayMap), 1);
 
     const daysChart = [1, 2, 3, 4, 5].map(d => ({ 
       day: daysNames[d - 1], 
       value: dayMap[d],
-      percent: (dayMap[d] / maxEntradas) * 100
+      percent: (dayMap[d] / maxReal) * 100
     }));
 
     setStats({
@@ -95,7 +95,7 @@ export default function AdminStats() {
       },
       busiestDay: {
         name: daysNames[parseInt(Object.entries(dayMap).sort((a,b) => b[1]-a[1])[0][0]) - 1] || '-',
-        count: maxEntradas
+        count: maxReal
       },
       daysDistribution: daysChart,
       topStudentsList: sortedStudents.slice(0, 5) 
@@ -109,6 +109,7 @@ export default function AdminStats() {
   return (
     <main className="min-h-screen bg-[#0f172a] text-white p-6 md:p-8 max-w-7xl mx-auto font-sans">
       
+      {/* CABEÇALHO */}
       <header className="flex items-center gap-4 mb-10">
         <Link href="/admin" className="p-3 bg-slate-900 border border-slate-800 rounded-2xl hover:bg-slate-800 transition-colors group">
           <ArrowLeft size={20} className="text-slate-400 group-hover:text-white" />
@@ -117,52 +118,55 @@ export default function AdminStats() {
           <h1 className="text-3xl md:text-4xl font-black italic uppercase tracking-tighter flex items-center gap-3">
              <BarChart3 size={28} className="text-blue-500" /> Desempenho Global
           </h1>
-          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mt-1">Estatísticas de Ocupação do Centro</p>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mt-1">Gestão de Performance e Ocupação</p>
         </div>
       </header>
 
       {/* KPI CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl">
-          <p className="text-slate-400 text-[10px] font-black uppercase mb-4">Volume de Estudo</p>
+          <p className="text-slate-400 text-[10px] font-black uppercase mb-4 tracking-widest">Volume de Estudo</p>
           <p className="text-4xl font-black">{stats.totalHours} <span className="text-sm font-bold text-slate-500 uppercase">h</span></p>
         </div>
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl">
-          <p className="text-slate-400 text-[10px] font-black uppercase mb-4">Melhor Aluno(a)</p>
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl hover:border-blue-500/30 transition-colors">
+          <p className="text-slate-400 text-[10px] font-black uppercase mb-4 tracking-widest">Top Aluno(a)</p>
           <p className="text-xl font-black truncate">{stats.topStudent.name}</p>
           <p className="text-[10px] text-blue-500 font-bold mt-1 uppercase">{stats.topStudent.hours}h registadas</p>
         </div>
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl">
-           <p className="text-slate-400 text-[10px] font-black uppercase mb-4">Disciplina Top</p>
+           <p className="text-slate-400 text-[10px] font-black uppercase mb-4 tracking-widest">Disciplina Top</p>
            <p className="text-xl font-black truncate">{stats.topSubject.name}</p>
            <p className="text-[10px] text-emerald-500 font-bold mt-1 uppercase">{stats.topSubject.count} sessões</p>
         </div>
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl">
-           <p className="text-slate-400 text-[10px] font-black uppercase mb-4">Dia de Pico</p>
-           <p className="text-xl font-black truncate">{stats.busiestDay.name}</p>
+           <p className="text-slate-400 text-[10px] font-black uppercase mb-4 tracking-widest">Dia de Pico</p>
+           <p className="text-xl font-black text-white truncate">{stats.busiestDay.name}</p>
            <p className="text-[10px] text-red-500 font-bold mt-1 uppercase">{stats.busiestDay.count} entradas</p>
         </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-8">
-        {/* GRÁFICO DE FLUXO */}
+        
+        {/* GRÁFICO DE FLUXO SEMANAL */}
         <div className="bg-slate-900 border border-slate-800 p-8 rounded-4xl shadow-xl">
           <h3 className="font-black text-sm uppercase text-slate-400 tracking-widest mb-16 flex items-center gap-2">
              <TrendingUp size={18} className="text-blue-500" /> Fluxo Semanal
           </h3>
           
-          <div className="h-64 flex items-end justify-between gap-4 px-2 border-b border-slate-800/50">
+          {/* O PAI: h-[280px] força uma altura física para as % funcionarem */}
+          <div className="h-70 flex items-end justify-between gap-4 px-2 border-b border-slate-800/50 pb-2">
             {stats.daysDistribution.map((d: any) => (
               <div key={d.day} className="flex flex-col items-center w-full group relative">
+                
                 {/* TOOLTIP: "X Entradas" */}
-                <div className="absolute -top-10 bg-blue-600 text-white font-black text-[10px] py-1 px-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-xl">
+                <div className="absolute -top-12 bg-blue-600 text-white font-black text-[11px] py-1.5 px-3 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-2xl">
                     {d.value} Entradas
                 </div>
                 
-                {/* BARRA: Altura baseada na percentagem real */}
+                {/* A BARRA: altura via style inline para bypassar o JIT do Tailwind */}
                 <div 
-                    className="w-full max-w-8.75 bg-blue-600 rounded-t-xl transition-all duration-700 ease-out group-hover:bg-blue-400 shadow-lg shadow-blue-900/20"
-                    style={{ height: `${Math.max(d.percent, 5)}%` }} 
+                    className="w-full max-w-10 bg-blue-600 rounded-t-2xl transition-all duration-1000 ease-out group-hover:bg-blue-400 shadow-[0_0_20px_rgba(37,99,235,0.2)]"
+                    style={{ height: `${Math.max(d.percent, 4)}%` }} 
                 ></div>
                 
                 <p className="text-[10px] text-slate-500 mt-4 font-black uppercase tracking-widest">{d.day}</p>
@@ -178,16 +182,23 @@ export default function AdminStats() {
           </h3>
           <div className="space-y-4">
             {stats.topStudentsList.map((student: any, index: number) => (
-              <div key={index} className="flex items-center justify-between p-4 bg-slate-950 rounded-2xl border border-slate-800 hover:border-slate-700 transition-colors">
+              <div key={index} className="flex items-center justify-between p-4 bg-slate-950 rounded-2xl border border-slate-800 hover:border-slate-700 transition-colors shadow-inner">
                 <div className="flex items-center gap-4">
-                  <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center font-black text-slate-400 text-xs">#{index + 1}</div>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs ${
+                    index === 0 ? 'bg-yellow-500 text-yellow-950' : 'bg-slate-800 text-slate-400'
+                  }`}>#{index + 1}</div>
                   <p className="font-bold text-sm text-white">{student.name}</p>
                 </div>
-                <p className="text-emerald-400 font-black font-mono">{Math.round(student.ms / (1000 * 60 * 60))}h</p>
+                <div className="text-right">
+                    <p className="text-emerald-400 font-black font-mono text-lg">{Math.round(student.ms / (1000 * 60 * 60))}h</p>
+                    <p className="text-[8px] text-slate-600 font-black uppercase tracking-tighter">{student.visits} sessões</p>
+                </div>
               </div>
             ))}
+            {stats.topStudentsList.length === 0 && <p className="text-center text-slate-600 italic text-sm py-10">A aguardar dados concluídos...</p>}
           </div>
         </div>
+
       </div>
     </main>
   );
