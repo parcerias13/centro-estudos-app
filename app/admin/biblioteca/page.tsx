@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
-import { ArrowLeft, Library, Plus, Trash2, Link as LinkIcon, FileText, Youtube, Loader2, Save, ExternalLink, UploadCloud } from 'lucide-react';
+import { ArrowLeft, Library, Plus, Trash2, Link as LinkIcon, FileText, Youtube, Loader2, Save, ExternalLink, UploadCloud, GraduationCap } from 'lucide-react';
 
 export default function AdminLibrary() {
   const [resources, setResources] = useState<any[]>([]);
@@ -11,11 +11,12 @@ export default function AdminLibrary() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  // Formulário
+  // Formulário - Adicionado anoEscolar
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [type, setType] = useState('link'); 
   const [subjectId, setSubjectId] = useState('');
+  const [anoEscolar, setAnoEscolar] = useState('10'); // Padrão 10º ano
   const [file, setFile] = useState<File | null>(null);
 
   const supabase = createBrowserClient(
@@ -42,12 +43,11 @@ export default function AdminLibrary() {
 
   const handleAdd = async (e: any) => {
     e.preventDefault();
-    if (!title || !subjectId) return;
+    if (!title || !subjectId || !anoEscolar) return;
     setSubmitting(true);
 
     let finalUrl = url;
 
-    // LÓGICA DE UPLOAD (Se houver ficheiro selecionado)
     if (type === 'pdf' && file) {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Math.random()}.${fileExt}`;
@@ -70,11 +70,13 @@ export default function AdminLibrary() {
       finalUrl = publicUrl;
     }
 
+    // INSERÇÃO: Agora inclui o ano_escolar
     const { error } = await supabase.from('resources').insert({
       title,
       url: finalUrl,
       type,
-      subject_id: subjectId
+      subject_id: subjectId,
+      ano_escolar: parseInt(anoEscolar) // Campo crítico para a segregação
     });
 
     if (error) {
@@ -91,10 +93,9 @@ export default function AdminLibrary() {
   const handleDelete = async (id: string, storageUrl: string) => {
     if (!confirm('Apagar este recurso permanentemente?')) return;
     
-    // Se for PDF alojado no nosso bucket, tentamos apagar o ficheiro físico também
     if (storageUrl.includes('materiais')) {
-       const path = storageUrl.split('materiais/').pop();
-       if (path) await supabase.storage.from('materiais').remove([path]);
+        const path = storageUrl.split('materiais/').pop();
+        if (path) await supabase.storage.from('materiais').remove([path]);
     }
 
     await supabase.from('resources').delete().eq('id', id);
@@ -113,7 +114,6 @@ export default function AdminLibrary() {
     <main className="min-h-screen bg-[#0f172a] p-8 text-white font-sans">
       <div className="max-w-6xl mx-auto">
         
-        {/* CABEÇALHO CONSISTENTE */}
         <header className="mb-12 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/admin" className="p-3 bg-slate-900 border border-slate-800 rounded-2xl hover:bg-slate-800 transition-colors group">
@@ -131,7 +131,6 @@ export default function AdminLibrary() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* FORMULÁRIO DE PUBLICAÇÃO */}
           <section className="lg:col-span-1">
             <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] shadow-2xl sticky top-8">
               <h2 className="text-xl font-black mb-6 flex items-center gap-2">
@@ -139,6 +138,21 @@ export default function AdminLibrary() {
               </h2>
               
               <form onSubmit={handleAdd} className="space-y-5">
+                {/* NOVO CAMPO: ANO ESCOLAR */}
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Ano Escolar Alvo</label>
+                  <select 
+                    value={anoEscolar}
+                    onChange={(e) => setAnoEscolar(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 text-white p-4 rounded-2xl outline-none focus:border-orange-500 appearance-none font-bold mt-1"
+                    required
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map(ano => (
+                      <option key={ano} value={ano}>{ano}º Ano</option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Disciplina Alvo</label>
                   <select 
@@ -182,7 +196,6 @@ export default function AdminLibrary() {
                   </div>
                 </div>
 
-                {/* CAMPO DINÂMICO: UPLOAD OU LINK */}
                 <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl">
                     {type === 'pdf' ? (
                         <div className="text-center">
@@ -217,7 +230,6 @@ export default function AdminLibrary() {
             </div>
           </section>
 
-          {/* LISTA DE RECURSOS (COLUNA 2) */}
           <section className="lg:col-span-2 space-y-4">
             <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest mb-4 px-2">Repositório Ativo ({resources.length})</h3>
             
@@ -235,10 +247,16 @@ export default function AdminLibrary() {
                       </div>
                       <div className="min-w-0">
                         <h4 className="font-black text-white text-lg truncate group-hover:text-orange-300 transition-colors">{res.title}</h4>
-                        <div className="flex items-center gap-3 mt-1">
+                        <div className="flex flex-wrap items-center gap-3 mt-1">
+                            {/* TAG DE ANO (Adicionada) */}
+                            <span className="bg-blue-500/10 text-blue-400 text-[9px] px-2 py-0.5 rounded font-black uppercase border border-blue-500/20 flex items-center gap-1">
+                                <GraduationCap size={10} /> {res.ano_escolar}º Ano
+                            </span>
+                            
                             <span className="bg-orange-500/10 text-orange-500 text-[9px] px-2 py-0.5 rounded font-black uppercase tracking-widest border border-orange-500/20">
                                 {res.subjects?.name}
                             </span>
+                            
                             <a href={res.url} target="_blank" className="text-slate-500 hover:text-blue-400 text-[10px] font-bold flex items-center gap-1 transition-colors">
                                 Ver Recurso <ExternalLink size={10} />
                             </a>
