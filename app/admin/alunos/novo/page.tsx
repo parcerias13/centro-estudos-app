@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, CreditCard, Mail, Phone, GraduationCap } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, CreditCard } from 'lucide-react';
 
 export default function NovoAluno() {
   const router = useRouter();
@@ -12,14 +12,14 @@ export default function NovoAluno() {
   const [erro, setErro] = useState('');
   const [pacotes, setPacotes] = useState<any[]>([]);
 
-  // 1. DADOS PESSOAIS (Recuperados)
+  // 1. DADOS PESSOAIS
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('123456'); // Password padrão
+  const [password, setPassword] = useState('123456');
   const [telefone, setTelefone] = useState('');
-  const [anoEscolar, setAnoEscolar] = useState('10');
+  const [anoEscolar, setAnoEscolar] = useState('1'); // Começa no 1º por padrão
 
-  // 2. LÓGICA DE NEGÓCIO (Pacotes e Dias)
+  // 2. LÓGICA DE NEGÓCIO
   const [pacoteId, setPacoteId] = useState('');
   const [diasSelecionados, setDiasSelecionados] = useState<number[]>([]);
 
@@ -33,7 +33,6 @@ export default function NovoAluno() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // Carregar pacotes para o Select
   useEffect(() => {
     const fetchPacotes = async () => {
       const { data } = await supabase.from('pacotes').select('*').order('sessoes_semanais');
@@ -59,7 +58,6 @@ export default function NovoAluno() {
     setErro('');
 
     try {
-      // A. AUTH (Ghost Client - Não desloga o Admin)
       const adminAuthClient = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -70,7 +68,6 @@ export default function NovoAluno() {
       if (authError) throw new Error(`Erro Auth: ${authError.message}`);
       const novoId = authData.user!.id;
 
-      // B. BASE DE DADOS (Inserir Perfil Completo)
       const { error: dbError } = await supabase.from('alunos').insert({
         id: novoId,
         nome,
@@ -78,11 +75,10 @@ export default function NovoAluno() {
         telefone_encarregado: telefone,
         ano_escolar: parseInt(anoEscolar),
         pacote_id: pacoteId,
-        saida_autorizada: false, // Segurança máxima por defeito
+        saida_autorizada: false,
       });
       if (dbError) throw new Error(`Erro DB: ${dbError.message}`);
 
-      // C. HORÁRIOS (Inserção em Bloco)
       const horarios = diasSelecionados.map(dia => ({
         aluno_id: novoId,
         dia_semana: dia
@@ -103,7 +99,6 @@ export default function NovoAluno() {
   return (
     <main className="min-h-screen bg-slate-950 text-white p-6 max-w-4xl mx-auto">
       
-      {/* HEADER */}
       <div className="flex items-center gap-4 mb-8">
         <Link href="/admin/alunos" className="bg-slate-900 p-3 rounded-xl hover:bg-slate-800 transition-colors border border-slate-800">
           <ArrowLeft size={20} className="text-slate-400" />
@@ -112,7 +107,7 @@ export default function NovoAluno() {
           <h1 className="text-2xl font-black flex items-center gap-2">
             <UserPlus className="text-blue-500" /> Nova Matrícula
           </h1>
-          <p className="text-slate-500 text-xs">Registo completo: Perfil, Acessos e Contrato.</p>
+          <p className="text-slate-500 text-xs">Espectro total: do 1º ao 12º ano.</p>
         </div>
       </div>
 
@@ -125,7 +120,6 @@ export default function NovoAluno() {
           </div>
         )}
 
-        {/* SECÇÃO 1: DADOS DO ALUNO */}
         <div className="space-y-6">
           <h2 className="text-xs font-black uppercase text-blue-500 tracking-widest">1. Identificação do Aluno</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -136,7 +130,10 @@ export default function NovoAluno() {
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ano Escolar *</label>
               <select value={anoEscolar} onChange={(e) => setAnoEscolar(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 appearance-none">
-                {[5,6,7,8,9,10,11,12].map(ano => <option key={ano} value={ano}>{ano}º Ano</option>)}
+                {/* Gerador automático do 1º ao 12º ano */}
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(ano => (
+                  <option key={ano} value={ano}>{ano}º Ano</option>
+                ))}
               </select>
             </div>
             <div className="space-y-2">
@@ -152,7 +149,6 @@ export default function NovoAluno() {
 
         <hr className="border-slate-800" />
 
-        {/* SECÇÃO 2: CONTRATO E PACOTES */}
         <div className="space-y-6">
           <h2 className="text-xs font-black uppercase text-blue-500 tracking-widest">2. Plano e Frequência</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -169,7 +165,6 @@ export default function NovoAluno() {
           </div>
         </div>
 
-        {/* SECÇÃO 3: DIAS DA SEMANA */}
         <div className="space-y-4">
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
             <Calendar size={14} /> Dias de Estudo Autorizados *
@@ -187,7 +182,6 @@ export default function NovoAluno() {
           </div>
         </div>
 
-        {/* SUBMIT */}
         <button 
           type="submit" disabled={loading}
           className="w-full bg-blue-600 hover:bg-blue-500 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
