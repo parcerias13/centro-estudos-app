@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createBrowserClient } from '@supabase/ssr';
-import { ArrowLeft, BarChart3, TrendingUp, Award, Calendar, BookOpen, Clock, Loader2 } from 'lucide-react';
+import { ArrowLeft, BarChart3, TrendingUp, Award, Calendar, BookOpen, Clock, Loader2, AlertCircle } from 'lucide-react';
 
 export default function AdminStats() {
   const [loading, setLoading] = useState(true);
@@ -16,6 +16,8 @@ export default function AdminStats() {
     subjectsDistribution: [], 
     topStudentsList: [] 
   });
+
+  const CAPACIDADE_MAXIMA = 15; // Define aqui o limite da tua sala
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,62 +40,52 @@ export default function AdminStats() {
       return;
     }
 
-    if (!entries || entries.length === 0) {
-      setLoading(false);
-      return;
-    }
-
+    // --- PROCESSAMENTO MESMO SEM ENTRADAS ---
     let totalMilliseconds = 0;
     const studentMap: Record<string, { name: string, ms: number, visits: number }> = {};
     const subjectMap: Record<string, number> = {};
     const dayMap: Record<number, number> = { 1:0, 2:0, 3:0, 4:0, 5:0, 6:0, 0:0 };
 
-    entries.forEach(entry => {
-      const start = new Date(entry.entrada).getTime();
-      const end = new Date(entry.saida).getTime();
-      const duration = end - start;
-      const dayOfWeek = new Date(entry.entrada).getDay();
+    if (entries && entries.length > 0) {
+      entries.forEach(entry => {
+        const start = new Date(entry.entrada).getTime();
+        const end = new Date(entry.saida).getTime();
+        const duration = end - start;
+        const dayOfWeek = new Date(entry.entrada).getDay();
 
-      if (isNaN(duration) || duration < 0) return;
+        if (isNaN(duration) || duration < 0) return;
 
-      totalMilliseconds += duration;
+        totalMilliseconds += duration;
 
-      const sName = Array.isArray(entry.alunos) ? entry.alunos[0]?.nome : entry.alunos?.nome;
-      const finalName = sName || 'Desconhecido';
-      
-      if (!studentMap[finalName]) studentMap[finalName] = { name: finalName, ms: 0, visits: 0 };
-      studentMap[finalName].ms += duration;
-      studentMap[finalName].visits += 1;
+        const sName = Array.isArray(entry.alunos) ? entry.alunos[0]?.nome : entry.alunos?.nome;
+        const finalName = sName || 'Desconhecido';
+        
+        if (!studentMap[finalName]) studentMap[finalName] = { name: finalName, ms: 0, visits: 0 };
+        studentMap[finalName].ms += duration;
+        studentMap[finalName].visits += 1;
 
-      const subName = entry.subject_name || 'Sessão Livre';
-      subjectMap[subName] = (subjectMap[subName] || 0) + 1;
+        const subName = entry.subject_name || 'Sessão Livre';
+        subjectMap[subName] = (subjectMap[subName] || 0) + 1;
 
-      dayMap[dayOfWeek] += 1;
-    });
+        dayMap[dayOfWeek] += 1;
+      });
+    }
 
     const sortedStudents = Object.values(studentMap).sort((a, b) => b.ms - a.ms);
     const topStudentObj = sortedStudents[0];
     const sortedSubjects = Object.entries(subjectMap).sort((a, b) => b[1] - a[1]);
     const topSubjectObj = sortedSubjects[0];
-    const daysNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-    const sortedDays = Object.entries(dayMap).sort((a, b) => b[1] - a[1]);
-    const busiestDayIndex = parseInt(sortedDays[0][0]);
-
-    // Lógica de Escala Dinâmica
-    const displayedDays = [1, 2, 3, 4, 5];
-    const maxVisitsInChart = Math.max(...displayedDays.map(d => dayMap[d]), 1);
+    const daysNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     
-    const daysChart = displayedDays.map(d => ({ 
-      day: daysNames[d].substring(0, 3), 
-      value: dayMap[d],
-      percent: (dayMap[d] / maxVisitsInChart) * 100
-    }));
+    // Escala baseada na Capacidade Máxima ou no pico real (o que for maior)
+    const maxReal = Math.max(...Object.values(dayMap));
+    const escalaGrafico = Math.max(maxReal, CAPACIDADE_MAXIMA, 1);
 
-    const totalVisits = entries.length;
-    const subjectsChart = sortedSubjects.slice(0, 5).map(([name, count]) => ({
-      name,
-      count,
-      percent: (count / totalVisits) * 100
+    const daysChart = [1, 2, 3, 4, 5].map(d => ({ 
+      day: daysNames[d], 
+      value: dayMap[d],
+      // Altura calculada sobre a escala fixa
+      percent: (dayMap[d] / escalaGrafico) * 100
     }));
 
     setStats({
@@ -103,9 +95,11 @@ export default function AdminStats() {
         hours: Math.round((topStudentObj?.ms || 0) / (1000 * 60 * 60)) 
       },
       topSubject: { name: topSubjectObj ? topSubjectObj[0] : '-', count: topSubjectObj ? topSubjectObj[1] : 0 },
-      busiestDay: { name: daysNames[busiestDayIndex], count: sortedDays[0][1] },
+      busiestDay: { 
+        name: daysNames[parseInt(Object.entries(dayMap).sort((a,b)=>b[1]-a[1])[0][0])] || '-', 
+        count: Math.max(...Object.values(dayMap)) 
+      },
       daysDistribution: daysChart,
-      subjectsDistribution: subjectsChart,
       topStudentsList: sortedStudents.slice(0, 5) 
     });
 
@@ -133,106 +127,85 @@ export default function AdminStats() {
         </div>
       </div>
 
-      {/* KPI CARDS (Mantidos iguais) */}
+      {/* KPI CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl hover:border-emerald-500/50 transition-colors group">
-          <div className="flex justify-between items-start mb-4">
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Volume de Estudo</p>
-            <Clock size={20} className="text-emerald-500 group-hover:scale-110 transition-transform" />
-          </div>
-          <p className="text-4xl font-black text-white">{stats.totalHours} <span className="text-sm font-bold text-slate-500 uppercase tracking-widest">horas</span></p>
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl">
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-4">Volume de Estudo</p>
+          <p className="text-4xl font-black text-white">{stats.totalHours} <span className="text-sm font-bold text-slate-500 uppercase">h</span></p>
         </div>
-
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl hover:border-yellow-500/50 transition-colors group">
-          <div className="flex justify-between items-start mb-4">
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Melhor Aluno(a)</p>
-            <Award size={20} className="text-yellow-500 group-hover:scale-110 transition-transform" />
-          </div>
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl">
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-4">Melhor Aluno(a)</p>
           <p className="text-xl font-black text-white truncate">{stats.topStudent.name}</p>
-          <p className="text-xs text-yellow-500 font-bold mt-1 bg-yellow-500/10 px-2 py-1 rounded inline-block">{stats.topStudent.hours} horas registadas</p>
+          <p className="text-[10px] text-yellow-500 font-bold mt-1 uppercase">{stats.topStudent.hours}h registadas</p>
         </div>
-
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl hover:border-purple-500/50 transition-colors group">
-          <div className="flex justify-between items-start mb-4">
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Mais Procurada</p>
-            <BookOpen size={20} className="text-purple-500 group-hover:scale-110 transition-transform" />
-          </div>
-          <p className="text-xl font-black text-white truncate">{stats.topSubject.name}</p>
-          <p className="text-xs text-purple-400 font-bold mt-1 bg-purple-500/10 px-2 py-1 rounded inline-block">{stats.topSubject.count} sessões de estudo</p>
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl text-purple-400">
+           <p className="text-slate-400 text-[10px] font-black uppercase mb-4">Disciplina Top</p>
+           <p className="text-xl font-black text-white truncate">{stats.topSubject.name}</p>
+           <p className="text-[10px] font-bold mt-1 uppercase">{stats.topSubject.count} sessões</p>
         </div>
-
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl hover:border-red-500/50 transition-colors group">
-          <div className="flex justify-between items-start mb-4">
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Dia de Caos</p>
-            <Calendar size={20} className="text-red-500 group-hover:scale-110 transition-transform" />
-          </div>
-          <p className="text-xl font-black text-white truncate">{stats.busiestDay.name}</p>
-          <p className="text-xs text-red-400 font-bold mt-1 bg-red-500/10 px-2 py-1 rounded inline-block">Reforçar staff neste dia</p>
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl text-red-400">
+           <p className="text-slate-400 text-[10px] font-black uppercase mb-4">Pico de Ocupação</p>
+           <p className="text-xl font-black text-white truncate">{stats.busiestDay.name}</p>
+           <p className="text-[10px] font-bold mt-1 uppercase">{stats.busiestDay.count} alunos max</p>
         </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-8">
-        {/* GRÁFICO CORRIGIDO */}
-        <div className="bg-slate-900 border border-slate-800 p-8 rounded-4xl shadow-xl">
-          <h3 className="font-black text-sm uppercase text-slate-400 tracking-widest mb-12 flex items-center gap-2">
+        {/* GRÁFICO CORRIGIDO COM LINHA DE CAPACIDADE */}
+        <div className="bg-slate-900 border border-slate-800 p-8 rounded-4xl shadow-xl relative overflow-hidden">
+          <h3 className="font-black text-sm uppercase text-slate-400 tracking-widest mb-16 flex items-center gap-2">
              <TrendingUp size={18} className="text-blue-500" /> Fluxo Semanal
           </h3>
           
-          <div className="flex items-end justify-between h-56 gap-4 px-2 border-b border-slate-800/50">
+          <div className="relative h-64 flex items-end justify-between gap-4 px-2 border-b border-slate-800/50">
+            
+            {/* LINHA DE CAPACIDADE MÁXIMA */}
+            <div 
+              className="absolute left-0 right-0 border-t-2 border-dashed border-red-500/30 z-0 flex items-center justify-end pr-2"
+              style={{ bottom: `${(CAPACIDADE_MAXIMA / Math.max(stats.busiestDay.count, CAPACIDADE_MAXIMA)) * 100}%` }}
+            >
+              <span className="text-[8px] font-black text-red-500/50 uppercase mb-4">Limite Sala ({CAPACIDADE_MAXIMA})</span>
+            </div>
+
             {stats.daysDistribution.map((d: any) => (
-              <div key={d.day} className="flex flex-col items-center w-full group">
+              <div key={d.day} className="flex flex-col items-center w-full group relative z-10">
                 <div className="relative w-full flex flex-col items-center justify-end h-48">
-                    {/* Tooltip */}
-                    <div className="absolute -top-10 bg-blue-600 text-white font-black text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                        {d.value} Entradas
+                    <div className="absolute -top-8 bg-blue-600 text-white font-black text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                        {d.value} Alunos
                     </div>
                     
-                    {/* Barra com cores seguras */}
                     <div 
-                        className="w-full max-w-10 bg-blue-600 rounded-t-xl transition-all duration-1000 ease-out group-hover:bg-blue-400 shadow-[0_0_20px_rgba(37,99,235,0.2)]"
-                        style={{ height: `${Math.max(d.percent || 0, 8)}%` }} 
+                        className={`w-full max-w-8 rounded-t-lg transition-all duration-700 ease-out shadow-lg 
+                          ${d.value >= CAPACIDADE_MAXIMA ? 'bg-red-500 shadow-red-900/40' : 'bg-blue-600 shadow-blue-900/40'}`}
+                        style={{ height: `${Math.max(d.percent, 4)}%` }} 
                     ></div>
                 </div>
-                <p className="text-[10px] text-slate-500 mt-4 font-black uppercase tracking-widest">{d.day}</p>
+                <p className="text-[10px] text-slate-500 mt-4 font-black uppercase">{d.day}</p>
               </div>
             ))}
           </div>
         </div>
 
-        {/* QUADRO DE HONRA (Mantido igual) */}
+        {/* QUADRO DE HONRA */}
         <div className="bg-slate-900 border border-slate-800 p-8 rounded-4xl shadow-xl">
           <h3 className="font-black text-sm uppercase text-slate-400 tracking-widest mb-6 flex items-center gap-2">
             <Award size={18} className="text-yellow-500" /> Quadro de Honra
           </h3>
-          
-          {stats.topStudentsList.length === 0 ? (
-            <div className="h-48 flex items-center justify-center text-slate-600 text-sm font-medium italic border-2 border-dashed border-slate-800 rounded-3xl">
-                A aguardar conclusão de sessões.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {stats.topStudentsList.map((student: any, index: number) => (
-                <div key={index} className="flex items-center justify-between p-4 bg-slate-950 rounded-2xl border border-slate-800 hover:border-slate-600 transition-colors">
+          <div className="space-y-4">
+            {stats.topStudentsList.length === 0 ? (
+               <div className="p-10 text-center border-2 border-dashed border-slate-800 rounded-3xl text-slate-600 text-xs italic">Sem dados suficientes</div>
+            ) : (
+              stats.topStudentsList.map((student: any, index: number) => (
+                <div key={index} className="flex items-center justify-between p-4 bg-slate-950 rounded-2xl border border-slate-800">
                   <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg ${
-                      index === 0 ? 'bg-yellow-500 text-yellow-950' : 
-                      index === 1 ? 'bg-slate-300 text-slate-800' : 
-                      index === 2 ? 'bg-orange-700 text-orange-100' : 'bg-slate-800 text-slate-400'
-                    }`}>
-                      #{index + 1}
-                    </div>
-                    <div>
-                      <p className="font-bold text-white">{student.name}</p>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mt-1">{student.visits} sessões</p>
-                    </div>
+                    <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center font-black text-slate-400 text-xs">#{index + 1}</div>
+                    <p className="font-bold text-sm">{student.name}</p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-emerald-400 font-black font-mono text-xl">{Math.round(student.ms / (1000 * 60 * 60))}h</p>
-                  </div>
+                  <p className="text-emerald-400 font-black font-mono">{Math.round(student.ms / (1000 * 60 * 60))}h</p>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </div>
       </div>
     </main>
