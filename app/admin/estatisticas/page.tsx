@@ -79,15 +79,13 @@ export default function AdminStats() {
     const sortedDays = Object.entries(dayMap).sort((a, b) => b[1] - a[1]);
     const busiestDayIndex = parseInt(sortedDays[0][0]);
 
-    // --- CORREÇÃO DO GRÁFICO (Lógica de Escala Dinâmica) --- //
-    // Calculamos o máximo apenas dos dias que vamos mostrar (Seg-Sex) para a escala ser perfeita
+    // Lógica de Escala Dinâmica
     const displayedDays = [1, 2, 3, 4, 5];
     const maxVisitsInChart = Math.max(...displayedDays.map(d => dayMap[d]), 1);
     
     const daysChart = displayedDays.map(d => ({ 
       day: daysNames[d].substring(0, 3), 
       value: dayMap[d],
-      // Cálculo da altura relativa ao pico da semana
       percent: (dayMap[d] / maxVisitsInChart) * 100
     }));
 
@@ -119,6 +117,7 @@ export default function AdminStats() {
   return (
     <main className="min-h-screen bg-[#0f172a] text-white p-6 md:p-8 max-w-7xl mx-auto font-sans">
       
+      {/* CABEÇALHO */}
       <div className="flex items-center gap-4 mb-10">
         <Link href="/admin" className="p-3 bg-slate-900 border border-slate-800 rounded-2xl hover:bg-slate-800 transition-colors group">
           <ArrowLeft size={20} className="text-slate-400 group-hover:text-white" />
@@ -134,6 +133,7 @@ export default function AdminStats() {
         </div>
       </div>
 
+      {/* KPI CARDS (Mantidos iguais) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-4xl shadow-xl hover:border-emerald-500/50 transition-colors group">
           <div className="flex justify-between items-start mb-4">
@@ -172,24 +172,25 @@ export default function AdminStats() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-8">
+        {/* GRÁFICO CORRIGIDO */}
         <div className="bg-slate-900 border border-slate-800 p-8 rounded-4xl shadow-xl">
           <h3 className="font-black text-sm uppercase text-slate-400 tracking-widest mb-12 flex items-center gap-2">
              <TrendingUp size={18} className="text-blue-500" /> Fluxo Semanal
           </h3>
           
-          <div className="flex items-end justify-between h-56 gap-4 px-2">
+          <div className="flex items-end justify-between h-56 gap-4 px-2 border-b border-slate-800/50">
             {stats.daysDistribution.map((d: any) => (
-              <div key={d.day} className="flex flex-col items-center w-full group h-full justify-end">
-                <div className="relative w-full flex flex-col items-center">
-                    {/* TOOLTIP DINÂMICO */}
-                    <div className="absolute -top-10 bg-blue-600 text-white font-black text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 shadow-lg">
+              <div key={d.day} className="flex flex-col items-center w-full group">
+                <div className="relative w-full flex flex-col items-center justify-end h-48">
+                    {/* Tooltip */}
+                    <div className="absolute -top-10 bg-blue-600 text-white font-black text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
                         {d.value} Entradas
                     </div>
                     
-                    {/* BARRA CORRIGIDA COM TRANSIÇÃO */}
+                    {/* Barra com cores seguras */}
                     <div 
-                        className="w-full max-w-10 bg-linear-to-t from-blue-700 to-blue-500 rounded-t-xl transition-all duration-1000 ease-out group-hover:from-blue-500 group-hover:to-blue-300 shadow-[0_0_20px_rgba(37,99,235,0.2)]"
-                        style={{ height: `${Math.max(d.percent, 8)}%` }} 
+                        className="w-full max-w-10 bg-blue-600 rounded-t-xl transition-all duration-1000 ease-out group-hover:bg-blue-400 shadow-[0_0_20px_rgba(37,99,235,0.2)]"
+                        style={{ height: `${Math.max(d.percent || 0, 8)}%` }} 
                     ></div>
                 </div>
                 <p className="text-[10px] text-slate-500 mt-4 font-black uppercase tracking-widest">{d.day}</p>
@@ -198,6 +199,7 @@ export default function AdminStats() {
           </div>
         </div>
 
+        {/* QUADRO DE HONRA (Mantido igual) */}
         <div className="bg-slate-900 border border-slate-800 p-8 rounded-4xl shadow-xl">
           <h3 className="font-black text-sm uppercase text-slate-400 tracking-widest mb-6 flex items-center gap-2">
             <Award size={18} className="text-yellow-500" /> Quadro de Honra
@@ -212,8 +214,8 @@ export default function AdminStats() {
               {stats.topStudentsList.map((student: any, index: number) => (
                 <div key={index} className="flex items-center justify-between p-4 bg-slate-950 rounded-2xl border border-slate-800 hover:border-slate-600 transition-colors">
                   <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg shadow-lg ${
-                      index === 0 ? 'bg-yellow-500 text-yellow-950 shadow-yellow-500/20' : 
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg ${
+                      index === 0 ? 'bg-yellow-500 text-yellow-950' : 
                       index === 1 ? 'bg-slate-300 text-slate-800' : 
                       index === 2 ? 'bg-orange-700 text-orange-100' : 'bg-slate-800 text-slate-400'
                     }`}>
