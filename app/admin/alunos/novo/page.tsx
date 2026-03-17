@@ -42,13 +42,41 @@ export default function NovoAluno() {
   }, []);
 
   const toggleDia = (id: number) => {
-    setDiasSelecionados(prev => 
-      prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]
-    );
+    if (!pacoteId) {
+      setErro('Seleciona um pacote primeiro para definir o limite de dias.');
+      return;
+    }
+
+    const pacoteSelecionado = pacotes.find(p => p.id === pacoteId);
+    const limiteSessoes = pacoteSelecionado ? pacoteSelecionado.sessoes_semanais : 99;
+
+    setDiasSelecionados(prev => {
+      // Se já está selecionado, permite remover sempre
+      if (prev.includes(id)) {
+        return prev.filter(d => d !== id);
+      }
+      
+      // Se tentar adicionar além do limite, bloqueia e avisa
+      if (prev.length >= limiteSessoes) {
+        alert(`O pacote selecionado permite um máximo de ${limiteSessoes} dia(s) por semana.`);
+        return prev;
+      }
+      
+      // Caso contrário, adiciona o dia
+      return [...prev, id];
+    });
   };
 
   const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Verificação extra para garantir que o número de dias bate certo com o pacote
+    const pacoteSelecionado = pacotes.find(p => p.id === pacoteId);
+    if (pacoteSelecionado && diasSelecionados.length !== pacoteSelecionado.sessoes_semanais && pacoteSelecionado.sessoes_semanais !== 99) {
+       setErro(`Deves selecionar exatamente ${pacoteSelecionado.sessoes_semanais} dia(s) para este pacote.`);
+       return;
+    }
+
     if (!pacoteId || diasSelecionados.length === 0) {
       setErro('Define o pacote e os dias autorizados. Sem regras, não há controlo.');
       return;
@@ -130,7 +158,6 @@ export default function NovoAluno() {
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ano Escolar *</label>
               <select value={anoEscolar} onChange={(e) => setAnoEscolar(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 appearance-none">
-                {/* Gerador automático do 1º ao 12º ano */}
                 {Array.from({ length: 12 }, (_, i) => i + 1).map(ano => (
                   <option key={ano} value={ano}>{ano}º Ano</option>
                 ))}
@@ -139,6 +166,11 @@ export default function NovoAluno() {
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Email (Login) *</label>
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500" placeholder="aluno@centro.pt" />
+            </div>
+            {/* CAMPO DA PASSWORD ADICIONADO AQUI */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Password Provisória *</label>
+              <input type="text" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500" placeholder="Ex: 123456" />
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Telemóvel Encarregado *</label>
@@ -155,7 +187,11 @@ export default function NovoAluno() {
             {pacotes.map(p => (
               <button 
                 key={p.id} type="button"
-                onClick={() => setPacoteId(p.id)}
+                onClick={() => {
+                  setPacoteId(p.id);
+                  setDiasSelecionados([]); // Limpa os dias para forçar o utilizador a re-selecionar ao trocar de pacote
+                  setErro('');
+                }}
                 className={`p-4 rounded-2xl border text-left transition-all ${pacoteId === p.id ? 'border-blue-500 bg-blue-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}
               >
                 <p className="font-bold text-sm text-white">{p.nome}</p>
@@ -174,7 +210,7 @@ export default function NovoAluno() {
               <button
                 key={d.id} type="button"
                 onClick={() => toggleDia(d.id)}
-                className={`flex-1 min-w-20 p-3 rounded-xl border text-xs font-black transition-all ${diasSelecionados.includes(d.id) ? 'bg-blue-600 border-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                className={`flex-1 min-w-20 p-3 rounded-xl border text-xs font-black transition-all ${diasSelecionados.includes(d.id) ? 'bg-blue-600 border-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.3)]' : 'bg-slate-950 border-slate-800 text-slate-500 hover:bg-slate-900'}`}
               >
                 {d.label}
               </button>
