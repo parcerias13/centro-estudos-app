@@ -41,9 +41,9 @@ export async function middleware(request: NextRequest) {
   // Recupera o utilizador atual para validar a sessão
   const { data: { user } } = await supabase.auth.getUser()
 
-  // LÓGICA DE REDIRECIONAMENTO [cite: 2026-02-01]
-  // Se não houver utilizador e não estiver na página de login, força o redirecionamento
-  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
+  // LÓGICA DE REDIRECIONAMENTO
+  // Se não houver utilizador e não estiver na página de login ou na de recuperar password, força o redirecionamento
+  if (!user && !request.nextUrl.pathname.startsWith('/login') && !request.nextUrl.pathname.startsWith('/recuperar')) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
