@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
@@ -12,39 +12,45 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleLogin = async (e: any) => {
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    // 1. Tentar Autenticação (Verificar se a password está correta)
-    const { data: { user }, error } = await supabase.auth.signInWithPassword({
+    // 1. Tentar Autenticação
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) {
-      alert('Erro de Acesso: ' + error.message);
+    if (authError) {
+      alert('Erro de Acesso: ' + authError.message);
       setLoading(false);
       return;
     }
 
-    // 2. SUCESSO! Agora verificamos QUEM É (Staff vs Aluno)
-    // Consultamos a tabela 'staff' para ver se este email tem permissões
-    const { data: staffMember } = await supabase
-      .from('staff')
-      .select('*')
-      .eq('email', email) // O email já vem normalizado do input se quiseres adicionar .toLowerCase()
-      .maybeSingle();
+    if (authData.user) {
+      // 2. SUCESSO! Agora verificamos QUEM É (Staff vs Aluno)
+      const { data: staffMember } = await supabase
+        .from('staff')
+        .select('*')
+        .eq('email', email)
+        .maybeSingle();
 
-    if (staffMember) {
-      // Se encontrou na tabela staff -> Redireciona para o Backoffice
-      router.push('/admin');
-    } else {
-      // Se não encontrou -> Assume que é Aluno
-      router.push('/');
+      if (staffMember) {
+        // Se encontrou na tabela staff -> Redireciona para o Backoffice
+        router.push('/admin');
+      } else {
+        // Se não encontrou -> Assume que é Aluno
+        router.push('/');
+      }
+      
+      router.refresh();
     }
-    
-    router.refresh();
   };
 
   return (
@@ -55,7 +61,7 @@ export default function LoginPage() {
       <div className="absolute -top-20 -left-20 w-64 h-64 bg-blue-600/20 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-purple-600/20 rounded-full blur-3xl pointer-events-none"></div>
 
-      <div className="w-full max-w-sm bg-slate-900/50 backdrop-blur-md border border-slate-800 p-8 rounded-3xl shadow-2xl relative">
+      <div className="w-full max-w-sm bg-slate-900/50 backdrop-blur-md border border-slate-800 p-8 rounded-3xl shadow-2xl relative z-10">
         
         {/* ÍCONE */}
         <div className="flex justify-center mb-8">
@@ -71,23 +77,25 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-500 uppercase ml-1">Email</label>
+            <label className="text-xs font-bold text-slate-500 uppercase ml-1 tracking-widest">Email</label>
             <div className="relative">
-              <Mail className="absolute left-4 top-3.5 text-slate-500" size={18} />
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="exemplo@centro.pt"
-                className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 text-white pl-12 pr-4 py-3 rounded-xl outline-none transition-all"
+                className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 text-white pl-12 pr-4 py-4 rounded-2xl outline-none transition-all shadow-inner"
               />
             </div>
           </div>
 
           <div className="space-y-2">
             <div className="flex justify-between items-center px-1">
-                <label className="text-xs font-bold text-slate-500 uppercase">Password</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Password</label>
+                
+                {/* O LINK CORRIGIDO */}
                 <Link href="/recuperar" className="text-xs font-bold text-blue-500 hover:text-blue-400 hover:underline transition-colors">
                     Esqueci-me da password
                 </Link>
@@ -98,20 +106,20 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 text-white px-4 py-3 rounded-xl outline-none transition-all font-mono"
+              className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 text-white px-4 py-4 rounded-2xl outline-none transition-all font-mono shadow-inner"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 mt-6 transition-all active:scale-95 shadow-lg shadow-blue-900/20"
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 mt-6 transition-all active:scale-95 shadow-lg shadow-blue-900/20 disabled:opacity-50"
           >
-            {loading ? <Loader2 className="animate-spin" /> : <>Entrar <ArrowRight size={18} /></>}
+            {loading ? <Loader2 className="animate-spin" /> : <>ENTRAR <ArrowRight size={18} /></>}
           </button>
         </form>
 
-        <p className="text-center mt-8 text-xs text-slate-600">
+        <p className="text-center mt-8 text-xs text-slate-600 font-bold uppercase tracking-widest">
           Problemas no acesso? Contacta a Secretaria.
         </p>
       </div>
