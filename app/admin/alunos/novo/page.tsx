@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, CreditCard } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar } from 'lucide-react';
 
 export default function NovoAluno() {
   const router = useRouter();
@@ -18,6 +18,7 @@ export default function NovoAluno() {
   const [password, setPassword] = useState('123456');
   const [telefone, setTelefone] = useState('');
   const [anoEscolar, setAnoEscolar] = useState('1'); // Começa no 1º por padrão
+  const [saidaAutorizada, setSaidaAutorizada] = useState(false); // NOVO ESTADO AQUI
 
   // 2. LÓGICA DE NEGÓCIO
   const [pacoteId, setPacoteId] = useState('');
@@ -51,18 +52,15 @@ export default function NovoAluno() {
     const limiteSessoes = pacoteSelecionado ? pacoteSelecionado.sessoes_semanais : 99;
 
     setDiasSelecionados(prev => {
-      // Se já está selecionado, permite remover sempre
       if (prev.includes(id)) {
         return prev.filter(d => d !== id);
       }
       
-      // Se tentar adicionar além do limite, bloqueia e avisa
       if (prev.length >= limiteSessoes) {
         alert(`O pacote selecionado permite um máximo de ${limiteSessoes} dia(s) por semana.`);
         return prev;
       }
       
-      // Caso contrário, adiciona o dia
       return [...prev, id];
     });
   };
@@ -70,7 +68,6 @@ export default function NovoAluno() {
   const handleGuardar = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Verificação extra para garantir que o número de dias bate certo com o pacote
     const pacoteSelecionado = pacotes.find(p => p.id === pacoteId);
     if (pacoteSelecionado && diasSelecionados.length !== pacoteSelecionado.sessoes_semanais && pacoteSelecionado.sessoes_semanais !== 99) {
        setErro(`Deves selecionar exatamente ${pacoteSelecionado.sessoes_semanais} dia(s) para este pacote.`);
@@ -103,7 +100,7 @@ export default function NovoAluno() {
         telefone_encarregado: telefone,
         ano_escolar: parseInt(anoEscolar),
         pacote_id: pacoteId,
-        saida_autorizada: false,
+        saida_autorizada: saidaAutorizada, // VINCULAÇÃO DO ESTADO AQUI
       });
       if (dbError) throw new Error(`Erro DB: ${dbError.message}`);
 
@@ -167,7 +164,6 @@ export default function NovoAluno() {
               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Email (Login) *</label>
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500" placeholder="aluno@centro.pt" />
             </div>
-            {/* CAMPO DA PASSWORD ADICIONADO AQUI */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Password Provisória *</label>
               <input type="text" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500" placeholder="Ex: 123456" />
@@ -189,7 +185,7 @@ export default function NovoAluno() {
                 key={p.id} type="button"
                 onClick={() => {
                   setPacoteId(p.id);
-                  setDiasSelecionados([]); // Limpa os dias para forçar o utilizador a re-selecionar ao trocar de pacote
+                  setDiasSelecionados([]); 
                   setErro('');
                 }}
                 className={`p-4 rounded-2xl border text-left transition-all ${pacoteId === p.id ? 'border-blue-500 bg-blue-500/10' : 'border-slate-800 bg-slate-950 hover:border-slate-700'}`}
@@ -205,7 +201,7 @@ export default function NovoAluno() {
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
             <Calendar size={14} /> Dias de Estudo Autorizados *
           </label>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 mb-6">
             {diasSemana.map(d => (
               <button
                 key={d.id} type="button"
@@ -216,11 +212,26 @@ export default function NovoAluno() {
               </button>
             ))}
           </div>
+
+          {/* O NOVO CAMPO DA SAÍDA AUTORIZADA */}
+          <button 
+            type="button"
+            onClick={() => setSaidaAutorizada(!saidaAutorizada)}
+            className="w-full flex items-center justify-between p-4 bg-slate-950 border border-slate-800 rounded-2xl cursor-pointer hover:border-slate-700 transition-colors mt-8"
+          >
+            <div className="text-left">
+              <p className="font-bold text-sm text-white">Saída Autorizada</p>
+              <p className="text-xs text-slate-500">O aluno pode sair sem acompanhante?</p>
+            </div>
+            <div className={`w-12 h-6 rounded-full p-1 flex items-center transition-colors ${saidaAutorizada ? 'bg-emerald-500' : 'bg-slate-800'}`}>
+              <div className={`w-4 h-4 bg-white rounded-full transition-transform ${saidaAutorizada ? 'translate-x-6' : 'translate-x-0'}`} />
+            </div>
+          </button>
         </div>
 
         <button 
           type="submit" disabled={loading}
-          className="w-full bg-blue-600 hover:bg-blue-500 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+          className="w-full bg-blue-600 hover:bg-blue-500 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 mt-8"
         >
           {loading ? <Loader2 className="animate-spin" /> : <Save size={20} />}
           {loading ? 'A REGISTAR MATRÍCULA...' : 'FINALIZAR E CRIAR ACESSOS'}
