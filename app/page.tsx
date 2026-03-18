@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
-// Adicionada a BrainCircuit para o Lab AI
-import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit } from 'lucide-react';
+import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin } from 'lucide-react';
 
 export default function StudentHome() {
   const [subjects, setSubjects] = useState<any[]>([]);
@@ -26,9 +25,10 @@ export default function StudentHome() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return (window.location.href = '/login');
 
+      // Buscar sessão atual com a informação da sala
       const { data: session } = await supabase
         .from('diario_bordo')
-        .select('*')
+        .select('*, salas(nome)') // Puxamos o nome da sala associada à sessão
         .eq('aluno_id', user.id)
         .is('saida', null)
         .maybeSingle();
@@ -65,7 +65,11 @@ export default function StudentHome() {
         if (limite > 0 && visitasFeitas >= limite) setIsLimitReached(true);
       }
 
-      const { data: subjs } = await supabase.from('subjects').select('*').order('name');
+      // Buscar disciplinas e as salas onde decorrem
+      const { data: subjs } = await supabase
+        .from('subjects')
+        .select('*, salas(nome)') // Puxamos a sala configurada no admin
+        .order('name');
       if (subjs) setSubjects(subjs);
 
       const hojeStr = new Date().toISOString().split('T')[0];
@@ -83,17 +87,21 @@ export default function StudentHome() {
     fetchData();
   }, [supabase]);
 
-  const handleCheckIn = async (subjectId: string, subjectName: string) => {
+  const handleCheckIn = async (subjectId: string, subjectName: string, salaId: string | null) => {
     if (isLimitReached) return alert('Plano esgotado.');
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    
+    // Injeta a sala_id diretamente no diário de bordo para tracking em tempo real
     const { error } = await supabase.from('diario_bordo').insert({
       aluno_id: user.id,
       student_id: user.id,
       subject_id: subjectId,
       subject_name: subjectName,
+      sala_id: salaId, // O Roteamento acontece aqui
       entrada: new Date().toISOString()
     });
+    
     if (error) alert(`Erro ao entrar: ${error.message}`);
     else window.location.reload(); 
   };
@@ -118,21 +126,32 @@ export default function StudentHome() {
           </div>
           <div>
             <h1 className="text-3xl font-black mb-2 italic">Bom Estudo, {studentName}!</h1>
-            <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl mt-4 inline-block w-full shadow-2xl">
+            
+            <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl mt-4 inline-block w-full shadow-2xl relative overflow-hidden">
               <span className="text-2xl font-black text-blue-400">{currentSession.subject_name || 'Sessão Livre'}</span>
-              <p className="text-[10px] text-slate-500 mt-2 uppercase tracking-widest font-bold">Aguardando Validação da Receção</p>
+              
+              {/* INDICAÇÃO DA SALA COM BASE NO ROTEAMENTO */}
+              {currentSession.salas?.nome ? (
+                <div className="mt-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 flex items-center justify-center gap-3">
+                  <MapPin size={24} className="text-emerald-500 animate-bounce" />
+                  <div className="text-left">
+                    <p className="text-[10px] text-emerald-500 uppercase font-black tracking-widest">A tua sala hoje:</p>
+                    <p className="text-lg font-black text-white">{currentSession.salas.nome}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[10px] text-slate-500 mt-2 uppercase tracking-widest font-bold">Aguardando Validação da Receção</p>
+              )}
             </div>
           </div>
 
           <div className="pt-4 space-y-4 w-full">
-            {/* GRID DE FERRAMENTAS DURANTE A SESSÃO */}
             <div className="grid grid-cols-3 gap-3 mb-6">
                <Link href="/biblioteca" className="bg-slate-900 border border-slate-800 p-4 rounded-2xl hover:border-orange-500/50 hover:bg-slate-800 transition-all flex flex-col items-center justify-center gap-2 group shadow-lg">
                  <Library size={24} className="text-orange-500 group-hover:scale-110 transition-transform" />
                  <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 group-hover:text-white">Biblioteca</span>
                </Link>
                
-               {/* BOTÃO DO LAB AI ADICIONADO AQUI */}
                <Link href="/aluno/lab" className="bg-slate-900 border border-orange-500/50 p-4 rounded-2xl hover:bg-orange-900/20 transition-all flex flex-col items-center justify-center gap-2 group shadow-lg shadow-orange-900/10">
                  <BrainCircuit size={24} className="text-orange-400 animate-pulse group-hover:scale-110 transition-transform" />
                  <span className="text-[8px] font-black uppercase tracking-widest text-orange-400 group-hover:text-white">Lab AI</span>
@@ -193,7 +212,6 @@ export default function StudentHome() {
           </div>
         ) : (
           <>
-            {/* GRID DE ACESSOS RÁPIDOS */}
             <div className="grid grid-cols-2 gap-3 mb-8">
                 <Link href="/agenda" className="bg-linear-to-br from-purple-900/50 to-blue-900/50 border border-purple-500/30 p-5 rounded-3xl group transition-all h-32 flex flex-col justify-between">
                     <div className="bg-purple-500/20 p-2 rounded-lg text-purple-400 w-fit group-hover:scale-110 transition-transform"><Calendar size={20} /></div>
@@ -205,7 +223,6 @@ export default function StudentHome() {
                     <p className="font-black text-white text-lg">Biblioteca</p>
                 </Link>
 
-                {/* BOTÃO PREMIUM DO LAB AI ADICIONADO AQUI - FULL WIDTH */}
                 <Link href="/aluno/lab" className="col-span-2 bg-linear-to-r from-orange-600 to-orange-400 p-5 rounded-3xl group transition-all flex items-center justify-between shadow-xl shadow-orange-900/20 hover:scale-[1.02]">
                     <div className="flex items-center gap-4">
                       <div className="bg-white/20 p-3 rounded-2xl text-white group-hover:animate-bounce">
@@ -228,9 +245,23 @@ export default function StudentHome() {
             </div>
             <div className="grid grid-cols-2 gap-3 pb-10">
               {subjects.map((subject) => (
-                <button key={subject.id} onClick={() => handleCheckIn(subject.id, subject.name)} className="bg-slate-900 hover:bg-slate-800 border border-slate-800 p-5 rounded-3xl text-left transition-all active:scale-95 group">
-                  <div className="bg-blue-500/10 text-blue-500 w-10 h-10 rounded-xl flex items-center justify-center mb-3 group-hover:bg-blue-500 group-hover:text-white transition-colors"><BookOpen size={20} /></div>
+                <button 
+                  key={subject.id} 
+                  // Passamos o sala_id para a função de checkin
+                  onClick={() => handleCheckIn(subject.id, subject.name, subject.sala_id)} 
+                  className="bg-slate-900 hover:bg-slate-800 border border-slate-800 p-5 rounded-3xl text-left transition-all active:scale-95 group relative overflow-hidden"
+                >
+                  <div className="bg-blue-500/10 text-blue-500 w-10 h-10 rounded-xl flex items-center justify-center mb-3 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                    <BookOpen size={20} />
+                  </div>
                   <span className="font-black text-md block text-slate-200">{subject.name}</span>
+                  
+                  {/* Etiqueta subtil indicando que a disciplina tem sala */}
+                  {subject.salas?.nome && (
+                    <span className="absolute top-4 right-4 text-[8px] bg-slate-800 text-slate-400 px-2 py-1 rounded font-black uppercase tracking-widest">
+                      {subject.salas.nome}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
