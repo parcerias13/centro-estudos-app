@@ -8,6 +8,7 @@ import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCi
 export default function DashboardAdmin() {
   const [presencas, setPresencas] = useState<any[]>([]);
   const [proximosTestes, setProximosTestes] = useState<any[]>([]);
+  const [salas, setSalas] = useState<any[]>([]); // NOVO ESTADO: Salas
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -29,6 +30,7 @@ export default function DashboardAdmin() {
   }, []);
 
   const fetchDados = async () => {
+    // 1. Puxar Presenças (agora também com a sala associada)
     const { data: presentes, error: errP } = await supabase
       .from('diario_bordo')
       .select(`
@@ -47,24 +49,29 @@ export default function DashboardAdmin() {
        setErrorMsg("Erro de Sincronização: " + errP.message);
     }
 
+    // 2. Puxar Exames
     const hojeStr = new Date().toISOString().split('T')[0];
     const { data: exames } = await supabase
       .from('exams')
       .select('*, alunos(nome)')
       .gte('date', hojeStr)
       .order('date', { ascending: true });
+
+    // 3. Puxar Salas para o Heatmap de Lotação
+    const { data: salasData } = await supabase.from('salas').select('*').order('nome');
     
     setPresencas(presentes || []);
     setProximosTestes(exames || []);
+    setSalas(salasData || []);
     setLoading(false);
   };
 
-  // 1. VALIDAÇÃO PURA (Apenas regista no sistema sem abrir nada)
+  // 1. VALIDAÇÃO PURA
   const handleValidarEntrada = async (presencaId: string) => {
     await supabase.from('diario_bordo').update({ status: 'validado' }).eq('id', presencaId);
   };
 
-  // 2. COMUNICAÇÃO WHATSAPP (Ação isolada)
+  // 2. COMUNICAÇÃO WHATSAPP
   const handleWhatsApp = (telefone: string, nome: string, tipo: 'entrada' | 'saida') => {
     if (!telefone) return alert("Este aluno não tem telefone de encarregado registado.");
     const msg = tipo === 'entrada' 
@@ -73,10 +80,18 @@ export default function DashboardAdmin() {
     window.open(`https://wa.me/351${telefone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
-  // 3. SAÍDA FÍSICA DO CENTRO
+  // 3. SAÍDA FÍSICA
   const handleDarSaida = async (presencaId: string) => {
     await supabase.from('diario_bordo').update({ saida: new Date().toISOString() }).eq('id', presencaId);
   };
+
+  // CÁLCULO DE LOTAÇÃO DAS SALAS
+  const salasStatus = salas.map(sala => {
+    const count = presencas.filter(p => p.sala_id === sala.id).length;
+    const percentage = sala.capacidade > 0 ? (count / sala.capacidade) * 100 : 0;
+    return { ...sala, count, percentage };
+  });
+  const semSalaCount = presencas.filter(p => !p.sala_id).length;
 
   if (loading) return <div className="min-h-screen bg-[#0f172a] flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
 
@@ -126,8 +141,8 @@ export default function DashboardAdmin() {
               const diaAtual = new Date().getDay(); 
               const diaContratado = aluno?.aluno_horarios?.some((h: any) => h.dia_semana === diaAtual);
               const nomePacote = aluno?.pacotes?.nome || 'Sem Pacote';
-              
               const estaValidado = p.status === 'validado';
+              const nomeSala = salas.find(s => s.id === p.sala_id)?.nome || 'Sem Sala';
 
               return (
                 <div key={p.id} className={`bg-slate-900 border ${!diaContratado ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : (estaValidado ? 'border-emerald-500/50' : 'border-slate-800')} p-5 rounded-3xl flex flex-col md:flex-row items-center justify-between transition-all group gap-4`}>
@@ -147,7 +162,7 @@ export default function DashboardAdmin() {
                         )}
                       </div>
                       <p className="text-xs text-slate-500 font-medium">
-                        {nomePacote} • {p.subject_name || 'Sessão de Estudo'}
+                        {nomePacote} • {p.subject_name || 'Sessão Livre'} • <span className="font-bold text-white/70">{nomeSala}</span>
                       </p>
                       
                       <div className="flex flex-wrap gap-2 mt-2">
@@ -173,8 +188,6 @@ export default function DashboardAdmin() {
                     </div>
                     
                     <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-                        
-                        {/* 1. BOTÃO DE VALIDAÇÃO PURA */}
                         <button 
                           onClick={() => handleValidarEntrada(p.id)} 
                           className={`${estaValidado ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white'} p-2.5 rounded-xl transition-all min-w-14`}
@@ -185,7 +198,6 @@ export default function DashboardAdmin() {
 
                         <div className="w-px h-8 bg-slate-800 mx-1"></div>
 
-                        {/* 2. BOTÕES DE WHATSAPP OPCIONAIS */}
                         <button 
                           onClick={() => handleWhatsApp(aluno?.telefone_encarregado, aluno?.nome, 'entrada')} 
                           className="bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
@@ -204,10 +216,9 @@ export default function DashboardAdmin() {
 
                         <div className="w-px h-8 bg-slate-800 mx-1"></div>
 
-                        {/* 3. BOTÃO DE SAÍDA */}
                         <button 
                           onClick={() => { if(confirm("Confirmar saída física do centro?")) handleDarSaida(p.id) }} 
-                          className="bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white p-2.5 rounded-xl transition-all min-w-14" 
+                          className="bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
                         >
                            <LogOut size={16} className="mx-auto" />
                            <span className="text-[8px] font-black uppercase block mt-1">Porta</span>
@@ -220,13 +231,59 @@ export default function DashboardAdmin() {
           )}
         </div>
 
+        {/* COLUNA DIREITA (MÉTRICAS & HEATMAP) */}
         <div className="space-y-6">
           <div className="bg-blue-600 p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
             <Users size={80} className="absolute top-0 right-0 p-4 opacity-10" />
-            <p className="text-blue-100 font-bold uppercase text-[10px] tracking-widest relative z-10">Total na Sala</p>
+            <p className="text-blue-100 font-bold uppercase text-[10px] tracking-widest relative z-10">Total no Centro</p>
             <h4 className="text-7xl font-black mt-2 relative z-10">{presencas.length}</h4>
           </div>
           
+          {/* NOVO: HEATMAP DE SALAS */}
+          <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem]">
+            <h4 className="font-black text-sm uppercase text-slate-500 mb-6 flex items-center gap-2">
+              <MapPin size={16} className="text-blue-500" /> Lotação das Salas
+            </h4>
+            <div className="space-y-5">
+              {salasStatus.length === 0 ? (
+                <p className="text-slate-600 text-xs italic">Nenhuma sala registada.</p>
+              ) : (
+                salasStatus.map(sala => {
+                  const isFull = sala.count >= sala.capacidade;
+                  const isCritical = sala.count > sala.capacidade;
+                  const percentVal = Math.min(sala.percentage, 100);
+                  
+                  return (
+                    <div key={sala.id} className="space-y-2">
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-white">{sala.nome}</span>
+                        <span className={isCritical ? 'text-red-500 animate-pulse' : isFull ? 'text-amber-500' : 'text-slate-400'}>
+                          {sala.count} / {sala.capacidade}
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-1000 ${isCritical ? 'bg-red-500' : isFull ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                          style={{ width: `${percentVal}%` }}
+                        ></div>
+                      </div>
+                      {isCritical && <p className="text-[9px] text-red-500 uppercase font-black tracking-widest mt-1">Aviso: Sobrelotação Logística</p>}
+                    </div>
+                  );
+                })
+              )}
+              
+              {semSalaCount > 0 && (
+                <div className="pt-3 border-t border-slate-800/50 mt-4">
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-500">
+                    <span>Sem Sala Atribuída</span>
+                    <span className="text-yellow-500">{semSalaCount} Aluno(s)</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem]">
             <h4 className="font-black text-sm uppercase text-slate-500 mb-6 flex items-center gap-2">
               <AlertTriangle size={16} className="text-amber-500" /> Agenda de Risco
