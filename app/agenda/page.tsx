@@ -32,11 +32,14 @@ export default function StudentAgenda() {
     const { data: subData } = await supabase.from('subjects').select('*').order('name');
     if (subData) setSubjects(subData);
 
-    // 2. Buscar Testes Agendados
+    // 2. Buscar Testes Agendados (Apenas de Hoje para a Frente)
+    const today = new Date().toISOString().split('T')[0];
+
     const { data: examData } = await supabase
       .from('exams')
       .select('*')
       .eq('student_id', user.id)
+      .gte('date', today) // O Filtro Bulletproof: "Maior ou igual a hoje"
       .order('date', { ascending: true });
     
     if (examData) setExams(examData);
@@ -109,7 +112,7 @@ export default function StudentAgenda() {
                   value={date} 
                   onChange={(e) => setDate(e.target.value)} 
                   className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-purple-500 text-white block"
-                  style={{ colorScheme: 'dark' }} // Garante que o ícone do browser seja visível em tema escuro
+                  style={{ colorScheme: 'dark' }} 
                 />
             </div>
           </div>
