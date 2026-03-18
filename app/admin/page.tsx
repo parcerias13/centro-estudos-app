@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import { Users, AlertTriangle, ShieldAlert, Clock, GraduationCap, Loader2, RefreshCw, MessageCircle, LogOut, CalendarDays } from 'lucide-react';
+import Link from 'next/link';
+import { Users, AlertTriangle, ShieldAlert, Clock, GraduationCap, Loader2, RefreshCw, MessageCircle, LogOut, CalendarDays, MapPin } from 'lucide-react';
 
 export default function DashboardAdmin() {
   const [presencas, setPresencas] = useState<any[]>([]);
@@ -59,24 +60,23 @@ export default function DashboardAdmin() {
     setLoading(false);
   };
 
-  // Handlers omitidos para brevidade (mantém os que já tinhas: handleAvisarEntrada, handleAvisarSaida, handleDarSaida)
   const handleAvisarEntrada = (telefone: string, nome: string) => {
     if (!telefone) return alert("Este aluno não tem telefone de encarregado registado.");
     const msg = encodeURIComponent(`Olá! Informamos que o(a) aluno(a) ${nome} deu entrada no Centro AI. Foco total! 📚`);
     window.open(`https://wa.me/351${telefone}?text=${msg}`, '_blank');
- };
+  };
 
- const handleAvisarSaida = async (presencaId: string, telefone: string, nome: string) => {
+  const handleAvisarSaida = async (presencaId: string, telefone: string, nome: string) => {
     await supabase.from('diario_bordo').update({ status: 'validado' }).eq('id', presencaId);
     if (telefone) {
         const msg = encodeURIComponent(`Olá! Informamos que o(a) aluno(a) ${nome} concluiu a sua sessão e aguarda boleia. 🚗`);
         window.open(`https://wa.me/351${telefone}?text=${msg}`, '_blank');
     }
- };
+  };
 
- const handleDarSaida = async (presencaId: string) => {
+  const handleDarSaida = async (presencaId: string) => {
     await supabase.from('diario_bordo').update({ saida: new Date().toISOString() }).eq('id', presencaId);
- };
+  };
 
   if (loading) return <div className="min-h-screen bg-[#0f172a] flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
 
@@ -89,14 +89,22 @@ export default function DashboardAdmin() {
         </div>
       )}
 
-      <header className="mb-10 flex justify-between items-center">
+      <header className="mb-10 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter">Torre de Controlo</h1>
           <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Monitorização de Pacotes e Horários</p>
         </div>
-        <button onClick={fetchDados} className="p-3 bg-slate-900 rounded-xl border border-slate-800 hover:text-blue-400 transition-all">
-          <RefreshCw size={20} />
-        </button>
+        
+        <div className="flex items-center gap-3">
+          {/* BOTÃO DE NAVEGAÇÃO PARA GESTÃO DE SALAS */}
+          <Link href="/admin/salas" className="flex items-center gap-2 px-4 py-3 bg-blue-600/10 text-blue-500 border border-blue-500/20 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-900/10">
+            <MapPin size={16} /> Gestão de Salas
+          </Link>
+          
+          <button onClick={fetchDados} className="p-3 bg-slate-900 rounded-xl border border-slate-800 hover:text-blue-400 transition-all shadow-md">
+            <RefreshCw size={20} />
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -116,8 +124,7 @@ export default function DashboardAdmin() {
             presencas.map((p) => {
               const aluno = Array.isArray(p.alunos) ? p.alunos[0] : p.alunos;
               
-              // LÓGICA DE VALIDAÇÃO DE HORÁRIO
-              const diaAtual = new Date().getDay(); // 0 (Dom) a 6 (Sáb)
+              const diaAtual = new Date().getDay(); 
               const diaContratado = aluno?.aluno_horarios?.some((h: any) => h.dia_semana === diaAtual);
               const nomePacote = aluno?.pacotes?.nome || 'Sem Pacote';
               
@@ -145,7 +152,6 @@ export default function DashboardAdmin() {
                       </p>
                       
                       <div className="flex flex-wrap gap-2 mt-2">
-                        {/* Tag de Horário */}
                         <span className={`px-2 py-1 rounded text-[10px] font-black flex items-center gap-1 border ${diaContratado ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
                           <CalendarDays size={12} /> {diaContratado ? 'Dentro do Horário' : 'Fora de Horário'}
                         </span>
@@ -192,7 +198,6 @@ export default function DashboardAdmin() {
           )}
         </div>
 
-        {/* LADO DIREITO: MÉTRICAS */}
         <div className="space-y-6">
           <div className="bg-blue-600 p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
             <Users size={80} className="absolute top-0 right-0 p-4 opacity-10" />
