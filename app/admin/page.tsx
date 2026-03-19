@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
-import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, CalendarDays, MapPin, CheckCircle2 } from 'lucide-react';
+import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, CalendarDays, MapPin, CheckCircle2, XCircle } from 'lucide-react';
 
 export default function DashboardAdmin() {
   const [presencas, setPresencas] = useState<any[]>([]);
   const [proximosTestes, setProximosTestes] = useState<any[]>([]);
-  const [salas, setSalas] = useState<any[]>([]); // NOVO ESTADO: Salas
+  const [salas, setSalas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -30,7 +30,6 @@ export default function DashboardAdmin() {
   }, []);
 
   const fetchDados = async () => {
-    // 1. Puxar Presenças (agora também com a sala associada)
     const { data: presentes, error: errP } = await supabase
       .from('diario_bordo')
       .select(`
@@ -49,7 +48,6 @@ export default function DashboardAdmin() {
        setErrorMsg("Erro de Sincronização: " + errP.message);
     }
 
-    // 2. Puxar Exames
     const hojeStr = new Date().toISOString().split('T')[0];
     const { data: exames } = await supabase
       .from('exams')
@@ -57,7 +55,6 @@ export default function DashboardAdmin() {
       .gte('date', hojeStr)
       .order('date', { ascending: true });
 
-    // 3. Puxar Salas para o Heatmap de Lotação
     const { data: salasData } = await supabase.from('salas').select('*').order('nome');
     
     setPresencas(presentes || []);
@@ -66,12 +63,20 @@ export default function DashboardAdmin() {
     setLoading(false);
   };
 
-  // 1. VALIDAÇÃO PURA
+  // 1. VALIDAÇÃO PURA (Com atualização instantânea)
   const handleValidarEntrada = async (presencaId: string) => {
     await supabase.from('diario_bordo').update({ status: 'validado' }).eq('id', presencaId);
+    fetchDados(); // Força o refresh imediato da UI
   };
 
-  // 2. COMUNICAÇÃO WHATSAPP
+  // 2. REJEITAR ENTRADA FANTASMA (Apaga da base de dados)
+  const handleRejeitarEntrada = async (presencaId: string) => {
+    if (!confirm("O aluno não está no centro? Este registo será eliminado do histórico.")) return;
+    await supabase.from('diario_bordo').delete().eq('id', presencaId);
+    fetchDados(); // Força o refresh imediato da UI
+  };
+
+  // 3. COMUNICAÇÃO WHATSAPP
   const handleWhatsApp = (telefone: string, nome: string, tipo: 'entrada' | 'saida') => {
     if (!telefone) return alert("Este aluno não tem telefone de encarregado registado.");
     const msg = tipo === 'entrada' 
@@ -80,12 +85,12 @@ export default function DashboardAdmin() {
     window.open(`https://wa.me/351${telefone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
-  // 3. SAÍDA FÍSICA
+  // 4. SAÍDA FÍSICA
   const handleDarSaida = async (presencaId: string) => {
     await supabase.from('diario_bordo').update({ saida: new Date().toISOString() }).eq('id', presencaId);
+    fetchDados(); // Força o refresh imediato da UI
   };
 
-  // CÁLCULO DE LOTAÇÃO DAS SALAS
   const salasStatus = salas.map(sala => {
     const count = presencas.filter(p => p.sala_id === sala.id).length;
     const percentage = sala.capacidade > 0 ? (count / sala.capacidade) * 100 : 0;
@@ -106,8 +111,7 @@ export default function DashboardAdmin() {
 
       <header className="mb-10 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter">Torre de Controlo</h1>
-          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Monitorização de Pacotes e Horários</p>
+          <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter">Dashboard</h1>
         </div>
         
         <div className="flex items-center gap-3">
@@ -188,16 +192,32 @@ export default function DashboardAdmin() {
                     </div>
                     
                     <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-                        <button 
-                          onClick={() => handleValidarEntrada(p.id)} 
-                          className={`${estaValidado ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white'} p-2.5 rounded-xl transition-all min-w-14`}
-                        >
-                           <CheckCircle2 size={16} className="mx-auto" />
-                           <span className="text-[8px] font-black uppercase block mt-1">{estaValidado ? 'Aceite' : 'Aceitar'}</span>
-                        </button>
+                        
+                        {/* 1. BOTÕES DE VALIDAÇÃO (ACEITAR E REJEITAR) */}
+                        <div className="flex items-center gap-1">
+                          <button 
+                            onClick={() => handleValidarEntrada(p.id)} 
+                            className={`${estaValidado ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white'} p-2.5 rounded-xl transition-all min-w-14`}
+                          >
+                             <CheckCircle2 size={16} className="mx-auto" />
+                             <span className="text-[8px] font-black uppercase block mt-1">{estaValidado ? 'Aceite' : 'Aceitar'}</span>
+                          </button>
+
+                          {!estaValidado && (
+                            <button 
+                              onClick={() => handleRejeitarEntrada(p.id)} 
+                              className="bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
+                              title="Anular entrada fantasma"
+                            >
+                               <XCircle size={16} className="mx-auto" />
+                               <span className="text-[8px] font-black uppercase block mt-1">Anular</span>
+                            </button>
+                          )}
+                        </div>
 
                         <div className="w-px h-8 bg-slate-800 mx-1"></div>
 
+                        {/* 2. BOTÕES DE WHATSAPP OPCIONAIS */}
                         <button 
                           onClick={() => handleWhatsApp(aluno?.telefone_encarregado, aluno?.nome, 'entrada')} 
                           className="bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
@@ -216,9 +236,10 @@ export default function DashboardAdmin() {
 
                         <div className="w-px h-8 bg-slate-800 mx-1"></div>
 
+                        {/* 3. BOTÃO DE SAÍDA */}
                         <button 
                           onClick={() => { if(confirm("Confirmar saída física do centro?")) handleDarSaida(p.id) }} 
-                          className="bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
+                          className="bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
                         >
                            <LogOut size={16} className="mx-auto" />
                            <span className="text-[8px] font-black uppercase block mt-1">Porta</span>
@@ -231,7 +252,7 @@ export default function DashboardAdmin() {
           )}
         </div>
 
-        {/* COLUNA DIREITA (MÉTRICAS & HEATMAP) */}
+        {/* COLUNA DIREITA */}
         <div className="space-y-6">
           <div className="bg-blue-600 p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
             <Users size={80} className="absolute top-0 right-0 p-4 opacity-10" />
@@ -239,7 +260,6 @@ export default function DashboardAdmin() {
             <h4 className="text-7xl font-black mt-2 relative z-10">{presencas.length}</h4>
           </div>
           
-          {/* NOVO: HEATMAP DE SALAS */}
           <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem]">
             <h4 className="font-black text-sm uppercase text-slate-500 mb-6 flex items-center gap-2">
               <MapPin size={16} className="text-blue-500" /> Lotação das Salas
