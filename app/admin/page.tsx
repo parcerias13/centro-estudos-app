@@ -63,20 +63,17 @@ export default function DashboardAdmin() {
     setLoading(false);
   };
 
-  // 1. VALIDAÇÃO PURA (Com atualização instantânea)
   const handleValidarEntrada = async (presencaId: string) => {
     await supabase.from('diario_bordo').update({ status: 'validado' }).eq('id', presencaId);
-    fetchDados(); // Força o refresh imediato da UI
+    fetchDados(); 
   };
 
-  // 2. REJEITAR ENTRADA FANTASMA (Apaga da base de dados)
   const handleRejeitarEntrada = async (presencaId: string) => {
     if (!confirm("O aluno não está no centro? Este registo será eliminado do histórico.")) return;
     await supabase.from('diario_bordo').delete().eq('id', presencaId);
-    fetchDados(); // Força o refresh imediato da UI
+    fetchDados(); 
   };
 
-  // 3. COMUNICAÇÃO WHATSAPP
   const handleWhatsApp = (telefone: string, nome: string, tipo: 'entrada' | 'saida') => {
     if (!telefone) return alert("Este aluno não tem telefone de encarregado registado.");
     const msg = tipo === 'entrada' 
@@ -85,10 +82,9 @@ export default function DashboardAdmin() {
     window.open(`https://wa.me/351${telefone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
-  // 4. SAÍDA FÍSICA
   const handleDarSaida = async (presencaId: string) => {
     await supabase.from('diario_bordo').update({ saida: new Date().toISOString() }).eq('id', presencaId);
-    fetchDados(); // Força o refresh imediato da UI
+    fetchDados(); 
   };
 
   const salasStatus = salas.map(sala => {
@@ -148,12 +144,23 @@ export default function DashboardAdmin() {
               const estaValidado = p.status === 'validado';
               const nomeSala = salas.find(s => s.id === p.sala_id)?.nome || 'Sem Sala';
 
+              // Lógica de Cores Antiga (Fallback)
+              const corBaseFallback = !diaContratado ? 'bg-red-600' : (estaValidado ? 'bg-emerald-600' : 'bg-blue-600');
+
               return (
                 <div key={p.id} className={`bg-slate-900 border ${!diaContratado ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : (estaValidado ? 'border-emerald-500/50' : 'border-slate-800')} p-5 rounded-3xl flex flex-col md:flex-row items-center justify-between transition-all group gap-4`}>
                   <div className="flex items-center gap-4 w-full md:w-auto">
-                    <div className={`w-14 h-14 shrink-0 ${!diaContratado ? 'bg-red-600' : (estaValidado ? 'bg-emerald-600' : 'bg-blue-600')} rounded-2xl flex items-center justify-center text-xl font-black shadow-lg`}>
-                      {aluno?.nome?.charAt(0) || '?'}
+                    
+                    {/* AQUI ACONTECE A MAGIA DO AVATAR */}
+                    <div className={`w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-xl font-black shadow-lg overflow-hidden border border-slate-700/50 ${!aluno?.avatar_url ? corBaseFallback : 'bg-slate-800'}`}>
+                      {aluno?.avatar_url ? (
+                        <img src={aluno.avatar_url} alt={aluno?.nome} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-white">{aluno?.nome?.charAt(0) || '?'}</span>
+                      )}
                     </div>
+                    {/* FIM DA MAGIA DO AVATAR */}
+
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="text-lg font-black group-hover:text-blue-400 transition-colors">
@@ -192,8 +199,6 @@ export default function DashboardAdmin() {
                     </div>
                     
                     <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-                        
-                        {/* 1. BOTÕES DE VALIDAÇÃO (ACEITAR E REJEITAR) */}
                         <div className="flex items-center gap-1">
                           <button 
                             onClick={() => handleValidarEntrada(p.id)} 
@@ -217,7 +222,6 @@ export default function DashboardAdmin() {
 
                         <div className="w-px h-8 bg-slate-800 mx-1"></div>
 
-                        {/* 2. BOTÕES DE WHATSAPP OPCIONAIS */}
                         <button 
                           onClick={() => handleWhatsApp(aluno?.telefone_encarregado, aluno?.nome, 'entrada')} 
                           className="bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
@@ -236,15 +240,14 @@ export default function DashboardAdmin() {
 
                         <div className="w-px h-8 bg-slate-800 mx-1"></div>
 
-                        {/* 3. BOTÃO DE SAÍDA */}
                         <button 
-                          onClick={() => { if(confirm("Confirmar saída física do centro?")) handleDarSaida(p.id) }} 
+                          onClick={() => { if(confirm("Confirmar saída física do centro?")) handleDarSaida(p.id) }}  
                           className="bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
                         >
                            <LogOut size={16} className="mx-auto" />
                            <span className="text-[8px] font-black uppercase block mt-1">Porta</span>
                         </button>
-                    </div> 
+                    </div>
                   </div>
                 </div>
               );
@@ -252,7 +255,6 @@ export default function DashboardAdmin() {
           )}
         </div>
 
-        {/* COLUNA DIREITA */}
         <div className="space-y-6">
           <div className="bg-blue-600 p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
             <Users size={80} className="absolute top-0 right-0 p-4 opacity-10" />
