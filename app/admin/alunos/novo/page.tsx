@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera } from 'lucide-react';
 
 export default function NovoAluno() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [erro, setErro] = useState('');
   const [pacotes, setPacotes] = useState<any[]>([]);
 
@@ -18,7 +19,8 @@ export default function NovoAluno() {
   const [password, setPassword] = useState('123456');
   const [telefone, setTelefone] = useState('');
   const [anoEscolar, setAnoEscolar] = useState('1'); // Começa no 1º por padrão
-  const [saidaAutorizada, setSaidaAutorizada] = useState(false); // NOVO ESTADO AQUI
+  const [saidaAutorizada, setSaidaAutorizada] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null); // NOVO: Estado da Foto
 
   // 2. LÓGICA DE NEGÓCIO
   const [pacoteId, setPacoteId] = useState('');
@@ -41,6 +43,34 @@ export default function NovoAluno() {
     };
     fetchPacotes();
   }, []);
+
+  // LÓGICA DE UPLOAD DE FOTO
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      setUploading(true);
+      setErro('');
+      if (!e.target.files || e.target.files.length === 0) return;
+
+      const file = e.target.files[0];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatares')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('avatares').getPublicUrl(filePath);
+      setAvatarUrl(data.publicUrl);
+
+    } catch (error: any) {
+      setErro('Erro no upload da foto: ' + error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const toggleDia = (id: number) => {
     if (!pacoteId) {
@@ -100,7 +130,8 @@ export default function NovoAluno() {
         telefone_encarregado: telefone,
         ano_escolar: parseInt(anoEscolar),
         pacote_id: pacoteId,
-        saida_autorizada: saidaAutorizada, // VINCULAÇÃO DO ESTADO AQUI
+        saida_autorizada: saidaAutorizada,
+        avatar_url: avatarUrl, // GRAVA A FOTO NO PERFIL
       });
       if (dbError) throw new Error(`Erro DB: ${dbError.message}`);
 
@@ -147,6 +178,26 @@ export default function NovoAluno() {
 
         <div className="space-y-6">
           <h2 className="text-xs font-black uppercase text-blue-500 tracking-widest">1. Identificação do Aluno</h2>
+          
+          {/* UPLOAD DE FOTO ADICIONADO AQUI */}
+          <div className="flex flex-col items-center gap-4 py-4 mb-4">
+            <div className="relative group">
+              <div className={`w-32 h-32 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl flex items-center justify-center transition-all ${!avatarUrl ? 'bg-slate-950' : ''}`}>
+                {avatarUrl ? (
+                  <img src={avatarUrl} className="w-full h-full object-cover" alt="Preview" />
+                ) : (
+                  <Camera size={40} className="text-slate-800" />
+                )}
+                {uploading && <div className="absolute inset-0 bg-slate-950/80 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>}
+              </div>
+              <label className="absolute -bottom-2 -right-2 bg-blue-600 p-3 rounded-2xl cursor-pointer hover:bg-blue-500 transition-all shadow-xl">
+                <Camera size={20} />
+                <input type="file" accept="image/*" onChange={handleUpload} className="hidden" disabled={uploading} />
+              </label>
+            </div>
+            <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Foto de Perfil</p>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Nome Completo *</label>
@@ -213,7 +264,6 @@ export default function NovoAluno() {
             ))}
           </div>
 
-          {/* O NOVO CAMPO DA SAÍDA AUTORIZADA */}
           <button 
             type="button"
             onClick={() => setSaidaAutorizada(!saidaAutorizada)}
@@ -230,7 +280,7 @@ export default function NovoAluno() {
         </div>
 
         <button 
-          type="submit" disabled={loading}
+          type="submit" disabled={loading || uploading}
           className="w-full bg-blue-600 hover:bg-blue-500 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 mt-8"
         >
           {loading ? <Loader2 className="animate-spin" /> : <Save size={20} />}
