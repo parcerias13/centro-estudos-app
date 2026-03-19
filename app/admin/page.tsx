@@ -244,7 +244,7 @@ export default function DashboardAdmin() {
                            <LogOut size={16} className="mx-auto" />
                            <span className="text-[8px] font-black uppercase block mt-1">Porta</span>
                         </button>
-                    </div>
+                    </div> 
                   </div>
                 </div>
               );
