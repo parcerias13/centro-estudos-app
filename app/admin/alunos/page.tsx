@@ -28,14 +28,13 @@ export default function ListaAlunos() {
     setLoading(false);
   };
 
-  // REINTEGRADO: Função de apagar do teu código anterior
   const handleDelete = async (id: string) => {
     if (confirm('Tem a certeza que quer apagar este aluno? Todo o histórico será perdido.')) {
       const { error } = await supabase.from('alunos').delete().eq('id', id);
       if (error) {
         alert('Erro ao apagar: ' + error.message);
       } else {
-        fetchAlunos(); // Atualiza a lista após apagar
+        fetchAlunos(); 
       }
     }
   };
@@ -49,7 +48,6 @@ export default function ListaAlunos() {
   return (
     <div className="min-h-screen bg-[#0f172a] p-6 text-white">
       
-      {/* CABEÇALHO COM BOTÃO VOLTAR REINTEGRADO */}
       <header className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-4">
           <Link href="/admin" className="bg-slate-900 p-3 rounded-xl hover:bg-slate-800 transition-colors border border-slate-800">
@@ -68,7 +66,6 @@ export default function ListaAlunos() {
         </Link>
       </header>
 
-      {/* BARRA DE PESQUISA REFINADA */}
       <div className="relative mb-8">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
         <input 
@@ -80,7 +77,6 @@ export default function ListaAlunos() {
         />
       </div>
 
-      {/* GRELHA DE ALUNOS (Substitui a tabela para maior impacto visual) */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {alunosFiltrados.length === 0 ? (
           <div className="col-span-full text-center py-20 bg-slate-900/20 border-2 border-dashed border-slate-800 rounded-3xl">
@@ -90,9 +86,17 @@ export default function ListaAlunos() {
           alunosFiltrados.map((aluno) => (
             <div key={aluno.id} className="bg-slate-900/40 border border-slate-800/60 p-5 rounded-3xl flex items-center justify-between group hover:border-slate-700 transition-all shadow-sm">
               <div className="flex items-center gap-5">
-                <div className="w-14 h-14 bg-slate-800 rounded-2xl flex items-center justify-center text-xl font-black text-slate-500 group-hover:bg-blue-600 group-hover:text-white transition-all">
-                  {aluno.nome?.charAt(0)}
+                
+                {/* MAGIA DO AVATAR AQUI */}
+                <div className="w-14 h-14 shrink-0 bg-slate-800 rounded-2xl flex items-center justify-center text-xl font-black text-slate-500 group-hover:bg-blue-600 group-hover:text-white transition-all overflow-hidden border border-slate-700/50 shadow-inner">
+                  {aluno.avatar_url ? (
+                    <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{aluno.nome?.charAt(0)}</span>
+                  )}
                 </div>
+                {/* FIM DA MAGIA DO AVATAR */}
+
                 <div>
                   <h3 className="text-lg font-bold text-white leading-tight">{aluno.nome}</h3>
                   <div className="flex items-center gap-3 mt-1.5">
@@ -108,7 +112,6 @@ export default function ListaAlunos() {
                 </div>
               </div>
 
-              {/* BOTÕES DE AÇÃO REINTEGRADOS */}
               <div className="flex items-center gap-2">
                 <Link 
                   href={`/admin/relatorio?id=${aluno.id}`} 

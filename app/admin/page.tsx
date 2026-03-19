@@ -241,7 +241,7 @@ export default function DashboardAdmin() {
                         <div className="w-px h-8 bg-slate-800 mx-1"></div>
 
                         <button 
-                          onClick={() => { if(confirm("Confirmar saída física do centro?")) handleDarSaida(p.id) }}  
+                          onClick={() => { if(confirm("Confirmar saída física do centro?")) handleDarSaida(p.id) }} 
                           className="bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
                         >
                            <LogOut size={16} className="mx-auto" />

@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera } from 'lucide-react';
 
 function EditarAlunoContent() {
   const router = useRouter();
@@ -13,6 +13,7 @@ function EditarAlunoContent() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [erro, setErro] = useState('');
 
   const [nome, setNome] = useState('');
@@ -20,8 +21,8 @@ function EditarAlunoContent() {
   const [anoEscolar, setAnoEscolar] = useState('10');
   const [limiteSemanal, setLimiteSemanal] = useState('3');
   const [saidaAutorizada, setSaidaAutorizada] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null); // NOVO: Estado da Foto
   
-  // NOVO: Estado dos horários
   const [diasSelecionados, setDiasSelecionados] = useState<number[]>([]);
 
   const diasSemana = [
@@ -54,6 +55,7 @@ function EditarAlunoContent() {
       setAnoEscolar(aluno.ano_escolar?.toString() || '10');
       setLimiteSemanal(aluno.limite_semanal?.toString() || '3');
       setSaidaAutorizada(aluno.saida_autorizada || false);
+      setAvatarUrl(aluno.avatar_url || null); // CARREGA A FOTO EXISTENTE
     }
 
     // 2. Carregar Horários atuais
@@ -69,16 +71,43 @@ function EditarAlunoContent() {
     setLoading(false);
   };
 
+  // LÓGICA DE UPLOAD DE FOTO
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      setUploading(true);
+      setErro('');
+      if (!e.target.files || e.target.files.length === 0) return;
+
+      const file = e.target.files[0];
+      const fileExt = file.name.split('.').pop();
+      // O nome é a junção do ID do aluno e um random para quebrar o cache do browser se ele mudar de foto
+      const fileName = `${studentId}-${Math.random()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatares')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('avatares').getPublicUrl(filePath);
+      setAvatarUrl(data.publicUrl);
+
+    } catch (error: any) {
+      setErro('Erro no upload da foto: ' + error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const toggleDia = (id: number) => {
     const limite = parseInt(limiteSemanal);
     
     setDiasSelecionados(prev => {
-      // Se já está selecionado, remove
       if (prev.includes(id)) {
         return prev.filter(d => d !== id);
       }
       
-      // Se tentar adicionar além do limite (e não for ilimitado), bloqueia
       if (limite !== 99 && prev.length >= limite) {
         alert(`O limite atual do aluno é de ${limite} dia(s) por semana.`);
         return prev;
@@ -95,7 +124,6 @@ function EditarAlunoContent() {
 
     const limite = parseInt(limiteSemanal);
 
-    // Validação de segurança: Garantir que os dias selecionados não excedem o limite
     if (limite !== 99 && diasSelecionados.length > limite) {
       setErro(`Erro: Tens ${diasSelecionados.length} dias selecionados, mas o limite é ${limite}. Desmarca dias primeiro.`);
       setSaving(false);
@@ -118,6 +146,7 @@ function EditarAlunoContent() {
           ano_escolar: parseInt(anoEscolar),
           limite_semanal: limite,
           saida_autorizada: saidaAutorizada,
+          avatar_url: avatarUrl, // GRAVA A NOVA FOTO NA BASE DE DADOS
         })
         .eq('id', studentId);
 
@@ -143,7 +172,6 @@ function EditarAlunoContent() {
 
       if (errInsert) throw new Error(errInsert.message);
 
-      // Sucesso
       router.push('/admin/alunos');
       router.refresh();
 
@@ -156,7 +184,7 @@ function EditarAlunoContent() {
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" size={32} /></div>;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white p-6 max-w-3xl mx-auto">
+    <main className="min-h-screen bg-slate-950 text-white p-6 max-w-3xl mx-auto pb-20">
       <div className="flex items-center gap-4 mb-8">
         <Link href="/admin/alunos" className="bg-slate-900 p-3 rounded-xl hover:bg-slate-800 transition-colors border border-slate-800">
           <ArrowLeft size={20} className="text-slate-400" />
@@ -177,6 +205,25 @@ function EditarAlunoContent() {
             <p className="text-sm font-bold">{erro}</p>
           </div>
         )}
+
+        {/* SECÇÃO DE EDIÇÃO DE FOTO ADICIONADA AQUI */}
+        <section className="flex flex-col items-center gap-4 py-4 mb-8 border-b border-slate-800/50">
+          <div className="relative group">
+            <div className={`w-32 h-32 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl flex items-center justify-center transition-all ${!avatarUrl ? 'bg-slate-950' : ''}`}>
+              {avatarUrl ? (
+                <img src={avatarUrl} className="w-full h-full object-cover" alt="Preview" />
+              ) : (
+                <Camera size={40} className="text-slate-800" />
+              )}
+              {uploading && <div className="absolute inset-0 bg-slate-950/80 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>}
+            </div>
+            <label className="absolute -bottom-2 -right-2 bg-blue-600 p-3 rounded-2xl cursor-pointer hover:bg-blue-500 transition-all shadow-xl">
+              <Camera size={20} />
+              <input type="file" accept="image/*" onChange={handleUpload} className="hidden" disabled={uploading} />
+            </label>
+          </div>
+          <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Foto de Perfil</p>
+        </section>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className="space-y-2">
@@ -208,7 +255,6 @@ function EditarAlunoContent() {
 
         <hr className="border-slate-800 mb-8" />
 
-        {/* SECÇÃO DOS HORÁRIOS */}
         <div className="space-y-4 mb-8">
           <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
             <Calendar size={14} /> Dias de Estudo Autorizados
@@ -226,7 +272,6 @@ function EditarAlunoContent() {
           </div>
         </div>
 
-        {/* SECÇÃO SAÍDA AUTORIZADA */}
         <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 flex items-center justify-between mb-8">
           <div>
             <h4 className="font-bold text-white">Saída Autorizada</h4>
@@ -237,7 +282,7 @@ function EditarAlunoContent() {
           </button>
         </div>
 
-        <button type="submit" disabled={saving} className="w-full bg-blue-600 hover:bg-blue-500 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50">
+        <button type="submit" disabled={saving || uploading} className="w-full bg-blue-600 hover:bg-blue-500 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50">
           {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
           {saving ? 'A GUARDAR...' : 'ATUALIZAR DADOS'}
         </button>
@@ -250,6 +295,6 @@ export default function EditarAluno() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>}>
       <EditarAlunoContent />
-    </Suspense> 
+    </Suspense>
   );
 }
