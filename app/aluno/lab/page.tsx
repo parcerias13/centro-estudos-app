@@ -1,211 +1,166 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { 
-  UploadCloud, Sparkles, BrainCircuit, Loader2, FileText, 
-  ListChecks, Network, ChevronRight, BookOpen, Fingerprint 
-} from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Send, Zap, Bot, User, Loader2, Sparkles, BrainCircuit } from 'lucide-react';
+
+// O formato que o Gemini exige para o histórico
+type MessagePart = { text: string };
+type ChatMessage = { role: 'user' | 'model'; parts: MessagePart[] };
 
 export default function LabAI() {
-  const [file, setFile] = useState<File | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'resumo' | 'exercicios' | 'mapa'>('resumo');
-  const [resultado, setResultado] = useState<{ resumo: string, exercicios: string, mapa: string } | null>(null);
-  const [studentData, setStudentData] = useState<{ creditos: number, ano_escolar: number } | null>(null);
+  const [sparks, setSparks] = useState(1000); // Saldo inicial simulado
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Integração com a série 3 conforme o teu AI Studio
-  const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
+  // Faz scroll automático para a última mensagem
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   useEffect(() => {
-    fetchStudentContext();
-  }, []);
+    scrollToBottom();
+  }, [messages]);
 
-  async function fetchStudentContext() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      // Ajustado para a tua coluna 'ano_escolar' [cite: 2026-03-05]
-      const { data } = await supabase
-        .from('alunos')
-        .select('creditos_ia, ano_escolar')
-        .eq('id', user.id)
-        .single();
-      
-      setStudentData({ 
-        creditos: data?.creditos_ia || 0, 
-        ano_escolar: data?.ano_escolar || 10 
-      });
-    }
-  }
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || loading || sparks <= 0) return;
 
-  const processarMaterial = async () => {
-    if (!file || !studentData || studentData.creditos <= 0) return alert("Saldo insuficiente ou ficheiro em falta.");
+    // Custo por mensagem
+    const COST_PER_MSG = 1;
+    setSparks(prev => prev - COST_PER_MSG);
+
+    const userMsg: ChatMessage = { role: 'user', parts: [{ text: input }] };
+    const newMessages = [...messages, userMsg];
+    
+    setMessages(newMessages);
+    setInput('');
     setLoading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-      
-      const reader = new FileReader();
-      const filePart = await new Promise((resolve) => {
-        reader.onloadend = () => resolve({ inlineData: { data: (reader.result as string).split(',')[1], mimeType: file.type } });
-        reader.readAsDataURL(file);
+      const response = await fetch('/api/lab', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Enviamos a nova mensagem e o histórico (excluindo a nova para não duplicar)
+        body: JSON.stringify({ 
+          message: input,
+          history: messages 
+        }),
       });
 
-      // LÓGICA DE PERSONA ADAPTATIVA [cite: 2026-03-05]
-      let personaInstruction = "";
-      const ano = studentData.ano_escolar;
+      const data = await response.json();
 
-      if (ano <= 4) {
-        personaInstruction = "Usa um tom de professor primário: simples, lúdico, com analogias fáceis e emojis. Explica como se fosse uma história.";
-      } else if (ano <= 9) {
-        personaInstruction = "Usa um tom educativo avançado: focado em conceitos-chave, organização de estudo e clareza, sem ser infantil.";
+      if (response.ok) {
+        const aiMsg: ChatMessage = { role: 'model', parts: [{ text: data.response }] };
+        setMessages(prev => [...prev, aiMsg]);
       } else {
-        personaInstruction = "Usa linguagem adulta, técnica e rigorosa. Foco total em profundidade académica, termos correntes do secundário e preparação para exames.";
+        throw new Error(data.error || 'Erro no servidor AI');
       }
-
-      const prompt = `Age como um especialista em pedagogia. ${personaInstruction}
-      Analisa o material PDF e gera 3 blocos separados pela tag ###NEXT_SECTION###.
-      
-      Bloco 1 (Resumo): Um resumo profundo e estruturado do conteúdo.
-      [###NEXT_SECTION###]
-      
-      Bloco 2 (Exercícios): 5 questões de revisão variadas com soluções justificadas no final.
-      [###NEXT_SECTION###]
-      
-      Bloco 3 (Estrutura): Uma hierarquia lógica de conceitos para visualização mental.
-      
-      Formatação: Markdown limpo, sem lixo de sistema.`;
-
-      const result = await model.generateContent([prompt, filePart as any]);
-      const sections = result.response.text().split('###NEXT_SECTION###');
-
-      setResultado({
-        resumo: sections[0]?.trim() || "Conteúdo não processado.",
-        exercicios: sections[1]?.trim() || "Exercícios não gerados.",
-        mapa: sections[2]?.trim() || "Estrutura não disponível."
-      });
-
-      // Atualização de Saldo [cite: 2026-03-05]
-      await supabase.from('alunos').update({ creditos_ia: studentData.creditos - 1 }).eq('id', user?.id);
-      setStudentData(prev => prev ? { ...prev, creditos: prev.creditos - 1 } : null);
-
-    } catch (err) {
-      alert("Erro no processamento. Tenta um PDF mais leve.");
+    } catch (error: any) {
+      alert("Falha de comunicação: " + error.message);
+      // Devolve o Spark se a chamada falhou
+      setSparks(prev => prev + COST_PER_MSG);
     } finally {
       setLoading(false);
     }
   };
 
+  const percentSparks = (sparks / 1000) * 100;
+
   return (
-    <main className="min-h-screen bg-[#020617] text-slate-300 font-sans selection:bg-orange-500/10">
-      <div className="max-w-5xl mx-auto p-8 space-y-10">
-        
-        {/* HEADER SÉRIO & PROFISSIONAL [cite: 2026-03-05] */}
-        <header className="flex justify-between items-center border-b border-slate-800 pb-10">
-          <div className="flex items-center gap-4">
-            <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800">
-              <BrainCircuit size={28} className="text-orange-500" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black tracking-[0.2em] uppercase italic text-white">
-                Personal <span className="text-orange-500">Lab</span>
-              </h1>
-              <div className="flex items-center gap-2 text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-1">
-                <Fingerprint size={10} /> Sistema Adaptado: {studentData?.ano_escolar}º Ano
-              </div>
-            </div>
+    <main className="min-h-screen bg-[#0f172a] text-white flex flex-col font-sans">
+      
+      {/* HEADER DO LAB AI */}
+      <header className="bg-slate-900 border-b border-slate-800 p-4 md:px-8 flex items-center justify-between shadow-md z-10 sticky top-0">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <BrainCircuit size={24} className="text-white" />
           </div>
-          <div className="text-right">
-            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1">Créditos de Análise</p>
-            <div className="bg-slate-900 px-5 py-2 rounded-xl border border-slate-800 inline-block shadow-inner">
-              <span className="text-white font-black text-xl">{studentData?.creditos}</span>
-            </div>
+          <div>
+            <h1 className="text-xl font-black italic tracking-tighter">Lab AI</h1>
+            <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">O teu Tutor de Elite</p>
           </div>
-        </header>
+        </div>
 
-        {!resultado ? (
-          <section className="py-24 max-w-2xl mx-auto text-center animate-in fade-in duration-1000">
-            <div className="bg-slate-900/40 border border-slate-800 rounded-[3rem] p-16 space-y-8 relative group">
-              <div className="w-20 h-20 bg-slate-950 rounded-3xl flex items-center justify-center mx-auto border border-slate-800 shadow-2xl">
-                <UploadCloud size={32} className="text-slate-600" />
-              </div>
-              <input 
-                type="file" 
-                className="absolute inset-0 opacity-0 cursor-pointer" 
-                accept=".pdf" 
-                onChange={(e) => setFile(e.target.files?.[0] || null)} 
-              />
-              <div>
-                <h2 className="text-xl font-bold text-white mb-2">{file ? file.name : "Submeter Documento PDF"}</h2>
-                <p className="text-slate-600 text-[10px] font-bold uppercase tracking-[0.3em]">Limite Técnico: 10MB por arquivo</p>
-              </div>
-            </div>
+        {/* SISTEMA DE SPARKS (GAMIFICAÇÃO) */}
+        <div className="flex flex-col items-end">
+          <div className="flex items-center gap-2 mb-1">
+            <Zap size={14} className={sparks > 200 ? 'text-amber-400' : 'text-red-500 animate-pulse'} />
+            <span className="text-xs font-black font-mono">{sparks} SPARKS</span>
+          </div>
+          <div className="w-32 h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+            <div 
+              className={`h-full transition-all duration-500 ${sparks > 200 ? 'bg-linear-to-r from-amber-500 to-yellow-300' : 'bg-red-500'}`}
+              style={{ width: `${percentSparks}%` }}
+            />
+          </div>
+        </div>
+      </header>
 
-            <button 
-              onClick={processarMaterial} 
-              disabled={loading || !file || (studentData?.creditos ?? 0) <= 0} 
-              className="mt-12 w-full bg-orange-600 hover:bg-orange-500 disabled:bg-slate-900 disabled:text-slate-700 text-white py-6 rounded-2xl font-black uppercase tracking-widest transition-all active:scale-95 shadow-xl shadow-orange-900/10"
-            >
-              {loading ? <Loader2 className="animate-spin mx-auto" /> : "Iniciar Processamento de Conteúdo"}
-            </button>
-          </section>
+      {/* ÁREA DE CHAT */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+        {messages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center opacity-50 text-center max-w-md mx-auto mt-20">
+            <Sparkles size={64} className="text-blue-500 mb-6" />
+            <h2 className="text-2xl font-black mb-2">Preparado para treinar?</h2>
+            <p className="text-sm text-slate-400">
+              Escreve o que estás a estudar. Pede-me para explicar um conceito difícil ou pede um "Quiz de 5 perguntas" para testar o teu conhecimento. Não te vou dar a resposta de mão beijada, vou fazer-te pensar.
+            </p>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 animate-in slide-in-from-bottom-12 duration-700">
-            {/* SIDEBAR DE NAVEGAÇÃO [cite: 2026-03-05] */}
-            <nav className="space-y-2">
-              <button 
-                onClick={() => setActiveTab('resumo')} 
-                className={`w-full flex items-center justify-between p-5 rounded-2xl transition-all font-black uppercase text-[9px] tracking-[0.2em] border ${activeTab === 'resumo' ? 'bg-orange-600 border-orange-500 text-white shadow-xl shadow-orange-900/20' : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-white'}`}
-              >
-                <div className="flex items-center gap-3"><FileText size={18} /> Resumo</div>
-              </button>
-              <button 
-                onClick={() => setActiveTab('exercicios')} 
-                className={`w-full flex items-center justify-between p-5 rounded-2xl transition-all font-black uppercase text-[9px] tracking-[0.2em] border ${activeTab === 'exercicios' ? 'bg-orange-600 border-orange-500 text-white shadow-xl shadow-orange-900/20' : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-white'}`}
-              >
-                <div className="flex items-center gap-3"><ListChecks size={18} /> Exercícios</div>
-              </button>
-              <button 
-                onClick={() => setActiveTab('mapa')} 
-                className={`w-full flex items-center justify-between p-5 rounded-2xl transition-all font-black uppercase text-[9px] tracking-[0.2em] border ${activeTab === 'mapa' ? 'bg-orange-600 border-orange-500 text-white shadow-xl shadow-orange-900/20' : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-white'}`}
-              >
-                <div className="flex items-center gap-3"><Network size={18} /> Estrutura</div>
-              </button>
-              
-              <button onClick={() => setResultado(null)} className="w-full mt-12 p-4 text-slate-600 text-[8px] font-black uppercase tracking-[0.4em] hover:text-orange-500 transition-colors border-t border-slate-800 pt-8">Nova Submissão</button>
-            </nav>
-
-            {/* VIEWER DE ALTA DEFINIÇÃO [cite: 2026-03-05] */}
-            <div className="lg:col-span-3 bg-white text-slate-900 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col h-187.5 border border-slate-200">
-              <div className="bg-slate-50 border-b border-slate-200 p-6 flex justify-between items-center">
-                <div className="flex items-center gap-2 text-slate-400 font-bold text-[9px] uppercase tracking-[0.3em]">
-                  <BookOpen size={14} /> Repositório Digital • Versão {studentData?.ano_escolar}º Ano
+          messages.map((msg, index) => {
+            const isAI = msg.role === 'model';
+            return (
+              <div key={index} className={`flex gap-4 max-w-4xl mx-auto ${isAI ? 'flex-row' : 'flex-row-reverse'}`}>
+                <div className={`w-10 h-10 shrink-0 rounded-2xl flex items-center justify-center shadow-lg ${isAI ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                  {isAI ? <Bot size={20} /> : <User size={20} />}
                 </div>
-                <div className="text-[9px] font-black text-orange-500 uppercase tracking-widest border border-orange-200 px-3 py-1 rounded-full bg-orange-50">Ativo</div>
+                <div className={`p-5 rounded-3xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${isAI ? 'bg-slate-900 border border-slate-800 rounded-tl-none' : 'bg-blue-600 text-white rounded-tr-none'}`}>
+                  {msg.parts[0].text}
+                </div>
               </div>
-              
-              <div className="flex-1 overflow-y-auto p-12 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
-                <article className="prose prose-slate max-w-none">
-                  <div className="text-slate-800 leading-relaxed whitespace-pre-wrap font-medium text-lg">
-                    {activeTab === 'resumo' && resultado.resumo}
-                    {activeTab === 'exercicios' && resultado.exercicios}
-                    {activeTab === 'mapa' && (
-                      <div className="bg-slate-100 p-10 rounded-4xl border-2 border-slate-200 text-slate-800 font-mono text-xs shadow-inner">
-                        {resultado.mapa}
-                      </div>
-                    )}
-                  </div>
-                </article>
-              </div>
-
-              <div className="bg-slate-50 border-t border-slate-200 p-6 text-center text-[9px] font-bold text-slate-400 uppercase tracking-[0.5em]">
-                Gerado via My Personal Lab • {new Date().toLocaleDateString('pt-PT')}
-              </div>
+            );
+          })
+        )}
+        
+        {loading && (
+          <div className="flex gap-4 max-w-4xl mx-auto">
+            <div className="w-10 h-10 shrink-0 rounded-2xl flex items-center justify-center shadow-lg bg-blue-600 text-white animate-pulse">
+              <Bot size={20} />
+            </div>
+            <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 rounded-tl-none flex items-center gap-3">
+              <Loader2 size={16} className="animate-spin text-blue-500" />
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">A analisar o contexto...</span>
             </div>
           </div>
         )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* BARRA DE INPUT */}
+      <div className="bg-[#0f172a] p-4 md:p-6 border-t border-slate-800/50 sticky bottom-0">
+        <form onSubmit={handleSend} className="max-w-4xl mx-auto relative group">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            disabled={loading || sparks <= 0}
+            placeholder={sparks > 0 ? "O que vamos estudar hoje?" : "Sem Sparks suficientes. Fala com a receção."}
+            className="w-full bg-slate-900 border-2 border-slate-800 p-5 pr-16 rounded-4xl outline-none focus:border-blue-500 transition-all text-sm disabled:opacity-50"
+          />
+          <button 
+            type="submit"
+            disabled={!input.trim() || loading || sparks <= 0}
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-full flex items-center justify-center transition-all active:scale-95 shadow-lg"
+          >
+            <Send size={18} className="ml-0.5" />
+          </button>
+        </form>
+        <p className="text-center text-[10px] text-slate-600 uppercase font-black tracking-widest mt-4">
+          O Lab AI pode cometer erros. Revê as tuas respostas finais.
+        </p>
       </div>
     </main>
   );
