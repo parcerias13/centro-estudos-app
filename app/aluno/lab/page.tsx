@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Zap, Bot, User, Loader2, Sparkles, BrainCircuit } from 'lucide-react';
+import { createBrowserClient } from '@supabase/ssr';
+import { Send, Aperture, User, Loader2, Paperclip, X } from 'lucide-react';
 
-// O formato que o Gemini exige para o histórico
 type MessagePart = { text: string };
 type ChatMessage = { role: 'user' | 'model'; parts: MessagePart[] };
 
@@ -11,42 +11,117 @@ export default function LabAI() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sparks, setSparks] = useState(1000); // Saldo inicial simulado
   
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  // GESTÃO DE CRÉDITOS (Simulação inicial - depois ligamos à Base de Dados)
+  const [creditosGanhos, setCreditosGanhos] = useState(850); 
+  const maxCreditos = 1000;
+  
+  // DADOS DO ALUNO E UPLOADS
+  const [alunoData, setAlunoData] = useState({ nome: 'Aluno', ano_escolar: 10 });
+  const [fileToUpload, setFileToUpload] = useState<{ base64: string, mimeType: string, url: string } | null>(null);
 
-  // Faz scroll automático para a última mensagem
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    const fetchAluno = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data } = await supabase.from('alunos').select('nome, ano_escolar').eq('id', session.user.id).single();
+        if (data) setAlunoData(data);
+      }
+    };
+    fetchAluno();
+  }, [supabase]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, fileToUpload]);
+
+  // A MAGIA DA COMPRESSÃO (Otimização brutal de custos e performance)
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, anexa apenas imagens (fotos de exercícios ou cadernos).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        // Redimensiona a imagem para um máximo de 1200px (perfeito para a IA ler texto sem pesar)
+        const MAX_DIMENSION = 1200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height && width > MAX_DIMENSION) {
+          height *= MAX_DIMENSION / width;
+          width = MAX_DIMENSION;
+        } else if (height > MAX_DIMENSION) {
+          width *= MAX_DIMENSION / height;
+          height = MAX_DIMENSION;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          // Comprime para JPEG com 80% de qualidade
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          const base64String = compressedDataUrl.split(',')[1];
+
+          setFileToUpload({
+            base64: base64String,
+            mimeType: 'image/jpeg',
+            url: URL.createObjectURL(file) // Para mostrar o preview visualmente
+          });
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+    
+    // Limpa o input para permitir selecionar a mesma foto de novo se necessário
+    e.target.value = '';
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || loading || sparks <= 0) return;
+    if ((!input.trim() && !fileToUpload) || loading || creditosGanhos >= maxCreditos) return;
 
-    // Custo por mensagem
-    const COST_PER_MSG = 1;
-    setSparks(prev => prev - COST_PER_MSG);
-
-    const userMsg: ChatMessage = { role: 'user', parts: [{ text: input }] };
-    const newMessages = [...messages, userMsg];
+    const currentInput = input;
+    const currentFile = fileToUpload;
     
-    setMessages(newMessages);
+    // 1. Atualizar UI instantaneamente
+    const userText = currentInput || "A enviar anexo para análise...";
+    const userMsg: ChatMessage = { role: 'user', parts: [{ text: userText }] };
+    setMessages(prev => [...prev, userMsg]);
+    
     setInput('');
+    setFileToUpload(null);
     setLoading(true);
 
+    // 2. Comunicar com a API segura
     try {
       const response = await fetch('/api/lab', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Enviamos a nova mensagem e o histórico (excluindo a nova para não duplicar)
         body: JSON.stringify({ 
-          message: input,
-          history: messages 
+          message: currentInput,
+          history: messages,
+          anoEscolar: alunoData.ano_escolar, // Motor dinâmico de idade ativado
+          nomeAluno: alunoData.nome,
+          imageBase64: currentFile?.base64,
+          mimeType: currentFile?.mimeType
         }),
       });
 
@@ -55,58 +130,59 @@ export default function LabAI() {
       if (response.ok) {
         const aiMsg: ChatMessage = { role: 'model', parts: [{ text: data.response }] };
         setMessages(prev => [...prev, aiMsg]);
+        setCreditosGanhos(prev => Math.min(prev + 5, maxCreditos)); // Simula consumo de API
       } else {
-        throw new Error(data.error || 'Erro no servidor AI');
+        throw new Error(data.error);
       }
     } catch (error: any) {
       alert("Falha de comunicação: " + error.message);
-      // Devolve o Spark se a chamada falhouf
-      setSparks(prev => prev + COST_PER_MSG);
     } finally {
       setLoading(false);
     }
   };
 
-  const percentSparks = (sparks / 1000) * 100;
+  const percentUso = (creditosGanhos / maxCreditos) * 100;
 
   return (
-    <main className="min-h-screen bg-[#0f172a] text-white flex flex-col font-sans">
+    <main className="min-h-screen bg-[#0f172a] text-slate-200 flex flex-col font-sans">
       
-      {/* HEADER DO LAB AI */}
-      <header className="bg-slate-900 border-b border-slate-800 p-4 md:px-8 flex items-center justify-between shadow-md z-10 sticky top-0">
+      {/* HEADER CORPORATIVO */}
+      <header className="bg-slate-950 border-b border-slate-800 p-4 md:px-8 flex items-center justify-between shadow-xl z-10 sticky top-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <BrainCircuit size={24} className="text-white" />
+          <div className="w-10 h-10 bg-slate-900 border border-slate-700 rounded-lg flex items-center justify-center shadow-inner">
+            <Aperture size={22} className="text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-black italic tracking-tighter">Lab AI</h1>
-            <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">O teu Tutor de Elite</p>
+            <h1 className="text-lg font-black tracking-tight text-white">Lab AI</h1>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Ambiente de Estudo Analítico</p>
           </div>
         </div>
 
-        {/* SISTEMA DE SPARKS (GAMIFICAÇÃO) */}
-        <div className="flex flex-col items-end">
-          <div className="flex items-center gap-2 mb-1">
-            <Zap size={14} className={sparks > 200 ? 'text-amber-400' : 'text-red-500 animate-pulse'} />
-            <span className="text-xs font-black font-mono">{sparks} SPARKS</span>
+        {/* PROGRESSO DE CRÉDITOS B2B */}
+        <div className="flex flex-col items-end min-w-30">
+          <div className="flex justify-between w-full mb-1">
+            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Uso Mensal</span>
+            <span className={`text-[10px] font-black ${percentUso > 90 ? 'text-red-500' : 'text-slate-300'}`}>
+              {Math.round(percentUso)}%
+            </span>
           </div>
-          <div className="w-32 h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+          <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
             <div 
-              className={`h-full transition-all duration-500 ${sparks > 200 ? 'bg-linear-to-r from-amber-500 to-yellow-300' : 'bg-red-500'}`}
-              style={{ width: `${percentSparks}%` }}
+              className={`h-full transition-all duration-700 ${percentUso > 90 ? 'bg-red-500' : percentUso > 75 ? 'bg-amber-500' : 'bg-blue-500'}`}
+              style={{ width: `${percentUso}%` }}
             />
           </div>
         </div>
       </header>
 
-      {/* ÁREA DE CHAT */} 
-      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+      {/* ÁREA DE CHAT LIMPA E PROFISSIONAL */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8">
         {messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center opacity-50 text-center max-w-md mx-auto mt-20">
-            <Sparkles size={64} className="text-blue-500 mb-6" />
-            <h2 className="text-2xl font-black mb-2">Preparado para treinar?</h2>
-            <p className="text-sm text-slate-400">
-              Escreve o que estás a estudar. Pede-me para explicar um conceito difícil ou pede um "Quiz de 5 perguntas" para testar o teu conhecimento. Não te vou dar a resposta de mão beijada, vou fazer-te pensar.
+          <div className="h-full flex flex-col items-center justify-center opacity-40 text-center max-w-md mx-auto mt-20">
+            <Aperture size={56} className="text-slate-500 mb-6" />
+            <h2 className="text-xl font-bold mb-2 tracking-tight">Análise e Resolução</h2>
+            <p className="text-xs text-slate-400 font-medium leading-relaxed">
+              Insere o tema de estudo ou anexa a fotografia do teu exercício. A nossa IA irá guiar-te passo a passo na estruturação da resposta, sem te dar soluções fáceis.
             </p>
           </div>
         ) : (
@@ -114,10 +190,11 @@ export default function LabAI() {
             const isAI = msg.role === 'model';
             return (
               <div key={index} className={`flex gap-4 max-w-4xl mx-auto ${isAI ? 'flex-row' : 'flex-row-reverse'}`}>
-                <div className={`w-10 h-10 shrink-0 rounded-2xl flex items-center justify-center shadow-lg ${isAI ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
-                  {isAI ? <Bot size={20} /> : <User size={20} />}
+                <div className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center mt-1 shadow-sm ${isAI ? 'bg-slate-800 border border-slate-700 text-white' : 'bg-blue-600 text-white'}`}>
+                  {isAI ? <Aperture size={16} /> : <User size={16} />}
                 </div>
-                <div className={`p-5 rounded-3xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${isAI ? 'bg-slate-900 border border-slate-800 rounded-tl-none' : 'bg-blue-600 text-white rounded-tr-none'}`}>
+                {/* TIPOGRAFIA OTIMIZADA PARA LEITURA LONGA */}
+                <div className={`p-5 rounded-2xl text-[15px] shadow-sm max-w-[85%] ${isAI ? 'bg-slate-900/80 border border-slate-800/60 rounded-tl-none text-slate-300 leading-relaxed font-medium tracking-wide whitespace-pre-wrap' : 'bg-blue-600 text-white rounded-tr-none leading-snug whitespace-pre-wrap'}`}>
                   {msg.parts[0].text}
                 </div>
               </div>
@@ -127,40 +204,60 @@ export default function LabAI() {
         
         {loading && (
           <div className="flex gap-4 max-w-4xl mx-auto">
-            <div className="w-10 h-10 shrink-0 rounded-2xl flex items-center justify-center shadow-lg bg-blue-600 text-white animate-pulse">
-              <Bot size={20} />
+            <div className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center mt-1 bg-slate-800 border border-slate-700 text-white animate-pulse">
+              <Aperture size={16} />
             </div>
-            <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 rounded-tl-none flex items-center gap-3">
-              <Loader2 size={16} className="animate-spin text-blue-500" />
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">A analisar o contexto...</span>
+            <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800 rounded-tl-none flex items-center gap-3">
+              <Loader2 size={16} className="animate-spin text-slate-500" />
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* BARRA DE INPUT */}
-      <div className="bg-[#0f172a] p-4 md:p-6 border-t border-slate-800/50 sticky bottom-0">
-        <form onSubmit={handleSend} className="max-w-4xl mx-auto relative group">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            disabled={loading || sparks <= 0}
-            placeholder={sparks > 0 ? "O que vamos estudar hoje?" : "Sem Sparks suficientes. Fala com a receção."}
-            className="w-full bg-slate-900 border-2 border-slate-800 p-5 pr-16 rounded-4xl outline-none focus:border-blue-500 transition-all text-sm disabled:opacity-50"
-          />
-          <button 
-            type="submit"
-            disabled={!input.trim() || loading || sparks <= 0}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-full flex items-center justify-center transition-all active:scale-95 shadow-lg"
-          >
-            <Send size={18} className="ml-0.5" />
-          </button>
+      {/* ÁREA DE INPUT MULTIMODAL */}
+      <div className="bg-slate-950 p-4 md:p-6 border-t border-slate-800/80 sticky bottom-0 z-20">
+        <form onSubmit={handleSend} className="max-w-4xl mx-auto relative flex flex-col gap-3">
+          
+          {/* PREVIEW DA FOTOGRAFIA ANEXADA */}
+          {fileToUpload && (
+            <div className="relative w-16 h-16 ml-2 rounded-lg border border-slate-700 overflow-hidden shadow-lg group">
+              <img src={fileToUpload.url} alt="Preview" className="w-full h-full object-cover opacity-80" />
+              <button 
+                type="button" 
+                onClick={() => setFileToUpload(null)} 
+                className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X size={16} className="text-white" />
+              </button>
+            </div>
+          )}
+
+          <div className="relative flex items-center">
+            {/* BOTÃO CLIP PARA ANEXOS */}
+            <label className={`absolute left-2 w-10 h-10 flex items-center justify-center rounded-full transition-colors cursor-pointer ${fileToUpload ? 'text-blue-500' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}>
+              <Paperclip size={18} />
+              <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" disabled={loading} />
+            </label>
+
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              disabled={loading || creditosGanhos >= maxCreditos}
+              placeholder={creditosGanhos < maxCreditos ? "Escreve ou anexa uma fotografia do exercício..." : "Limite mensal de processamento atingido."}
+              className="w-full bg-slate-900 border border-slate-700 p-4 pl-14 pr-16 rounded-2xl outline-none focus:border-blue-500 focus:bg-slate-900 transition-all text-sm disabled:opacity-50 text-white placeholder:text-slate-600 shadow-inner"
+            />
+
+            <button 
+              type="submit"
+              disabled={(!input.trim() && !fileToUpload) || loading || creditosGanhos >= maxCreditos}
+              className="absolute right-2 w-10 h-10 bg-white hover:bg-slate-200 disabled:bg-slate-800 disabled:text-slate-600 text-slate-900 rounded-xl flex items-center justify-center transition-all active:scale-95 shadow-md"
+            >
+              <Send size={16} className="ml-0.5" />
+            </button>
+          </div>
         </form>
-        <p className="text-center text-[10px] text-slate-600 uppercase font-black tracking-widest mt-4">
-          O Lab AI pode cometer erros. Revê as tuas respostas finais.
-        </p>
       </div>
     </main>
   );
