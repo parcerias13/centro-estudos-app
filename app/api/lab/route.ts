@@ -3,10 +3,15 @@ import OpenAI from 'openai';
 import { extractText } from 'unpdf';
 import { createClient } from '@supabase/supabase-js';
 import cosineSimilarity from 'compute-cosine-similarity';
+export const dynamic = 'force-dynamic'; // Garante que a Vercel não tenta executar isto em build-time
+
 
 export const runtime = 'nodejs';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+const openai = new OpenAI({ 
+  apiKey: process.env.OPENAI_API_KEY || 'dummy_key_for_build' 
+});
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 // --- UTILITÁRIOS DE PERFORMANCE E CUSTO ---
