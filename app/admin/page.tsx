@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
 import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, CalendarDays, MapPin, CheckCircle2, XCircle } from 'lucide-react';
@@ -17,74 +17,90 @@ export default function DashboardAdmin() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
+  // 1. FUNÇÃO DE BUSCA (A ÚNICA FONTE DA VERDADE)
+  const fetchDados = useCallback(async () => {
+    try {
+      const { data: presentes, error: errP } = await supabase
+        .from('diario_bordo')
+        .select(`
+          *, 
+          alunos!aluno_id(
+            *, 
+            pacotes(nome, sessoes_semanais), 
+            aluno_horarios(dia_semana)
+          )
+        `) 
+        .is('saida', null)
+        .order('entrada', { ascending: false });
+      
+      if (errP) throw errP;
+
+      const hojeStr = new Date().toISOString().split('T')[0];
+      const { data: exames } = await supabase
+        .from('exams')
+        .select('*, alunos(nome)')
+        .gte('date', hojeStr)
+        .order('date', { ascending: true });
+
+      const { data: salasData } = await supabase.from('salas').select('*').order('nome');
+      
+      setPresencas(presentes || []);
+      setProximosTestes(exames || []);
+      setSalas(salasData || []);
+    } catch (err: any) {
+      console.error("❌ Erro ao buscar dados:", err.message);
+      setErrorMsg("Falha na sincronização: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase]);
+
+  // 2. REALTIME (SINTONIA)
   useEffect(() => {
     fetchDados();
 
     const channel = supabase
-      .channel('torre-controlo-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'diario_bordo' }, () => fetchDados())
+      .channel('dashboard-realtime-master')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'diario_bordo' }, (payload) => {
+        console.log('🔄 Mudança detetada:', payload.eventType);
+        fetchDados();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, () => fetchDados())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [supabase, fetchDados]);
 
-  const fetchDados = async () => {
-    const { data: presentes, error: errP } = await supabase
-      .from('diario_bordo')
-      .select(`
-        *, 
-        alunos!aluno_id(
-          *, 
-          pacotes(nome, sessoes_semanais), 
-          aluno_horarios(dia_semana)
-        )
-      `) 
-      .is('saida', null)
-      .order('entrada', { ascending: false });
-    
-    if (errP) {
-       console.error(errP);
-       setErrorMsg("Erro de Sincronização: " + errP.message);
-    }
-
-    const hojeStr = new Date().toISOString().split('T')[0];
-    const { data: exames } = await supabase
-      .from('exams')
-      .select('*, alunos(nome)')
-      .gte('date', hojeStr)
-      .order('date', { ascending: true });
-
-    const { data: salasData } = await supabase.from('salas').select('*').order('nome');
-    
-    setPresencas(presentes || []);
-    setProximosTestes(exames || []);
-    setSalas(salasData || []);
-    setLoading(false);
-  };
-
+  // 3. HANDLERS (Com atualização forçada para a cor mudar na hora)
   const handleValidarEntrada = async (presencaId: string) => {
-    await supabase.from('diario_bordo').update({ status: 'validado' }).eq('id', presencaId);
-    fetchDados(); 
+    const { error } = await supabase.from('diario_bordo').update({ status: 'validado' }).eq('id', presencaId);
+    if (!error) fetchDados(); 
   };
 
   const handleRejeitarEntrada = async (presencaId: string) => {
-    if (!confirm("O aluno não está no centro? Este registo será eliminado do histórico.")) return;
-    await supabase.from('diario_bordo').delete().eq('id', presencaId);
-    fetchDados(); 
+    if (!confirm("O aluno não está no centro?")) return;
+    const { error } = await supabase.from('diario_bordo').delete().eq('id', presencaId);
+    if (!error) fetchDados(); 
   };
 
-  const handleWhatsApp = (telefone: string, nome: string, tipo: 'entrada' | 'saida') => {
-    if (!telefone) return alert("Este aluno não tem telefone de encarregado registado.");
+  const handleWhatsApp = async (presencaId: string, telefone: string, nome: string, tipo: 'entrada' | 'saida') => {
+    if (!telefone) return alert("Este aluno não tem telefone registado.");
+    
     const msg = tipo === 'entrada' 
       ? `Olá! Informamos que o(a) aluno(a) ${nome} deu entrada no Centro AI. Foco total! 📚`
       : `Olá! Informamos que o(a) aluno(a) ${nome} concluiu a sua sessão e aguarda boleia. 🚗`;
+
     window.open(`https://wa.me/351${telefone}?text=${encodeURIComponent(msg)}`, '_blank');
+
+    const updateData = tipo === 'entrada' ? { msg_in_enviada: true } : { msg_out_enviada: true };
+    const { error } = await supabase.from('diario_bordo').update(updateData).eq('id', presencaId);
+    if (!error) fetchDados(); // FORÇA A MUDANÇA DE COR
   };
 
   const handleDarSaida = async (presencaId: string) => {
-    await supabase.from('diario_bordo').update({ saida: new Date().toISOString() }).eq('id', presencaId);
-    fetchDados(); 
+    if(!confirm("Confirmar saída física?")) return;
+    const { error } = await supabase.from('diario_bordo').update({ saida: new Date().toISOString() }).eq('id', presencaId);
+    if (!error) fetchDados(); 
   };
 
   const salasStatus = salas.map(sala => {
@@ -92,7 +108,6 @@ export default function DashboardAdmin() {
     const percentage = sala.capacidade > 0 ? (count / sala.capacidade) * 100 : 0;
     return { ...sala, count, percentage };
   });
-  const semSalaCount = presencas.filter(p => !p.sala_id).length;
 
   if (loading) return <div className="min-h-screen bg-[#0f172a] flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
 
@@ -100,22 +115,18 @@ export default function DashboardAdmin() {
     <main className="min-h-screen bg-[#0f172a] p-4 md:p-8 text-white font-sans">
       
       {errorMsg && (
-        <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl mb-6 text-amber-500 text-xs font-black flex items-center gap-2">
+        <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl mb-6 text-amber-500 text-[10px] font-black flex items-center gap-2">
             <AlertTriangle size={16} /> {errorMsg}
         </div>
       )}
 
       <header className="mb-10 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter">Dashboard</h1>
-        </div>
-        
+        <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter">Dashboard</h1>
         <div className="flex items-center gap-3">
-          <Link href="/admin/salas" className="flex items-center gap-2 px-4 py-3 bg-blue-600/10 text-blue-500 border border-blue-500/20 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-900/10">
+          <Link href="/admin/salas" className="flex items-center gap-2 px-4 py-3 bg-blue-600/10 text-blue-500 border border-blue-500/20 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest">
             <MapPin size={16} /> Gestão de Salas
           </Link>
-          
-          <button onClick={fetchDados} className="p-3 bg-slate-900 rounded-xl border border-slate-800 hover:text-blue-400 transition-all shadow-md">
+          <button onClick={fetchDados} className="p-3 bg-slate-900 rounded-xl border border-slate-800 hover:text-blue-400 transition-all">
             <RefreshCw size={20} />
           </button>
         </div>
@@ -130,129 +141,64 @@ export default function DashboardAdmin() {
             <span className="text-[10px] text-emerald-500 font-bold uppercase animate-pulse">● Ao Vivo</span>
           </div>
 
-          {presencas.length === 0 ? (
-            <div className="bg-slate-900/40 border-2 border-dashed border-slate-800 p-20 rounded-[2.5rem] text-center italic opacity-50">
-              Aguardando check-ins...
-            </div>
-          ) : (
-            presencas.map((p) => {
-              const aluno = Array.isArray(p.alunos) ? p.alunos[0] : p.alunos;
-              
-              const diaAtual = new Date().getDay(); 
-              const diaContratado = aluno?.aluno_horarios?.some((h: any) => h.dia_semana === diaAtual);
-              const nomePacote = aluno?.pacotes?.nome || 'Sem Pacote';
-              const estaValidado = p.status === 'validado';
-              const nomeSala = salas.find(s => s.id === p.sala_id)?.nome || 'Sem Sala';
+          {presencas.map((p) => {
+            const aluno = Array.isArray(p.alunos) ? p.alunos[0] : p.alunos;
+            const diaAtual = new Date().getDay(); 
+            const diaContratado = aluno?.aluno_horarios?.some((h: any) => h.dia_semana === diaAtual);
+            const estaValidado = p.status === 'validado';
+            const nomeSala = salas.find(s => s.id === p.sala_id)?.nome || 'Sem Sala';
+            const corBase = !diaContratado ? 'bg-red-600' : (estaValidado ? 'bg-emerald-600' : 'bg-blue-600');
 
-              // Lógica de Cores Antiga (Fallback)
-              const corBaseFallback = !diaContratado ? 'bg-red-600' : (estaValidado ? 'bg-emerald-600' : 'bg-blue-600');
-
-              return (
-                <div key={p.id} className={`bg-slate-900 border ${!diaContratado ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : (estaValidado ? 'border-emerald-500/50' : 'border-slate-800')} p-5 rounded-3xl flex flex-col md:flex-row items-center justify-between transition-all group gap-4`}>
-                  <div className="flex items-center gap-4 w-full md:w-auto">
-                    
-                    {/* AQUI ACONTECE A MAGIA DO AVATAR */}
-                    <div className={`w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-xl font-black shadow-lg overflow-hidden border border-slate-700/50 ${!aluno?.avatar_url ? corBaseFallback : 'bg-slate-800'}`}>
-                      {aluno?.avatar_url ? (
-                        <img src={aluno.avatar_url} alt={aluno?.nome} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-white">{aluno?.nome?.charAt(0) || '?'}</span>
-                      )}
-                    </div>
-                    {/* FIM DA MAGIA DO AVATAR */}
-
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-lg font-black group-hover:text-blue-400 transition-colors">
-                          {aluno?.nome || 'Perfil Não Encontrado'}
-                        </h3>
-                        {!diaContratado && (
-                          <span className="bg-red-500 text-[8px] px-2 py-0.5 rounded-full font-black uppercase animate-bounce">
-                            Dia Não Contratado
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500 font-medium">
-                        {nomePacote} • {p.subject_name || 'Sessão Livre'} • <span className="font-bold text-white/70">{nomeSala}</span>
-                      </p>
-                      
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        <span className={`px-2 py-1 rounded text-[10px] font-black flex items-center gap-1 border ${diaContratado ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
-                          <CalendarDays size={12} /> {diaContratado ? 'No Horário' : 'Fora de Horário'}
-                        </span>
-                        
-                        {aluno && !aluno.saida_autorizada && (
-                          <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-2 py-1 rounded text-[10px] font-black flex items-center gap-1">
-                            <ShieldAlert size={12} /> Saída Restrita
-                          </span>
-                        )}
-                      </div>
-                    </div>
+            return (
+              <div key={p.id} className={`bg-slate-900 border ${!diaContratado ? 'border-red-500' : (estaValidado ? 'border-emerald-500/40' : 'border-slate-800')} p-5 rounded-3xl flex flex-col md:flex-row items-center justify-between transition-all gap-4`}>
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                  <div className={`w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-xl font-black border border-slate-700/50 ${corBase}`}>
+                    {aluno?.nome?.charAt(0)}
                   </div>
-
-                  <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
-                    <div className="text-right mr-2">
-                      <p className="text-[10px] font-black text-slate-600 uppercase mb-1">Entrada</p>
-                      <p className="text-blue-400 font-mono font-bold text-lg">
-                        {new Date(p.entrada).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
-                      </p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-black">{aluno?.nome}</h3>
+                      {!diaContratado && <span className="bg-red-500 text-[8px] px-2 py-0.5 rounded-full font-black uppercase">Fora de Horário</span>}
                     </div>
-                    
-                    <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-                        <div className="flex items-center gap-1">
-                          <button 
-                            onClick={() => handleValidarEntrada(p.id)} 
-                            className={`${estaValidado ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white'} p-2.5 rounded-xl transition-all min-w-14`}
-                          >
-                             <CheckCircle2 size={16} className="mx-auto" />
-                             <span className="text-[8px] font-black uppercase block mt-1">{estaValidado ? 'Aceite' : 'Aceitar'}</span>
-                          </button>
-
-                          {!estaValidado && (
-                            <button 
-                              onClick={() => handleRejeitarEntrada(p.id)} 
-                              className="bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
-                              title="Anular entrada fantasma"
-                            >
-                               <XCircle size={16} className="mx-auto" />
-                               <span className="text-[8px] font-black uppercase block mt-1">Anular</span>
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="w-px h-8 bg-slate-800 mx-1"></div>
-
-                        <button 
-                          onClick={() => handleWhatsApp(aluno?.telefone_encarregado, aluno?.nome, 'entrada')} 
-                          className="bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
-                        >
-                           <MessageCircle size={16} className="mx-auto" />
-                           <span className="text-[8px] font-black uppercase block mt-1">Msg In</span>
-                        </button>
-
-                        <button 
-                          onClick={() => handleWhatsApp(aluno?.telefone_encarregado, aluno?.nome, 'saida')} 
-                          className="bg-purple-500/10 text-purple-500 hover:bg-purple-500 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
-                        >
-                           <MessageCircle size={16} className="mx-auto" />
-                           <span className="text-[8px] font-black uppercase block mt-1">Msg Out</span>
-                        </button>
-
-                        <div className="w-px h-8 bg-slate-800 mx-1"></div>
-
-                        <button 
-                          onClick={() => { if(confirm("Confirmar saída física do centro?")) handleDarSaida(p.id) }} 
-                          className="bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white p-2.5 rounded-xl transition-all min-w-14"
-                        >
-                           <LogOut size={16} className="mx-auto" />
-                           <span className="text-[8px] font-black uppercase block mt-1">Porta</span>
-                        </button>
-                    </div>
+                    <p className="text-xs text-slate-500 font-medium">
+                      {aluno?.pacotes?.nome || 'Sem Pacote'} • {p.subject_name || 'Sessão Livre'} • <span className="text-white/70">{nomeSala}</span>
+                    </p>
                   </div>
                 </div>
-              );
-            })
-          )}
+
+                <div className="flex items-center gap-4">
+                  <div className="text-right mr-2">
+                    <p className="text-blue-400 font-mono font-bold text-lg">
+                      {new Date(p.entrada).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+                      <button onClick={() => handleValidarEntrada(p.id)} className={`${estaValidado ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-500'} p-2.5 rounded-xl transition-all min-w-14`}>
+                        <CheckCircle2 size={16} className="mx-auto" />
+                        <span className="text-[8px] font-black block mt-1 uppercase">{estaValidado ? 'Aceite' : 'Aceitar'}</span>
+                      </button>
+
+                      <button onClick={() => handleWhatsApp(p.id, aluno?.telefone_encarregado, aluno?.nome, 'entrada')} className={`${p.msg_in_enviada ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.3)]' : 'bg-blue-500/10 text-blue-500'} p-2.5 rounded-xl transition-all min-w-14 relative`}>
+                        <MessageCircle size={16} className="mx-auto" />
+                        <span className="text-[8px] font-black block mt-1 uppercase">{p.msg_in_enviada ? 'Enviada' : 'Msg In'}</span>
+                        {p.msg_in_enviada && <CheckCircle2 size={10} className="absolute top-1 right-1" />}
+                      </button>
+
+                      <button onClick={() => handleWhatsApp(p.id, aluno?.telefone_encarregado, aluno?.nome, 'saida')} className={`${p.msg_out_enviada ? 'bg-purple-600 text-white shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'bg-purple-500/10 text-purple-500'} p-2.5 rounded-xl transition-all min-w-14 relative`}>
+                        <MessageCircle size={16} className="mx-auto" />
+                        <span className="text-[8px] font-black block mt-1 uppercase">{p.msg_out_enviada ? 'Enviada' : 'Msg Out'}</span>
+                        {p.msg_out_enviada && <CheckCircle2 size={10} className="absolute top-1 right-1" />}
+                      </button>
+
+                      <button onClick={() => handleDarSaida(p.id)} className="bg-slate-800 text-slate-400 hover:bg-red-500 hover:text-white p-2.5 rounded-xl transition-all">
+                        <LogOut size={16} />
+                      </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <div className="space-y-6">
@@ -267,42 +213,17 @@ export default function DashboardAdmin() {
               <MapPin size={16} className="text-blue-500" /> Lotação das Salas
             </h4>
             <div className="space-y-5">
-              {salasStatus.length === 0 ? (
-                <p className="text-slate-600 text-xs italic">Nenhuma sala registada.</p>
-              ) : (
-                salasStatus.map(sala => {
-                  const isFull = sala.count >= sala.capacidade;
-                  const isCritical = sala.count > sala.capacidade;
-                  const percentVal = Math.min(sala.percentage, 100);
-                  
-                  return (
-                    <div key={sala.id} className="space-y-2">
-                      <div className="flex justify-between items-center text-xs font-bold">
-                        <span className="text-white">{sala.nome}</span>
-                        <span className={isCritical ? 'text-red-500 animate-pulse' : isFull ? 'text-amber-500' : 'text-slate-400'}>
-                          {sala.count} / {sala.capacidade}
-                        </span>
-                      </div>
-                      <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
-                        <div 
-                          className={`h-full rounded-full transition-all duration-1000 ${isCritical ? 'bg-red-500' : isFull ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                          style={{ width: `${percentVal}%` }}
-                        ></div>
-                      </div>
-                      {isCritical && <p className="text-[9px] text-red-500 uppercase font-black tracking-widest mt-1">Aviso: Sobrelotação Logística</p>}
-                    </div>
-                  );
-                })
-              )}
-              
-              {semSalaCount > 0 && (
-                <div className="pt-3 border-t border-slate-800/50 mt-4">
-                  <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-500">
-                    <span>Sem Sala Atribuída</span>
-                    <span className="text-yellow-500">{semSalaCount} Aluno(s)</span>
+              {salasStatus.map(sala => (
+                <div key={sala.id} className="space-y-2">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span>{sala.nome}</span>
+                    <span className="text-slate-400">{sala.count} / {sala.capacidade}</span>
+                  </div>
+                  <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">
+                    <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${sala.percentage}%` }}></div>
                   </div>
                 </div>
-              )}
+              ))}
             </div>
           </div>
 
@@ -310,19 +231,13 @@ export default function DashboardAdmin() {
             <h4 className="font-black text-sm uppercase text-slate-500 mb-6 flex items-center gap-2">
               <AlertTriangle size={16} className="text-amber-500" /> Agenda de Risco
             </h4>
-            <div className="space-y-5">
-              {proximosTestes.length > 0 ? (
-                proximosTestes.map(ex => (
-                  <div key={ex.id} className="text-xs border-l-2 border-amber-500/50 pl-4 py-1">
-                    <p className="text-white font-bold">{ex.alunos?.nome || 'Aluno'}</p>
-                    <p className="text-slate-500 mt-1 uppercase text-[10px] font-black">
-                      Teste de {ex.subject_name} • {new Date(ex.date).toLocaleDateString('pt-PT')}
-                    </p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-slate-600 text-xs italic">Nenhum teste próximo.</p>
-              )}
+            <div className="space-y-4">
+              {proximosTestes.map(ex => (
+                <div key={ex.id} className="border-l-2 border-amber-500/50 pl-4 py-1">
+                  <p className="text-xs font-bold text-white">{ex.alunos?.nome}</p>
+                  <p className="text-[10px] text-slate-500 uppercase font-black">Teste de {ex.subject_name} • {new Date(ex.date).toLocaleDateString('pt-PT')}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
