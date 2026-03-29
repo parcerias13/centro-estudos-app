@@ -3,11 +3,9 @@ import OpenAI from 'openai';
 import { extractText } from 'unpdf';
 import { createClient } from '@supabase/supabase-js';
 import cosineSimilarity from 'compute-cosine-similarity';
-export const dynamic = 'force-dynamic'; // Garante que a Vercel não tenta executar isto em build-time
 
-
+export const dynamic = 'force-dynamic'; 
 export const runtime = 'nodejs';
-
 
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY || 'dummy_key_for_build' 
@@ -57,12 +55,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ response: "Memória limpa! Podes enviar um novo tema ou PDF." });
     }
 
-    // 1. GESTÃO FINANCEIRA E BUSCA DE MEMÓRIA
+    // 1. GESTÃO FINANCEIRA, BUSCA DE MEMÓRIA E CHECK DE CONSENTIMENTO
     const { data: alunoDb } = await supabase
       .from('alunos')
-      .select('creditos_usados, ultimo_pdf_texto, ultimo_upload')
+      .select('creditos_usados, ultimo_pdf_texto, ultimo_upload, consentimento_ia') // ADICIONADO CONSENTIMENTO_IA
       .eq('id', alunoId)
       .single();
+
+    // BLOQUEIO CRÍTICO: Se não houver consentimento, a API para aqui.
+    if (!alunoDb?.consentimento_ia) {
+      return NextResponse.json({ 
+        error: 'Acesso bloqueado: Necessitas de consentimento parental para utilizar o LabAI.' 
+      }, { status: 403 });
+    }
 
     const LIMITE_EUROS = 0.40;
     const creditosAtuais = Number(alunoDb?.creditos_usados || 0);
@@ -71,7 +76,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Limite mensal de 0.40€ atingido.' }, { status: 403 });
     }
 
-    // --- 2. PASSO B: RATE LIMIT DE UPLOAD ---
+    // --- 2. RATE LIMIT DE UPLOAD ---
     if (fileUrl && mimeType === 'application/pdf') {
       const agora = new Date();
       const ultimoUpload = alunoDb?.ultimo_upload ? new Date(alunoDb.ultimo_upload) : new Date(0);
@@ -84,7 +89,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. MOTOR PEDAGÓGICO (A Tua Conduta Original)
+    // 3. MOTOR PEDAGÓGICO
     let tom = "Linguagem profissional.";
     if (anoEscolar <= 4) tom = "Linguagem lúdica, simples e motivadora.";
     else if (anoEscolar <= 8) tom = "Linguagem dinâmica e desafiante.";
@@ -130,7 +135,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 6. HISTÓRICO (Janela de 6)
+    // 6. HISTÓRICO
     const messages = [
       { role: "system", content: systemInstruction },
       ...(history || []).slice(-6).map((m: any) => ({ 
@@ -146,12 +151,11 @@ export async function POST(req: Request) {
       messages: messages as any,
       temperature: 0.7,
       stream: true,
-      stream_options: { include_usage: true } // Para podermos calcular o custo no fim
+      stream_options: { include_usage: true }
     });
 
     const encoder = new TextEncoder();
 
-    // Criamos o ReadableStream para o Frontend
     const customStream = new ReadableStream({
       async start(controller) {
         let finalUsage: any = null;
@@ -161,14 +165,12 @@ export async function POST(req: Request) {
           if (content) {
             controller.enqueue(encoder.encode(content));
           }
-          
-          // Captura os tokens no último pedaço (chunk)
           if (chunk.usage) {
             finalUsage = chunk.usage;
           }
         }
 
-        // --- 8. CÁLCULO E REGISTO FINANCEIRO (Dentro do Stream) ---
+        // --- 8. CÁLCULO E REGISTO FINANCEIRO ---
         if (finalUsage) {
           const pT = finalUsage.prompt_tokens;
           const cT = finalUsage.completion_tokens;
@@ -188,7 +190,6 @@ export async function POST(req: Request) {
       }
     });
 
-    // Devolvemos o stream em vez de um JSON
     return new Response(customStream, {
       headers: { 
         'Content-Type': 'text/plain; charset=utf-8',
