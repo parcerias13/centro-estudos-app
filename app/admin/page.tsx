@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
-import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, CalendarDays, MapPin, CheckCircle2, XCircle, UserPlus, Search, BookOpen, X } from 'lucide-react';
+import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, CalendarDays, MapPin, CheckCircle2, XCircle, UserPlus, Search, BookOpen, X, Plus, Calendar } from 'lucide-react';
 
 export default function DashboardAdmin() {
   const [presencas, setPresencas] = useState<any[]>([]);
@@ -12,7 +12,10 @@ export default function DashboardAdmin() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // --- NOVOS ESTADOS PARA CHECK-IN MANUAL ---
+  // --- CONTROLO DE ACESSO (ROLE) ---
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  // --- ESTADOS PARA CHECK-IN MANUAL ---
   const [alunos, setAlunos] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -20,14 +23,27 @@ export default function DashboardAdmin() {
   const [selectedAluno, setSelectedAluno] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // --- ESTADOS PARA AGENDAMENTO DE TESTES ---
+  const [isExamModalOpen, setIsExamModalOpen] = useState(false);
+  const [examSearchQuery, setExamSearchQuery] = useState('');
+  const [selectedExamStudent, setSelectedExamStudent] = useState<any>(null);
+  const [examDate, setExamDate] = useState('');
+  const [examSubject, setExamSubject] = useState('');
+
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // 1. FUNÇÃO DE BUSCA (EXPANDIDA PARA TRAZER ALUNOS E DISCIPLINAS)
+  // 1. FUNÇÃO DE BUSCA
   const fetchDados = useCallback(async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: perfil } = await supabase.from('staff').select('role').eq('id', user.id).single();
+        setUserRole(perfil?.role?.toLowerCase() || 'explicador');
+      }
+
       const { data: presentes, error: errP } = await supabase
         .from('diario_bordo')
         .select(`
@@ -51,8 +67,6 @@ export default function DashboardAdmin() {
         .order('date', { ascending: true });
 
       const { data: salasData } = await supabase.from('salas').select('*').order('nome');
-
-      // Busca adicional para o Modal de Check-in Manual
       const { data: aData } = await supabase.from('alunos').select('*, pacotes(nome)').order('nome');
       const { data: subData } = await supabase.from('subjects').select('*').order('name');
       
@@ -69,19 +83,14 @@ export default function DashboardAdmin() {
     }
   }, [supabase]);
 
-  // 2. REALTIME (SINTONIA)
+  // 2. REALTIME
   useEffect(() => {
     fetchDados();
-
     const channel = supabase
       .channel('dashboard-realtime-master')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'diario_bordo' }, (payload) => {
-        console.log('🔄 Mudança detetada:', payload.eventType);
-        fetchDados();
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'diario_bordo' }, () => fetchDados())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'exams' }, () => fetchDados())
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [supabase, fetchDados]);
 
@@ -121,7 +130,6 @@ export default function DashboardAdmin() {
     if (!error) fetchDados(); 
   };
 
-  // --- NOVO HANDLER PARA CHECK-IN MANUAL ---
   const handleManualCheckIn = async (subject: any) => {
     if (!selectedAluno) return;
     setIsSubmitting(true);
@@ -133,25 +141,44 @@ export default function DashboardAdmin() {
         subject_name: subject.name,
         sala_id: subject.sala_id, 
         entrada: new Date().toISOString(),
-        status: 'validado' // Admin valida na hora
+        status: 'validado'
       });
       if (error) throw error;
       setIsModalOpen(false);
       setSelectedAluno(null);
       setSearchQuery('');
       fetchDados();
-    } catch (err: any) {
-      alert("Falha no check-in: " + err.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Filtragem de alunos disponíveis para o modal
-  const alunosDisponiveis = alunos.filter(a => 
-    !presencas.some(p => p.aluno_id === a.id) && 
-    a.nome.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const handleCreateExam = async () => {
+    if (!selectedExamStudent || !examSubject || !examDate) return alert("Preenche tudo!");
+    setIsSubmitting(true);
+    try {
+      // CORREÇÃO: Removida a coluna inexistente 'aluno_id'
+      const { error } = await supabase.from('exams').insert({
+        student_id: selectedExamStudent.id,
+        subject_name: examSubject,
+        date: examDate
+      });
+      if (!error) {
+        setIsExamModalOpen(false);
+        setSelectedExamStudent(null);
+        setExamSubject('');
+        setExamDate('');
+        fetchDados();
+      } else {
+        alert("Erro: " + error.message);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const alunosDisponiveis = alunos.filter(a => !presencas.some(p => p.aluno_id === a.id) && a.nome.toLowerCase().includes(searchQuery.toLowerCase()));
+  const alunosFiltradosExame = alunos.filter(a => a.nome.toLowerCase().includes(examSearchQuery.toLowerCase()));
 
   const salasStatus = salas.map(sala => {
     const count = presencas.filter(p => p.sala_id === sala.id).length;
@@ -171,27 +198,22 @@ export default function DashboardAdmin() {
       )}
 
       <header className="mb-10 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter">Dashboard</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter">Dashboard</h1>
+        </div>
         
         <div className="flex items-center gap-3">
-          {/* BOTÃO ENTRADA MANUAL */}
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-3 bg-emerald-600/10 text-emerald-500 border border-emerald-500/20 rounded-xl hover:bg-emerald-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-lg"
-          >
+          <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-4 py-3 bg-emerald-600/10 text-emerald-500 border border-emerald-500/20 rounded-xl hover:bg-emerald-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-lg">
             <UserPlus size={16} /> Entrada Manual
           </button>
 
           {presencas.length > 0 && (
-            <button 
-              onClick={handleMassCheckout}
-              className="flex items-center gap-2 px-4 py-3 bg-red-600/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-lg shadow-red-900/10"
-            >
+            <button onClick={handleMassCheckout} className="flex items-center gap-2 px-4 py-3 bg-red-600/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-lg shadow-red-900/10">
               <LogOut size={16} /> Checkout Total
             </button>
           )}
 
-          <Link href="/admin/salas" className="flex items-center gap-2 px-4 py-3 bg-blue-600/10 text-blue-500 border border-blue-500/20 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest">
+          <Link href="/admin/salas" className="flex items-center gap-2 px-4 py-3 bg-blue-600/10 text-blue-500 border border-blue-500/20 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-lg">
             <MapPin size={16} /> Gestão de Salas
           </Link>
           
@@ -246,25 +268,21 @@ export default function DashboardAdmin() {
                         {new Date(p.entrada).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
-                    
                     <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
                         <button onClick={() => handleValidarEntrada(p.id)} className={`${estaValidado ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-500'} p-2.5 rounded-xl transition-all min-w-14`}>
                           <CheckCircle2 size={16} className="mx-auto" />
                           <span className="text-[8px] font-black block mt-1 uppercase">{estaValidado ? 'Aceite' : 'Aceitar'}</span>
                         </button>
-
                         <button onClick={() => handleWhatsApp(p.id, aluno?.telefone_encarregado, aluno?.nome, 'entrada')} className={`${p.msg_in_enviada ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.3)]' : 'bg-blue-500/10 text-blue-500'} p-2.5 rounded-xl transition-all min-w-14 relative`}>
                           <MessageCircle size={16} className="mx-auto" />
                           <span className="text-[8px] font-black block mt-1 uppercase">{p.msg_in_enviada ? 'Enviada' : 'Msg In'}</span>
                           {p.msg_in_enviada && <CheckCircle2 size={10} className="absolute top-1 right-1" />}
                         </button>
-
                         <button onClick={() => handleWhatsApp(p.id, aluno?.telefone_encarregado, aluno?.nome, 'saida')} className={`${p.msg_out_enviada ? 'bg-purple-600 text-white shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'bg-purple-500/10 text-purple-500'} p-2.5 rounded-xl transition-all min-w-14 relative`}>
                           <MessageCircle size={16} className="mx-auto" />
                           <span className="text-[8px] font-black block mt-1 uppercase">{p.msg_out_enviada ? 'Enviada' : 'Msg Out'}</span>
                           {p.msg_out_enviada && <CheckCircle2 size={10} className="absolute top-1 right-1" />}
                         </button>
-
                         <button onClick={() => handleDarSaida(p.id)} className="bg-slate-800 text-slate-400 hover:bg-red-500 hover:text-white p-2.5 rounded-xl transition-all">
                           <LogOut size={16} />
                         </button>
@@ -303,8 +321,11 @@ export default function DashboardAdmin() {
           </div>
 
           <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem]">
-            <h4 className="font-black text-sm uppercase text-slate-500 mb-6 flex items-center gap-2">
-              <AlertTriangle size={16} className="text-amber-500" /> Agenda de Risco
+            <h4 className="font-black text-sm uppercase text-slate-500 mb-6 flex items-center justify-between">
+              <div className="flex items-center gap-2"><AlertTriangle size={16} className="text-amber-500" /> Agenda de Risco</div>
+              <button onClick={() => setIsExamModalOpen(true)} className="p-1 bg-slate-800 hover:bg-amber-500/20 hover:text-amber-500 rounded-md transition-all">
+                <Plus size={16} />
+              </button>
             </h4>
             <div className="space-y-4">
               {proximosTestes.map(ex => (
@@ -318,80 +339,56 @@ export default function DashboardAdmin() {
         </div>
       </div>
 
-      {/* --- MODAL DE CHECK-IN MANUAL (ADICIONADO) --- */}
+      {/* --- MODAIS --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-[2.5rem] shadow-3xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-800 flex justify-between items-center">
-               <h3 className="text-xl font-black uppercase italic tracking-tighter">Check-in Manual</h3>
-               <button onClick={() => { setIsModalOpen(false); setSelectedAluno(null); }} className="p-2 hover:bg-slate-800 rounded-full transition-colors"><X size={20}/></button>
-            </div>
-
-            <div className="p-6 space-y-6">
-              {!selectedAluno ? (
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-[2.5rem] shadow-3xl p-6 animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-black uppercase italic">Check-in Manual</h3><button onClick={() => { setIsModalOpen(false); setSelectedAluno(null); }}><X size={20}/></button></div>
+            {!selectedAluno ? (
                 <>
-                  <div className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
-                    <input 
-                      autoFocus
-                      placeholder="Quem chegou?" 
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 p-4 pl-12 rounded-2xl outline-none focus:border-emerald-500 transition-all font-bold"
-                    />
-                  </div>
-                  <div className="max-h-60 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                    {alunosDisponiveis.map(aluno => (
-                      <button 
-                        key={aluno.id}
-                        onClick={() => setSelectedAluno(aluno)}
-                        className="w-full p-4 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-center justify-between hover:border-emerald-500 transition-all group"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-black text-emerald-500">
-                            {aluno.avatar_url ? <img src={aluno.avatar_url} className="w-full h-full object-cover rounded-xl" /> : aluno.nome.charAt(0)}
-                          </div>
-                          <div className="text-left">
-                            <p className="font-bold text-sm">{aluno.nome}</p>
-                            <p className="text-[10px] text-slate-500 uppercase font-black">{aluno.pacotes?.nome}</p>
-                          </div>
-                        </div>
-                        {aluno.usa_app === false && <span className="text-[8px] bg-amber-500/10 text-amber-500 px-2 py-1 rounded-md font-black uppercase">Offline</span>}
-                      </button>
-                    ))}
-                  </div>
+                  <div className="relative mb-4"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} /><input autoFocus placeholder="Quem chegou?" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 pl-12 rounded-2xl outline-none focus:border-emerald-500 transition-all font-bold" /></div>
+                  <div className="max-h-60 overflow-y-auto space-y-2">{alunosDisponiveis.map(aluno => (<button key={aluno.id} onClick={() => setSelectedAluno(aluno)} className="w-full p-4 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-center gap-3 hover:border-emerald-500 transition-all group"><div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-black text-emerald-500">{aluno.avatar_url ? <img src={aluno.avatar_url} className="w-full h-full object-cover rounded-xl" /> : aluno.nome.charAt(0)}</div><div className="text-left"><p className="font-bold text-sm">{aluno.nome}</p></div></button>))}</div>
                 </>
-              ) : (
-                <div className="space-y-4 animate-in slide-in-from-right duration-300">
-                  <div className="flex items-center gap-4 bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/20">
-                    <div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center font-black text-white text-xl">
-                      {selectedAluno.avatar_url ? <img src={selectedAluno.avatar_url} className="w-full h-full object-cover rounded-xl" /> : selectedAluno.nome.charAt(0)}
-                    </div>
-                    <div>
-                      <p className="font-black text-emerald-500 uppercase text-[10px] tracking-widest">Selecionado:</p>
-                      <p className="text-lg font-black">{selectedAluno.nome}</p>
-                    </div>
-                    <button onClick={() => setSelectedAluno(null)} className="ml-auto text-xs font-black text-slate-500 hover:text-white uppercase">Trocar</button>
+            ) : (
+                <div className="space-y-4"><div className="flex items-center gap-4 bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/20"><div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center font-black text-white text-xl">{selectedAluno.nome.charAt(0)}</div><div><p className="text-lg font-black">{selectedAluno.nome}</p></div><button onClick={() => setSelectedAluno(null)} className="ml-auto text-xs font-black text-slate-500 uppercase">Trocar</button></div><div className="grid grid-cols-2 gap-2">{subjects.map(sub => (<button key={sub.id} disabled={isSubmitting} onClick={() => handleManualCheckIn(sub)} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl hover:border-blue-500 transition-all text-xs font-bold">{sub.name}</button>))}</div></div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isExamModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-[2.5rem] shadow-3xl p-6 animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-black uppercase italic">Agendar Teste</h3><button onClick={() => { setIsExamModalOpen(false); setSelectedExamStudent(null); }}><X size={20}/></button></div>
+            {!selectedExamStudent ? (
+                <>
+                  <div className="relative mb-4"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} /><input autoFocus placeholder="Qual o aluno?" value={examSearchQuery} onChange={(e) => setExamSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 pl-12 rounded-2xl outline-none focus:border-amber-500 font-bold" /></div>
+                  <div className="max-h-60 overflow-y-auto space-y-2">{alunosFiltradosExame.map(aluno => (<button key={aluno.id} onClick={() => setSelectedExamStudent(aluno)} className="w-full p-4 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-center gap-3 hover:border-amber-500 transition-all group"><div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-black text-amber-500">{aluno.nome.charAt(0)}</div><p className="font-bold text-sm">{aluno.nome}</p></button>))}</div>
+                </>
+            ) : (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-4 bg-amber-500/10 p-4 rounded-2xl border border-amber-500/20">
+                    <div><p className="text-lg font-black">{selectedExamStudent.nome}</p></div>
+                    <button onClick={() => setSelectedExamStudent(null)} className="ml-auto text-xs font-black text-slate-500 uppercase">Trocar</button>
                   </div>
-                  
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Escolha a Disciplina para entrada:</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {subjects.map(sub => (
-                      <button 
-                        key={sub.id}
-                        disabled={isSubmitting}
-                        onClick={() => handleManualCheckIn(sub)}
-                        className="p-4 bg-slate-950 border border-slate-800 rounded-2xl hover:border-blue-500 transition-all text-left flex flex-col gap-1 group"
-                      >
-                        <BookOpen size={16} className="text-blue-500 mb-1" />
-                        <p className="font-bold text-xs">{sub.name}</p>
-                        <p className="text-[8px] text-slate-600 uppercase font-black">{salas.find(s => s.id === sub.sala_id)?.nome || 'Sem Sala'}</p>
-                      </button>
-                    ))}
+                  <div className="space-y-4">
+                    <select value={examSubject} onChange={(e) => setExamSubject(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl outline-none font-bold text-white">
+                      <option value="">Disciplina...</option>
+                      {subjects.map(sub => (<option key={sub.id} value={sub.name}>{sub.name}</option>))}
+                    </select>
+                    <div className="relative">
+                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                      <input 
+                        type="date" 
+                        value={examDate} 
+                        onChange={(e) => setExamDate(e.target.value)} 
+                        className="w-full bg-slate-950 border border-slate-800 p-4 pl-12 rounded-2xl outline-none font-bold text-white" 
+                      />
+                    </div>
                   </div>
+                  <button onClick={handleCreateExam} disabled={isSubmitting || !examDate || !examSubject} className="w-full bg-amber-600 hover:bg-amber-500 text-white p-5 rounded-2xl font-black">CONFIRMAR AGENDAMENTO</button>
                 </div>
-              )}
-            </div>
+            )}
           </div>
         </div>
       )}

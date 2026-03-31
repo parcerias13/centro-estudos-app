@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Shield, Plus, Trash2, Loader2, Save, Mail, User } from 'lucide-react';
+import { ArrowLeft, Shield, Plus, Trash2, Loader2, Save, Mail, User, Lock } from 'lucide-react';
 
 export default function AdminTeam() {
   const [team, setTeam] = useState<any[]>([]);
@@ -14,6 +14,7 @@ export default function AdminTeam() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('Explicador');
+  const [password, setPassword] = useState(''); // ESTADO MOVIDO PARA DENTRO
 
   useEffect(() => {
     fetchTeam();
@@ -27,20 +28,35 @@ export default function AdminTeam() {
 
   const handleAdd = async (e: any) => {
     e.preventDefault();
-    if (!email || !name) return;
+    if (!email || !name || !password) return;
     setSubmitting(true);
 
-    const { error } = await supabase.from('staff').insert({
+    // 1. Criar o utilizador na Autenticação (Auth) para ele poder fazer login
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: email.toLowerCase().trim(),
+      password: password,
+    });
+
+    if (authError) {
+      alert('Erro na Autenticação: ' + authError.message);
+      setSubmitting(false);
+      return;
+    }
+
+    // 2. Inserir na tabela staff para aparecer na lista
+    const { error: dbError } = await supabase.from('staff').insert({
+      id: authData.user?.id,
       email: email.toLowerCase().trim(),
       name,
       role
     });
 
-    if (error) {
-      alert('Erro: ' + error.message);
+    if (dbError) {
+      alert('Erro na Base de Dados: ' + dbError.message);
     } else {
       setName('');
       setEmail('');
+      setPassword('');
       fetchTeam();
     }
     setSubmitting(false);
@@ -57,7 +73,6 @@ export default function AdminTeam() {
   return (
     <main className="min-h-screen bg-slate-950 text-white p-6 max-w-5xl mx-auto">
       
-      {/* CABEÇALHO */}
       <div className="flex items-center gap-4 mb-8">
         <Link href="/admin" className="bg-slate-900 p-3 rounded-xl hover:bg-slate-800 transition-colors border border-slate-800">
           <ArrowLeft size={20} className="text-slate-400" />
@@ -73,7 +88,6 @@ export default function AdminTeam() {
 
       <div className="grid md:grid-cols-3 gap-8">
         
-        {/* COLUNA 1: ADICIONAR STAFF */}
         <div className="md:col-span-1 bg-slate-900 border border-slate-800 p-6 rounded-2xl h-fit">
           <h2 className="font-bold text-lg mb-4 flex items-center gap-2 text-white">
             <Plus size={20} className="text-green-500" /> Novo Membro
@@ -110,6 +124,22 @@ export default function AdminTeam() {
               </div>
             </div>
 
+            {/* CAMPO DA PASSWORD ADICIONADO NO LOCAL CORRETO */}
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase ml-1">Password Provisória</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3.5 text-slate-500" size={16} />
+                <input 
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    className="w-full bg-slate-950 border border-slate-800 text-white pl-10 pr-3 py-3 rounded-xl outline-none focus:border-indigo-500"
+                    required
+                />
+              </div>
+            </div>
+
             <div>
               <label className="text-xs font-bold text-slate-500 uppercase ml-1">Cargo</label>
               <select 
@@ -134,7 +164,6 @@ export default function AdminTeam() {
           </form>
         </div>
 
-        {/* COLUNA 2: LISTA DE EQUIPA */}
         <div className="md:col-span-2 space-y-3">
           <h3 className="text-slate-500 font-bold uppercase text-xs tracking-wider mb-2">Equipa Ativa ({team.length})</h3>
           
@@ -159,14 +188,12 @@ export default function AdminTeam() {
               <button 
                 onClick={() => handleDelete(member.id)}
                 className="p-2 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                title="Remover acesso"
               >
                 <Trash2 size={18} />
               </button>
             </div>
           ))}
         </div>
-
       </div>
     </main>
   );
