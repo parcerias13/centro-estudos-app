@@ -115,10 +115,19 @@ export default function DashboardAdmin() {
 
   const handleWhatsApp = async (presencaId: string, telefone: string, nome: string, tipo: 'entrada' | 'saida') => {
     if (!telefone) return alert("Este aluno não tem telefone registado.");
+    
+    // Limpeza total: remove +, espaços e carateres especiais
+    const numApenasNumeros = telefone.replace(/\D/g, '');
+    
+    // Normalização: Garante o prefixo 351 sem duplicar
+    const numFinal = numApenasNumeros.startsWith('351') ? numApenasNumeros : `351${numApenasNumeros}`;
+
     const msg = tipo === 'entrada' 
-      ? `Olá! Informamos que o(a) aluno(a) ${nome} deu entrada no Centro AI. Foco total! 📚`
-      : `Olá! Informamos que o(a) aluno(a) ${nome} concluiu a sua sessão e aguarda boleia. 🚗`;
-    window.open(`https://wa.me/351${telefone}?text=${encodeURIComponent(msg)}`, '_blank');
+      ? `Olá! Informamos que o(a) aluno(a) ${nome} deu entrada no Centro de Estudos! 📚`
+      : `Olá! Informamos que o(a) aluno(a) ${nome} concluiu a sua sessão de estudo!`;
+    
+    window.open(`https://wa.me/${numFinal}?text=${encodeURIComponent(msg)}`, '_blank');
+    
     const updateData = tipo === 'entrada' ? { msg_in_enviada: true } : { msg_out_enviada: true };
     const { error } = await supabase.from('diario_bordo').update(updateData).eq('id', presencaId);
     if (!error) fetchDados(); 
@@ -157,7 +166,6 @@ export default function DashboardAdmin() {
     if (!selectedExamStudent || !examSubject || !examDate) return alert("Preenche tudo!");
     setIsSubmitting(true);
     try {
-      // CORREÇÃO: Removida a coluna inexistente 'aluno_id'
       const { error } = await supabase.from('exams').insert({
         student_id: selectedExamStudent.id,
         subject_name: examSubject,

@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, FileText, User, Clock, BookOpen, Calendar, ShieldAlert, Download } from 'lucide-react';
+import { ArrowLeft, Loader2, FileText, User, Clock, BookOpen, Calendar, ShieldAlert, Download, Mail, CheckCircle2 } from 'lucide-react';
 
 function RelatorioContent() {
   const searchParams = useSearchParams();
@@ -13,6 +13,10 @@ function RelatorioContent() {
   const [student, setStudent] = useState<any>(null);
   const [stats, setStats] = useState<any>({ totalVisits: 0, totalHours: 0, topSubject: '-' });
   const [history, setHistory] = useState<any[]>([]);
+
+  // ESTADOS PARA CONTROLO DE ENVIO DE EMAIL
+  const [isSending, setIsSending] = useState(false);
+  const [sentStatus, setSentStatus] = useState(false);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,7 +28,7 @@ function RelatorioContent() {
   }, [studentId]);
 
   const fetchData = async () => {
-    // 1. Dados do Aluno
+    // 1. Dados do Aluno (Garante que a coluna email_encarregado existe no Supabase)
     const { data: alunoData } = await supabase
       .from('alunos')
       .select('*')
@@ -32,18 +36,17 @@ function RelatorioContent() {
       .single();
     setStudent(alunoData);
 
-    // 2. Histórico Completo (para estatísticas)
+    // 2. Histórico de Sessões
     const { data: entries } = await supabase
       .from('diario_bordo')
       .select('*')
       .eq('student_id', studentId)
-      .not('checkout_at', 'is', null) // Só sessões terminadas conta para horas
+      .not('checkout_at', 'is', null)
       .order('created_at', { ascending: false });
 
     if (entries && entries.length > 0) {
-        setHistory(entries.slice(0, 10)); // Últimas 10 para a tabela
+        setHistory(entries.slice(0, 10));
 
-        // Cálculos
         let totalMs = 0;
         const subjects: Record<string, number> = {};
         
@@ -63,6 +66,59 @@ function RelatorioContent() {
     setLoading(false);
   };
 
+  const handleSendEmail = async () => {
+    // VALIDAÇÃO CRÍTICA: Bater com o nome da coluna na DB
+    if (!student?.email_encarregado) {
+      return alert("Erro: Este aluno não tem um e-mail de encarregado registado na base de dados.");
+    }
+
+    setIsSending(true);
+
+    // Template HTML para o Resend
+    const reportHtml = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; background: #ffffff; padding: 40px; border-radius: 20px; border: 1px solid #e2e8f0;">
+        <h1 style="color: #2563eb; font-size: 24px; font-weight: 900; text-transform: uppercase; margin-bottom: 20px;">Relatório de Performance</h1>
+        <p style="font-size: 16px;">Olá, segue o resumo das atividades do(a) aluno(a) <strong>${student.nome}</strong>.</p>
+        
+        <div style="background: #f8fafc; padding: 25px; border-radius: 15px; border: 1px solid #e2e8f0; margin: 20px 0;">
+          <p style="margin: 8px 0; font-size: 15px;"><strong>Volume Total:</strong> ${stats.totalHours} horas</p>
+          <p style="margin: 8px 0; font-size: 15px;"><strong>Frequência:</strong> ${stats.totalVisits} sessões</p>
+          <p style="margin: 8px 0; font-size: 15px;"><strong>Foco Principal:</strong> ${stats.topSubject}</p>
+        </div>
+
+        <p style="font-size: 12px; color: #64748b; border-top: 1px solid #eee; padding-top: 20px; margin-top: 30px;">
+          Este é um relatório automático gerado pelo sistema <strong>Centro AI</strong>.
+        </p>
+      </div>
+    `;
+
+    try {
+      const response = await fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: student.id,
+          targetEmail: student.email_encarregado,
+          studentName: student.nome,
+          reportHtml: reportHtml
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setSentStatus(true);
+        setTimeout(() => setSentStatus(false), 5000);
+      } else {
+        alert("Erro no Servidor: " + JSON.stringify(result.error));
+      }
+    } catch (err) {
+      alert("Falha na ligação ao servidor. Verifica se o terminal não tem erros.");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
   if (!student) return <div className="p-8 text-white">Aluno não encontrado.</div>;
 
@@ -70,18 +126,18 @@ function RelatorioContent() {
     <main className="min-h-screen bg-slate-950 p-6">
       <div className="max-w-4xl mx-auto bg-white rounded-3xl overflow-hidden shadow-2xl">
         
-        {/* CABEÇALHO DO RELATÓRIO (Estilo "Print") */}
+        {/* HEADER DO DOCUMENTO */}
         <div className="bg-slate-800 p-8 text-white flex justify-between items-start">
             <div>
                 <h1 className="text-3xl font-black uppercase tracking-wider mb-2 flex items-center gap-3">
                     <FileText size={28} className="text-blue-400" />
-                    Relatório de Performance
+                    Performance
                 </h1>
-                <p className="opacity-80">Centro de Estudos - Documento Interno</p>
+                <p className="opacity-80">Documento de Acompanhamento Escolar</p>
             </div>
              <div className="text-right">
                 <p className="font-bold text-xl">{student.nome}</p>
-                <p className="text-sm opacity-70">{student.email}</p>
+                <p className="text-sm opacity-70">{student.email_encarregado}</p>
                 <div className="mt-2 inline-flex items-center gap-2 bg-slate-700 px-3 py-1 rounded-full text-xs font-bold">
                     <ShieldAlert size={14} className={student.saida_autorizada ? "text-emerald-400" : "text-red-400"} />
                     {student.saida_autorizada ? "Saída Autorizada" : "Requer Acompanhante"}
@@ -89,73 +145,62 @@ function RelatorioContent() {
             </div>
         </div>
 
-        {/* CORPO DO RELATÓRIO */}
         <div className="p-8 text-slate-800">
-            
-            {/* 1. RESUMO GERAL (Cards Brancos) */}
+            {/* CARDS DE ESTATÍSTICAS */}
             <div className="grid grid-cols-3 gap-6 mb-10">
                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
                     <div className="flex items-center gap-2 text-blue-600 mb-2">
                         <Clock size={20} />
-                        <h3 className="font-bold uppercase text-xs tracking-wider">Volume Total</h3>
+                        <h3 className="font-bold uppercase text-xs tracking-wider">Horas Totais</h3>
                     </div>
-                    <p className="text-4xl font-black">{stats.totalHours}<span className="text-sm text-slate-500 font-normal ml-1">horas</span></p>
+                    <p className="text-4xl font-black">{stats.totalHours}<span className="text-sm text-slate-500 font-normal ml-1">h</span></p>
                 </div>
                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
                      <div className="flex items-center gap-2 text-purple-600 mb-2">
                         <Calendar size={20} />
                         <h3 className="font-bold uppercase text-xs tracking-wider">Frequência</h3>
                     </div>
-                    <p className="text-4xl font-black">{stats.totalVisits}<span className="text-sm text-slate-500 font-normal ml-1">sessões</span></p>
-                    <p className="text-xs text-slate-500 mt-1 font-bold">Plano: {student.limite_semanal === 99 ? 'Livre' : `${student.limite_semanal}x/semana`}</p>
+                    <p className="text-4xl font-black">{stats.totalVisits}</p>
+                    <p className="text-[10px] text-slate-400 mt-1 font-bold uppercase">Sessões Concluídas</p>
                 </div>
                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
                      <div className="flex items-center gap-2 text-orange-600 mb-2">
                         <BookOpen size={20} />
-                        <h3 className="font-bold uppercase text-xs tracking-wider">Foco Principal</h3>
+                        <h3 className="font-bold uppercase text-xs tracking-wider">Principal Foco</h3>
                     </div>
-                    <p className="text-xl font-black truncate" title={stats.topSubject}>{stats.topSubject}</p>
+                    <p className="text-lg font-black truncate" title={stats.topSubject}>{stats.topSubject}</p>
                 </div>
             </div>
 
-            {/* 2. HISTÓRICO RECENTE (Tabela Limpa) */}
-            <h2 className="font-bold text-xl mb-4 flex items-center gap-2">
-                <Clock size={20} className="text-slate-400" />
-                Últimas Atividades
+            {/* TABELA DE ATIVIDADES */}
+            <h2 className="font-bold text-xl mb-4 flex items-center gap-2 text-slate-400">
+                Últimos Registos
             </h2>
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="border border-slate-100 rounded-2xl overflow-hidden">
                 <table className="w-full text-left">
-                    <thead className="bg-slate-100 text-slate-500 text-xs uppercase font-bold">
+                    <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-widest">
                         <tr>
                             <th className="p-4">Data</th>
                             <th className="p-4">Disciplina</th>
-                            <th className="p-4">Entrada</th>
-                            <th className="p-4">Saída</th>
+                            <th className="p-4">Entrada/Saída</th>
                             <th className="p-4 text-center">Estado</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
+                    <tbody className="divide-y divide-slate-50 bg-white">
                         {history.length === 0 ? (
-                            <tr><td colSpan={5} className="p-6 text-center text-slate-500">Sem histórico recente.</td></tr>
+                            <tr><td colSpan={4} className="p-10 text-center text-slate-300 font-medium">Nenhum registo encontrado.</td></tr>
                         ) : (
                             history.map(entry => (
-                                <tr key={entry.id}>
-                                    <td className="p-4 font-bold text-slate-700">
-                                        {new Date(entry.created_at).toLocaleDateString('pt-PT')}
-                                    </td>
-                                    <td className="p-4">{entry.subject_name}</td>
-                                    <td className="p-4 font-mono text-sm text-slate-500">
-                                        {new Date(entry.created_at).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})}
-                                    </td>
-                                     <td className="p-4 font-mono text-sm text-slate-500">
-                                        {entry.checkout_at ? new Date(entry.checkout_at).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'}) : '-'}
+                                <tr key={entry.id} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="p-4 font-bold text-slate-700">{new Date(entry.created_at).toLocaleDateString('pt-PT')}</td>
+                                    <td className="p-4 text-sm font-medium">{entry.subject_name}</td>
+                                    <td className="p-4 font-mono text-xs text-slate-400">
+                                        {new Date(entry.created_at).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})} 
+                                        {entry.checkout_at ? ` → ${new Date(entry.checkout_at).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})}` : ' -'}
                                     </td>
                                     <td className="p-4 text-center">
-                                        <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full ${
-                                            entry.status === 'checkout' ? 'bg-green-100 text-green-700' : 
-                                            entry.status === 'falta' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                                        }`}>
-                                            {entry.status === 'checkout' ? 'Concluído' : entry.status}
+                                        <span className="text-[10px] font-black uppercase px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">
+                                            Concluído
                                         </span>
                                     </td>
                                 </tr>
@@ -165,14 +210,40 @@ function RelatorioContent() {
                 </table>
             </div>
 
-            {/* RODAPÉ COM AÇÃO */}
-            <div className="mt-8 pt-8 border-t border-slate-200 flex justify-between items-center no-print">
-                <Link href="/admin/alunos" className="flex items-center gap-2 text-slate-500 hover:text-slate-800 font-bold transition-colors">
-                    <ArrowLeft size={18} /> Voltar à Lista
+            {/* BOTÕES DE AÇÃO */}
+            <div className="mt-10 pt-8 border-t border-slate-100 flex justify-between items-center no-print">
+                <Link href="/admin/alunos" className="flex items-center gap-2 text-slate-400 hover:text-slate-900 font-bold transition-colors text-sm">
+                    <ArrowLeft size={16} /> Voltar à Gestão
                 </Link>
-                <button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg transition-all active:scale-95">
-                    <Download size={18} /> Imprimir / Guardar PDF
-                </button>
+                
+                <div className="flex items-center gap-4">
+                    {/* BOTÃO DE EMAIL COM FEEDBACK VISUAL */}
+                    <button 
+                        onClick={handleSendEmail}
+                        disabled={isSending}
+                        className={`flex items-center gap-3 px-8 py-4 rounded-2xl font-black transition-all active:scale-[0.98] shadow-xl ${
+                        sentStatus 
+                            ? 'bg-emerald-600 text-white shadow-emerald-500/20' 
+                            : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/20'
+                        }`}
+                    >
+                        {isSending ? (
+                        <Loader2 className="animate-spin" size={20} />
+                        ) : sentStatus ? (
+                        <CheckCircle2 size={20} />
+                        ) : (
+                        <Mail size={20} />
+                        )}
+                        {isSending ? 'A PROCESSAR...' : sentStatus ? 'ENVIADO COM SUCESSO' : 'ENVIAR POR EMAIL'}
+                    </button>
+
+                    <button 
+                        onClick={() => window.print()} 
+                        className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl shadow-blue-500/20 transition-all active:scale-95"
+                    >
+                        <Download size={20} /> PDF
+                    </button>
+                </div>
             </div>
 
         </div>

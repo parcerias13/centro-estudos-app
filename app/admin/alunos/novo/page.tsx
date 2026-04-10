@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap } from 'lucide-react';
 
 export default function NovoAluno() {
   const router = useRouter();
@@ -17,12 +17,13 @@ export default function NovoAluno() {
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('123456');
-  const [telefone, setTelefone] = useState('');
+  const [telefone, setTelefone] = useState(''); 
+  const [telemovelAluno, setTelemovelAluno] = useState(''); 
   const [dataNascimento, setDataNascimento] = useState('');
   const [anoEscolar, setAnoEscolar] = useState('1');
   const [saidaAutorizada, setSaidaAutorizada] = useState(false);
   const [consentimentoIa, setConsentimentoIa] = useState(false);
-  const [usaApp, setUsaApp] = useState(true); // NOVO: Estado para Autonomia Digital
+  const [usaApp, setUsaApp] = useState(true); 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   // 2. LÓGICA DE NEGÓCIO
@@ -125,11 +126,12 @@ export default function NovoAluno() {
         email,
         data_nascimento: dataNascimento,
         telefone_encarregado: telefone,
+        telemovel_aluno: telemovelAluno, 
         ano_escolar: parseInt(anoEscolar),
         pacote_id: pacoteId,
         saida_autorizada: saidaAutorizada,
         consentimento_ia: eMaiorDe13() ? consentimentoIa : false,
-        usa_app: usaApp, // INSERÇÃO DA AUTONOMIA DIGITAL
+        usa_app: usaApp,
         avatar_url: avatarUrl,
       });
       if (dbError) throw new Error(`Erro DB: ${dbError.message}`);
@@ -200,6 +202,31 @@ export default function NovoAluno() {
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Password</label>
               <input type="text" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" />
+            </div>
+
+            {/* CAMPO ADICIONADO: ANO ESCOLAR */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                <GraduationCap size={12} /> Ano Escolar
+              </label>
+              <select 
+                value={anoEscolar} 
+                onChange={(e) => setAnoEscolar(e.target.value)} 
+                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all text-white appearance-none cursor-pointer"
+              >
+                {[...Array(12)].map((_, i) => (
+                  <option key={i + 1} value={i + 1}>{i + 1}º Ano</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Smartphone size={12}/> Telemóvel do Aluno</label>
+              <input type="text" value={telemovelAluno} onChange={(e) => setTelemovelAluno(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" placeholder="Ex: 912345678" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Phone size={12}/> Telemóvel Encarregado (WhatsApp)</label>
+              <input type="text" required value={telefone} onChange={(e) => setTelefone(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" placeholder="Ex: 912345678" />
             </div>
           </div>
         </div>

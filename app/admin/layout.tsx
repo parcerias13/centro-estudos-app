@@ -1,4 +1,4 @@
-'use client' // Necessário se estiveres a usar Next.js App Router
+'use client'
 
 import Link from 'next/link'
 import { useState } from 'react'
@@ -8,25 +8,25 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  // 1. O "Cérebro": Estado para saber se o menu está aberto
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
+  // Lista de items atualizada com Configurações
   const menuItems = [
     { name: 'Dashboard', href: '/admin', icon: '📈' },
-    { name: 'Check-in Diário', href: '/admin/checkin', icon: '📍', highlight: true },
-    { name: 'Agenda', href: '/admin/agenda', icon: '📅' },
     { name: 'Alunos', href: '/admin/alunos', icon: '👥' },
+    { name: 'Agenda', href: '/admin/agenda', icon: '📅' },
     { name: 'Histórico', href: '/admin/historico', icon: '📜' },
     { name: 'Disciplinas', href: '/admin/disciplinas', icon: '📚' },
     { name: 'Estatísticas', href: '/admin/estatisticas', icon: '📊' },
     { name: 'Biblioteca', href: '/admin/biblioteca', icon: '📖' },
     { name: 'Equipa', href: '/admin/equipa', icon: '🛡️' },
+    { name: 'Configurações', href: '/admin/configuracoes', icon: '⚙️' },
   ]
 
   return (
     <div className="flex min-h-screen bg-[#0f172a]">
       
-      {/* 2. Overlay (Fundo escuro) - Só aparece no telemóvel quando o menu abre */}
+      {/* Overlay Mobile */}
       {isMenuOpen && (
         <div 
           className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm"
@@ -34,7 +34,7 @@ export default function AdminLayout({
         />
       )}
 
-      {/* 3. Sidebar - Agora controlado pelo estado isMenuOpen */}
+      {/* Sidebar */}
       <aside className={`
         ${isMenuOpen ? 'flex' : 'hidden'} 
         md:flex w-64 bg-[#1e293b] border-r border-slate-800 flex-col fixed h-full shadow-2xl z-50 transition-all duration-300
@@ -46,7 +46,6 @@ export default function AdminLayout({
             </h2>
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Gestão de Performance</p>
           </div>
-          {/* Botão para fechar no telemóvel */}
           <button onClick={() => setIsMenuOpen(false)} className="md:hidden text-white text-2xl">✕</button>
         </div>
 
@@ -55,14 +54,11 @@ export default function AdminLayout({
             <Link 
               key={item.href}
               href={item.href} 
-              onClick={() => setIsMenuOpen(false)} // Fecha o menu ao clicar num link
-              className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group
-                ${item.highlight 
-                  ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20 hover:bg-blue-600/20' 
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+              onClick={() => setIsMenuOpen(false)}
+              className="flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group text-slate-400 hover:text-white hover:bg-slate-800"
             >
-              <span className="text-lg group-hover:scale-120 transition-transform">{item.icon}</span>
-              <span className={`text-sm ${item.highlight ? 'font-bold' : 'font-medium'}`}>{item.name}</span>
+              <span className="text-lg group-hover:scale-110 transition-transform">{item.icon}</span>
+              <span className="text-sm font-medium">{item.name}</span>
             </Link>
           ))}
         </nav>
@@ -74,15 +70,15 @@ export default function AdminLayout({
         </div>
       </aside>
 
-      {/* 4. Conteúdo Principal */}
+      {/* Conteúdo Principal */}
       <main className="flex-1 md:ml-64 min-h-screen w-full">
-        {/* Header Mobile com o botão que FUNCIONA agora */}
+        {/* Header Mobile */}
         <header className="md:hidden bg-[#1e293b] p-4 border-b border-slate-800 flex justify-between items-center sticky top-0 z-30">
           <h2 className="text-lg font-black text-white italic">
             CENTRO<span className="text-blue-500">AI</span>
           </h2>
           <button 
-            onClick={() => setIsMenuOpen(true)} // Liga o menu
+            onClick={() => setIsMenuOpen(true)}
             className="text-2xl text-white p-2 hover:bg-slate-800 rounded-lg transition"
           >
             ☰
