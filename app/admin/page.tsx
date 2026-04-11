@@ -5,12 +5,28 @@ import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
 import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, CalendarDays, MapPin, CheckCircle2, XCircle, UserPlus, Search, BookOpen, X, Plus, Calendar } from 'lucide-react';
 
+
 export default function DashboardAdmin() {
   const [presencas, setPresencas] = useState<any[]>([]);
   const [proximosTestes, setProximosTestes] = useState<any[]>([]);
   const [salas, setSalas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // --- SISTEMA DE CONTROLO DE FLUXO (ANTI-DOUBLE CLICK) ---
+  const safeAction = async (actionFn: () => Promise<void>) => {
+    if (isSubmitting) return; 
+    
+    setIsSubmitting(true);
+    try {
+      await actionFn(); 
+    } catch (error) {
+      console.error("Erro na operação:", error);
+    } finally {
+      setIsSubmitting(false); 
+    }
+  };
 
   // --- CONTROLO DE ACESSO (ROLE) ---
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -21,7 +37,6 @@ export default function DashboardAdmin() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAluno, setSelectedAluno] = useState<any>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- ESTADOS PARA AGENDAMENTO DE TESTES ---
   const [isExamModalOpen, setIsExamModalOpen] = useState(false);
@@ -115,19 +130,12 @@ export default function DashboardAdmin() {
 
   const handleWhatsApp = async (presencaId: string, telefone: string, nome: string, tipo: 'entrada' | 'saida') => {
     if (!telefone) return alert("Este aluno não tem telefone registado.");
-    
-    // Limpeza total: remove +, espaços e carateres especiais
     const numApenasNumeros = telefone.replace(/\D/g, '');
-    
-    // Normalização: Garante o prefixo 351 sem duplicar
     const numFinal = numApenasNumeros.startsWith('351') ? numApenasNumeros : `351${numApenasNumeros}`;
-
     const msg = tipo === 'entrada' 
       ? `Olá! Informamos que o(a) aluno(a) ${nome} deu entrada no Centro de Estudos! 📚`
       : `Olá! Informamos que o(a) aluno(a) ${nome} concluiu a sua sessão de estudo!`;
-    
     window.open(`https://wa.me/${numFinal}?text=${encodeURIComponent(msg)}`, '_blank');
-    
     const updateData = tipo === 'entrada' ? { msg_in_enviada: true } : { msg_out_enviada: true };
     const { error } = await supabase.from('diario_bordo').update(updateData).eq('id', presencaId);
     if (!error) fetchDados(); 
@@ -197,7 +205,7 @@ export default function DashboardAdmin() {
   if (loading) return <div className="min-h-screen bg-[#0f172a] flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
 
   return (
-    <main className="min-h-screen bg-[#0f172a] p-4 md:p-8 text-white font-sans relative">
+    <main className={`min-h-screen bg-[#0f172a] p-4 md:p-8 text-white font-sans relative transition-all ${isSubmitting ? 'pointer-events-none opacity-60' : ''}`}>
       
       {errorMsg && (
         <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl mb-6 text-amber-500 text-[10px] font-black flex items-center gap-2">
@@ -216,7 +224,7 @@ export default function DashboardAdmin() {
           </button>
 
           {presencas.length > 0 && (
-            <button onClick={handleMassCheckout} className="flex items-center gap-2 px-4 py-3 bg-red-600/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-lg shadow-red-900/10">
+            <button disabled={isSubmitting} onClick={() => safeAction(handleMassCheckout)} className="flex items-center gap-2 px-4 py-3 bg-red-600/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-lg shadow-red-900/10 disabled:opacity-50">
               <LogOut size={16} /> Checkout Total
             </button>
           )}
@@ -277,22 +285,22 @@ export default function DashboardAdmin() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-                        <button onClick={() => handleValidarEntrada(p.id)} className={`${estaValidado ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-500'} p-2.5 rounded-xl transition-all min-w-14`}>
-                          <CheckCircle2 size={16} className="mx-auto" />
+                        <button disabled={isSubmitting} onClick={() => safeAction(() => handleValidarEntrada(p.id))} className={`${estaValidado ? 'bg-emerald-600 text-white' : 'bg-emerald-500/10 text-emerald-500'} p-2.5 rounded-xl transition-all min-w-14 disabled:opacity-50`}>
+                          {isSubmitting && !estaValidado ? <Loader2 className="animate-spin mx-auto" size={16} /> : <CheckCircle2 size={16} className="mx-auto" />}
                           <span className="text-[8px] font-black block mt-1 uppercase">{estaValidado ? 'Aceite' : 'Aceitar'}</span>
                         </button>
-                        <button onClick={() => handleWhatsApp(p.id, aluno?.telefone_encarregado, aluno?.nome, 'entrada')} className={`${p.msg_in_enviada ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.3)]' : 'bg-blue-500/10 text-blue-500'} p-2.5 rounded-xl transition-all min-w-14 relative`}>
+                        <button disabled={isSubmitting} onClick={() => safeAction(() => handleWhatsApp(p.id, aluno?.telefone_encarregado, aluno?.nome, 'entrada'))} className={`${p.msg_in_enviada ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.3)]' : 'bg-blue-500/10 text-blue-500'} p-2.5 rounded-xl transition-all min-w-14 relative disabled:opacity-50`}>
                           <MessageCircle size={16} className="mx-auto" />
                           <span className="text-[8px] font-black block mt-1 uppercase">{p.msg_in_enviada ? 'Enviada' : 'Msg In'}</span>
                           {p.msg_in_enviada && <CheckCircle2 size={10} className="absolute top-1 right-1" />}
                         </button>
-                        <button onClick={() => handleWhatsApp(p.id, aluno?.telefone_encarregado, aluno?.nome, 'saida')} className={`${p.msg_out_enviada ? 'bg-purple-600 text-white shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'bg-purple-500/10 text-purple-500'} p-2.5 rounded-xl transition-all min-w-14 relative`}>
+                        <button disabled={isSubmitting} onClick={() => safeAction(() => handleWhatsApp(p.id, aluno?.telefone_encarregado, aluno?.nome, 'saida'))} className={`${p.msg_out_enviada ? 'bg-purple-600 text-white shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'bg-purple-500/10 text-purple-500'} p-2.5 rounded-xl transition-all min-w-14 relative disabled:opacity-50`}>
                           <MessageCircle size={16} className="mx-auto" />
                           <span className="text-[8px] font-black block mt-1 uppercase">{p.msg_out_enviada ? 'Enviada' : 'Msg Out'}</span>
                           {p.msg_out_enviada && <CheckCircle2 size={10} className="absolute top-1 right-1" />}
                         </button>
-                        <button onClick={() => handleDarSaida(p.id)} className="bg-slate-800 text-slate-400 hover:bg-red-500 hover:text-white p-2.5 rounded-xl transition-all">
-                          <LogOut size={16} />
+                        <button disabled={isSubmitting} onClick={() => safeAction(() => handleDarSaida(p.id))} className="bg-slate-800 text-slate-400 hover:bg-red-500 hover:text-white p-2.5 rounded-xl transition-all disabled:opacity-50">
+                          {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <LogOut size={16} />}
                         </button>
                     </div>
                   </div>
@@ -401,5 +409,5 @@ export default function DashboardAdmin() {
         </div>
       )}
     </main>
-  );
+      );
 }

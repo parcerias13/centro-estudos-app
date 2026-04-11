@@ -8,7 +8,7 @@ import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, Brai
 
 export default function NovoAluno() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // Substitui o loading simples
   const [uploading, setUploading] = useState(false);
   const [erro, setErro] = useState('');
   const [pacotes, setPacotes] = useState<any[]>([]);
@@ -18,7 +18,7 @@ export default function NovoAluno() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('123456');
   const [telefone, setTelefone] = useState(''); 
-  const [emailEncarregado, setEmailEncarregado] = useState(''); // NOVO: Email para relatórios
+  const [emailEncarregado, setEmailEncarregado] = useState(''); 
   const [telemovelAluno, setTelemovelAluno] = useState(''); 
   const [dataNascimento, setDataNascimento] = useState('');
   const [anoEscolar, setAnoEscolar] = useState('1');
@@ -40,6 +40,19 @@ export default function NovoAluno() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+
+  // --- SISTEMA DE CONTROLO DE FLUXO (ANTI-DOUBLE CLICK) ---
+  const safeAction = async (actionFn: () => Promise<void>) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await actionFn();
+    } catch (error) {
+      console.error("Erro na operação:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     const fetchPacotes = async () => {
@@ -93,8 +106,7 @@ export default function NovoAluno() {
     });
   };
 
-  const handleGuardar = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGuardar = async () => {
     const pacoteSelecionado = pacotes.find(p => p.id === pacoteId);
     
     if (pacoteSelecionado && diasSelecionados.length !== pacoteSelecionado.sessoes_semanais && pacoteSelecionado.sessoes_semanais !== 99) {
@@ -103,11 +115,10 @@ export default function NovoAluno() {
     }
 
     if (!dataNascimento) {
-      setErro('A data de nascimento é obrigatória para conformidade legal.');
+      setErro('A data de nascimento é obrigatória.');
       return;
     }
 
-    setLoading(true);
     setErro('');
 
     try {
@@ -127,7 +138,7 @@ export default function NovoAluno() {
         email,
         data_nascimento: dataNascimento,
         telefone_encarregado: telefone,
-        email_encarregado: emailEncarregado, // INSERÇÃO DO EMAIL DO ENCARREGADO
+        email_encarregado: emailEncarregado,
         telemovel_aluno: telemovelAluno, 
         ano_escolar: parseInt(anoEscolar),
         pacote_id: pacoteId,
@@ -145,12 +156,12 @@ export default function NovoAluno() {
       router.refresh();
     } catch (err: any) {
       setErro(err.message);
-      setLoading(false);
+      throw err; // Lança para o safeAction capturar
     }
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white p-6 max-w-4xl mx-auto pb-20">
+    <main className={`min-h-screen bg-slate-950 text-white p-6 max-w-4xl mx-auto pb-20 transition-all ${isSubmitting ? 'pointer-events-none opacity-60' : ''}`}>
       <div className="flex items-center gap-4 mb-8">
         <Link href="/admin/alunos" className="bg-slate-900 p-3 rounded-xl hover:bg-slate-800 transition-colors border border-slate-800">
           <ArrowLeft size={20} className="text-slate-400" />
@@ -163,7 +174,7 @@ export default function NovoAluno() {
         </div>
       </div>
 
-      <form onSubmit={handleGuardar} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-10">
+      <form onSubmit={(e) => { e.preventDefault(); safeAction(handleGuardar); }} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-10">
         
         {erro && (
           <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl flex items-start gap-3 text-red-500">
@@ -231,7 +242,6 @@ export default function NovoAluno() {
               <input type="text" required value={telefone} onChange={(e) => setTelefone(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" placeholder="Ex: 912345678" />
             </div>
 
-            {/* CAMPO ADICIONADO: EMAIL DO ENCARREGADO */}
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
                 <Mail size={12}/> Email do Encarregado (Relatórios)
@@ -280,7 +290,6 @@ export default function NovoAluno() {
           <h2 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em]">3. Permissões e Compliance</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* AUTONOMIA DIGITAL */}
             <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between ${usaApp ? 'bg-slate-950 border-blue-500/30' : 'bg-slate-900/50 border-slate-800 opacity-70'}`}>
               <div className="flex items-center gap-3">
                 <Smartphone size={20} className={usaApp ? 'text-blue-500' : 'text-slate-600'} />
@@ -294,7 +303,6 @@ export default function NovoAluno() {
               </button>
             </div>
 
-            {/* SAÍDA */}
             <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex items-center justify-between">
               <div>
                 <p className="font-bold text-sm">Saída Autorizada</p>
@@ -305,7 +313,6 @@ export default function NovoAluno() {
               </button>
             </div>
 
-            {/* LAB AI */}
             <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between ${!eMaiorDe13() ? 'bg-slate-900/50 border-slate-800 opacity-60' : 'bg-slate-950 border-orange-500/20 shadow-lg shadow-orange-500/5'}`}>
               <div className="flex items-center gap-3">
                 <BrainCircuit size={20} className={!eMaiorDe13() ? 'text-slate-700' : 'text-orange-500'} />
@@ -326,14 +333,18 @@ export default function NovoAluno() {
           
           {!eMaiorDe13() && dataNascimento && (
             <p className="text-[10px] text-red-400 font-bold bg-red-500/5 p-3 rounded-lg flex items-center gap-2">
-              <Baby size={14} /> Nota: Alunos com menos de 13 anos não podem aceder a ferramentas de IA por norma legal.
+              <Baby size={14} /> Nota: Menores de 13 anos não podem aceder a ferramentas de IA.
             </p>
           )}
         </div>
 
-        <button type="submit" disabled={loading || uploading} className="w-full bg-blue-600 hover:bg-blue-500 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 shadow-xl shadow-blue-500/20">
-          {loading ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-          {loading ? 'A CRIAR ACESSOS...' : 'FINALIZAR MATRÍCULA'}
+        <button 
+          type="submit" 
+          disabled={isSubmitting || uploading} 
+          className="w-full bg-blue-600 hover:bg-blue-500 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 shadow-xl shadow-blue-500/20"
+        >
+          {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+          {isSubmitting ? 'A CRIAR ACESSOS...' : 'FINALIZAR MATRÍCULA'}
         </button>
       </form>
     </main>

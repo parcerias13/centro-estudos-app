@@ -12,7 +12,7 @@ function EditarAlunoContent() {
   const studentId = searchParams.get('id');
 
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // Substitui o saving simples
   const [uploading, setUploading] = useState(false);
   const [erro, setErro] = useState('');
 
@@ -43,6 +43,19 @@ function EditarAlunoContent() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
+  // --- SISTEMA DE CONTROLO DE FLUXO (ANTI-DOUBLE CLICK) ---
+  const safeAction = async (actionFn: () => Promise<void>) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await actionFn();
+    } catch (error) {
+      console.error("Erro na operação:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     if (studentId) carregarDados();
   }, [studentId]);
@@ -70,8 +83,8 @@ function EditarAlunoContent() {
       setNome(aluno.nome || '');
       setEmail(aluno.email || '');
       setTelefone(aluno.telefone_encarregado || '');
-      setEmailEncarregado(aluno.email_encarregado || ''); // Carrega o novo campo
-      setTelemovelAluno(aluno.telemovel_aluno || ''); // Carrega o novo campo
+      setEmailEncarregado(aluno.email_encarregado || ''); 
+      setTelemovelAluno(aluno.telemovel_aluno || ''); 
       setDataNascimento(aluno.data_nascimento || '');
       setAnoEscolar(aluno.ano_escolar?.toString() || '1');
       setLimiteSemanal(aluno.limite_semanal?.toString() || '3');
@@ -118,9 +131,8 @@ function EditarAlunoContent() {
     });
   };
 
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
+  const handleUpdate = async () => {
+    setErro('');
     try {
       const { error: errUpdate } = await supabase
         .from('alunos')
@@ -128,8 +140,8 @@ function EditarAlunoContent() {
           nome,
           email,
           telefone_encarregado: telefone,
-          email_encarregado: emailEncarregado, // Grava o novo campo
-          telemovel_aluno: telemovelAluno, // Grava o novo campo
+          email_encarregado: emailEncarregado, 
+          telemovel_aluno: telemovelAluno, 
           data_nascimento: dataNascimento,
           ano_escolar: parseInt(anoEscolar),
           limite_semanal: parseInt(limiteSemanal),
@@ -150,14 +162,14 @@ function EditarAlunoContent() {
       router.refresh();
     } catch (err: any) {
       setErro(`Falha: ${err.message}`);
-      setSaving(false);
+      throw err;
     }
   };
 
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" size={32} /></div>;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white p-6 max-w-4xl mx-auto pb-20">
+    <main className={`min-h-screen bg-slate-950 text-white p-6 max-w-4xl mx-auto pb-20 transition-all ${isSubmitting ? 'pointer-events-none opacity-60' : ''}`}>
       <div className="flex items-center gap-4 mb-8">
         <Link href="/admin/alunos" className="bg-slate-900 p-3 rounded-xl hover:bg-slate-800 transition-colors border border-slate-800">
           <ArrowLeft size={20} className="text-slate-400" />
@@ -170,7 +182,7 @@ function EditarAlunoContent() {
         </div>
       </div>
 
-      <form onSubmit={handleUpdate} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-xl space-y-10">
+      <form onSubmit={(e) => { e.preventDefault(); safeAction(handleUpdate); }} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-xl space-y-10">
         
         {erro && (
           <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl flex items-start gap-3 text-red-500">
@@ -290,7 +302,6 @@ function EditarAlunoContent() {
           <h2 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em]">3. Permissões e Compliance</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* AUTONOMIA DIGITAL */}
             <div className={`bg-slate-950 p-5 rounded-2xl border flex items-center justify-between transition-all ${usaApp ? 'border-blue-500/30 shadow-lg shadow-blue-500/5' : 'border-slate-800 opacity-70'}`}>
               <div className="flex items-center gap-4">
                 <div className={`p-3 rounded-xl ${usaApp ? 'bg-blue-500/10 text-blue-500' : 'bg-slate-800 text-slate-600'}`}>
@@ -306,7 +317,6 @@ function EditarAlunoContent() {
               </button>
             </div>
 
-            {/* SAÍDA */}
             <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex items-center justify-between">
               <div>
                 <h4 className="font-bold text-sm">Saída Autorizada</h4>
@@ -317,7 +327,6 @@ function EditarAlunoContent() {
               </button>
             </div>
 
-            {/* LAB AI */}
             <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between ${!eMaiorDe13() ? 'bg-slate-900/50 border-slate-800 opacity-60' : 'bg-slate-950 border-orange-500/20 shadow-lg shadow-orange-500/5'}`}>
               <div className="flex items-center gap-4">
                 <div className={`p-3 rounded-xl ${!eMaiorDe13() ? 'bg-slate-800' : 'bg-orange-500/10'}`}>
@@ -343,9 +352,13 @@ function EditarAlunoContent() {
           )}
         </div>
 
-        <button type="submit" disabled={saving || uploading} className="w-full bg-blue-600 hover:bg-blue-500 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 shadow-xl shadow-blue-500/10">
-          {saving ? <Loader2 className="animate-spin" /> : <Save size={20} />}
-          {saving ? 'A ATUALIZAR...' : 'GRAVAR ALTERAÇÕES'}
+        <button 
+          type="submit" 
+          disabled={isSubmitting || uploading} 
+          className="w-full bg-blue-600 hover:bg-blue-500 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 shadow-xl shadow-blue-500/10"
+        >
+          {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+          {isSubmitting ? 'A ATUALIZAR...' : 'GRAVAR ALTERAÇÕES'}
         </button>
       </form>
     </main>
