@@ -42,7 +42,7 @@ export default function AdminLayout({
         <div className="p-6 border-b border-slate-800/50 flex justify-between items-center">
           <div>
             <h2 className="text-xl font-black text-white tracking-tighter italic">
-              CENTRO<span className="text-blue-500">AI</span>
+              Cogni<span className="text-blue-500">Lab</span>
             </h2>
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Gestão de Performance</p>
           </div>
