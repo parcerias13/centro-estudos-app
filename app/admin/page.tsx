@@ -264,9 +264,9 @@ export default function DashboardAdmin() {
               return (
                 <div key={p.id} className={`bg-slate-900 border ${!diaContratado ? 'border-red-500' : (estaValidado ? 'border-emerald-500/40' : 'border-slate-800')} p-5 rounded-3xl flex flex-col md:flex-row items-center justify-between transition-all gap-4`}>
                   <div className="flex items-center gap-4 w-full md:w-auto">
-                    <div className={`w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-xl font-black border border-slate-700/50 ${corBase}`}>
-                      {aluno?.avatar_url ? <img src={aluno.avatar_url} className="w-full h-full object-cover rounded-2xl" /> : aluno?.nome?.charAt(0)}
-                    </div>
+                  <div className={`w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-xl font-black border border-slate-700/50 ${corBase}`}>
+                    {aluno?.avatar_url && (aluno.avatar_url.startsWith('http://') || aluno.avatar_url.startsWith('https://')) ? <img src={aluno.avatar_url} alt={aluno?.nome} className="w-full h-full object-cover rounded-2xl" /> : aluno?.nome?.charAt(0)}
+                  </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="text-lg font-black">{aluno?.nome}</h3>
@@ -363,7 +363,10 @@ export default function DashboardAdmin() {
             {!selectedAluno ? (
                 <>
                   <div className="relative mb-4"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} /><input autoFocus placeholder="Quem chegou?" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 pl-12 rounded-2xl outline-none focus:border-emerald-500 transition-all font-bold" /></div>
-                  <div className="max-h-60 overflow-y-auto space-y-2">{alunosDisponiveis.map(aluno => (<button key={aluno.id} onClick={() => setSelectedAluno(aluno)} className="w-full p-4 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-center gap-3 hover:border-emerald-500 transition-all group"><div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-black text-emerald-500">{aluno.avatar_url ? <img src={aluno.avatar_url} className="w-full h-full object-cover rounded-xl" /> : aluno.nome.charAt(0)}</div><div className="text-left"><p className="font-bold text-sm">{aluno.nome}</p></div></button>))}</div>
+                  <div className="max-h-60 overflow-y-auto space-y-2">{alunosDisponiveis.map(aluno => {
+                    const isValidUrl = aluno.avatar_url && (aluno.avatar_url.startsWith('http://') || aluno.avatar_url.startsWith('https://'));
+                    return (<button key={aluno.id} onClick={() => setSelectedAluno(aluno)} className="w-full p-4 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-center gap-3 hover:border-emerald-500 transition-all group"><div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-black text-emerald-500">{isValidUrl ? <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover rounded-xl" /> : aluno.nome.charAt(0)}</div><div className="text-left"><p className="font-bold text-sm">{aluno.nome}</p></div></button>);
+                  })}</div>
                 </>
             ) : (
                 <div className="space-y-4"><div className="flex items-center gap-4 bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/20"><div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center font-black text-white text-xl">{selectedAluno.nome.charAt(0)}</div><div><p className="text-lg font-black">{selectedAluno.nome}</p></div><button onClick={() => setSelectedAluno(null)} className="ml-auto text-xs font-black text-slate-500 uppercase">Trocar</button></div><div className="grid grid-cols-2 gap-2">{subjects.map(sub => (<button key={sub.id} disabled={isSubmitting} onClick={() => handleManualCheckIn(sub)} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl hover:border-blue-500 transition-all text-xs font-bold">{sub.name}</button>))}</div></div>
@@ -379,7 +382,7 @@ export default function DashboardAdmin() {
             {!selectedExamStudent ? (
                 <>
                   <div className="relative mb-4"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} /><input autoFocus placeholder="Qual o aluno?" value={examSearchQuery} onChange={(e) => setExamSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 pl-12 rounded-2xl outline-none focus:border-amber-500 font-bold" /></div>
-                  <div className="max-h-60 overflow-y-auto space-y-2">{alunosFiltradosExame.map(aluno => (<button key={aluno.id} onClick={() => setSelectedExamStudent(aluno)} className="w-full p-4 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-center gap-3 hover:border-amber-500 transition-all group"><div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-black text-amber-500">{aluno.nome.charAt(0)}</div><p className="font-bold text-sm">{aluno.nome}</p></button>))}</div>
+                  <div className="max-h-60 overflow-y-auto space-y-2">{alunosFiltradosExame.map(aluno => (<button key={aluno.id} onClick={() => setSelectedExamStudent(aluno)} className="w-full p-4 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-center gap-3 hover:border-amber-500 transition-all group"><div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-black text-amber-500">{(aluno.avatar_url && (aluno.avatar_url.startsWith('http://') || aluno.avatar_url.startsWith('https://'))) ? <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover rounded-xl" /> : aluno.nome.charAt(0)}</div><p className="font-bold text-sm">{aluno.nome}</p></button>))}</div>
                 </>
             ) : (
                 <div className="space-y-6">
