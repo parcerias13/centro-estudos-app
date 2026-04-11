@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail } from 'lucide-react';
 
 function EditarAlunoContent() {
   const router = useRouter();
@@ -16,14 +16,19 @@ function EditarAlunoContent() {
   const [uploading, setUploading] = useState(false);
   const [erro, setErro] = useState('');
 
+  // 1. DADOS PESSOAIS (SINCRONIZADOS COM NOVO ALUNO)
   const [nome, setNome] = useState('');
-  const [telefone, setTelefone] = useState('');
+  const [email, setEmail] = useState(''); // Email de Acesso
+  const [password, setPassword] = useState('******'); // Apenas visual no editar
+  const [telefone, setTelefone] = useState(''); // Telemóvel Encarregado
+  const [emailEncarregado, setEmailEncarregado] = useState(''); // NOVO: Email Encarregado
+  const [telemovelAluno, setTelemovelAluno] = useState(''); // NOVO: Telemóvel Aluno
   const [dataNascimento, setDataNascimento] = useState('');
-  const [anoEscolar, setAnoEscolar] = useState('10');
+  const [anoEscolar, setAnoEscolar] = useState('1');
   const [limiteSemanal, setLimiteSemanal] = useState('3');
   const [saidaAutorizada, setSaidaAutorizada] = useState(false);
   const [consentimentoIa, setConsentimentoIa] = useState(false);
-  const [usaApp, setUsaApp] = useState(true); // Controle de Autonomia Digital
+  const [usaApp, setUsaApp] = useState(true); 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   
   const [diasSelecionados, setDiasSelecionados] = useState<number[]>([]);
@@ -63,9 +68,12 @@ function EditarAlunoContent() {
       setErro('Não foi possível carregar os dados.');
     } else if (aluno) {
       setNome(aluno.nome || '');
+      setEmail(aluno.email || '');
       setTelefone(aluno.telefone_encarregado || '');
+      setEmailEncarregado(aluno.email_encarregado || ''); // Carrega o novo campo
+      setTelemovelAluno(aluno.telemovel_aluno || ''); // Carrega o novo campo
       setDataNascimento(aluno.data_nascimento || '');
-      setAnoEscolar(aluno.ano_escolar?.toString() || '10');
+      setAnoEscolar(aluno.ano_escolar?.toString() || '1');
       setLimiteSemanal(aluno.limite_semanal?.toString() || '3');
       setSaidaAutorizada(aluno.saida_autorizada || false);
       setConsentimentoIa(aluno.consentimento_ia || false);
@@ -118,7 +126,10 @@ function EditarAlunoContent() {
         .from('alunos')
         .update({
           nome,
+          email,
           telefone_encarregado: telefone,
+          email_encarregado: emailEncarregado, // Grava o novo campo
+          telemovel_aluno: telemovelAluno, // Grava o novo campo
           data_nascimento: dataNascimento,
           ano_escolar: parseInt(anoEscolar),
           limite_semanal: parseInt(limiteSemanal),
@@ -146,20 +157,20 @@ function EditarAlunoContent() {
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" size={32} /></div>;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white p-6 max-w-3xl mx-auto pb-20">
+    <main className="min-h-screen bg-slate-950 text-white p-6 max-w-4xl mx-auto pb-20">
       <div className="flex items-center gap-4 mb-8">
         <Link href="/admin/alunos" className="bg-slate-900 p-3 rounded-xl hover:bg-slate-800 transition-colors border border-slate-800">
           <ArrowLeft size={20} className="text-slate-400" />
         </Link>
         <div>
           <h1 className="text-2xl font-black flex items-center gap-2">
-            <UserCheck className="text-blue-500" /> Editar Aluno
+            <UserCheck className="text-blue-500" /> Editar Ficha do Aluno
           </h1>
-          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Perfil e Conformidade Digital</p>
+          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Atualização de Perfil e Conformidade</p>
         </div>
       </div>
 
-      <form onSubmit={handleUpdate} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-xl space-y-8">
+      <form onSubmit={handleUpdate} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-xl space-y-10">
         
         {erro && (
           <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl flex items-start gap-3 text-red-500">
@@ -168,102 +179,168 @@ function EditarAlunoContent() {
           </div>
         )}
 
-        {/* FOTO */}
-        <section className="flex flex-col items-center gap-4 py-4 border-b border-slate-800/50">
-          <div className="relative">
-            <div className="w-24 h-24 rounded-3xl border border-slate-800 overflow-hidden bg-slate-950 flex items-center justify-center">
-              {avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover" /> : <Camera size={30} className="text-slate-800" />}
-              {uploading && <div className="absolute inset-0 bg-slate-950/80 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>}
+        {/* 1. IDENTIFICAÇÃO E PERFIL */}
+        <div className="space-y-6">
+          <h2 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em]">1. Identificação e Perfil</h2>
+          
+          <section className="flex flex-col items-center gap-4 py-4">
+            <div className="relative">
+              <div className="w-24 h-24 rounded-3xl border border-slate-800 overflow-hidden bg-slate-950 flex items-center justify-center">
+                {avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover" /> : <Camera size={30} className="text-slate-800" />}
+                {uploading && <div className="absolute inset-0 bg-slate-950/80 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>}
+              </div>
+              <label className="absolute -bottom-2 -right-2 bg-blue-600 p-2.5 rounded-xl cursor-pointer hover:bg-blue-500 shadow-xl transition-all">
+                <Camera size={16} />
+                <input type="file" accept="image/*" onChange={handleUpload} className="hidden" disabled={uploading} />
+              </label>
             </div>
-            <label className="absolute -bottom-2 -right-2 bg-blue-600 p-2 rounded-xl cursor-pointer hover:bg-blue-500 shadow-xl transition-all">
-              <Camera size={16} />
-              <input type="file" accept="image/*" onChange={handleUpload} className="hidden" disabled={uploading} />
-            </label>
-          </div>
-        </section>
+          </section>
 
-        {/* DADOS BASE */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Nome Completo</label>
-            <input type="text" required value={nome} onChange={(e) => setNome(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" />
-          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Nome Completo</label>
+              <input type="text" required value={nome} onChange={(e) => setNome(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" />
+            </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Data de Nascimento</label>
-            <input type="date" required value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" />
-          </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Data de Nascimento</label>
+              <input type="date" required value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all text-white" />
+            </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Telemóvel Encarregado</label>
-            <input type="text" required value={telefone} onChange={(e) => setTelefone(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500" />
-          </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Email de Acesso (Aluno)</label>
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" />
+            </div>
 
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Password</label>
+              <input type="text" readOnly value={password} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none opacity-50 cursor-not-allowed" />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                <GraduationCap size={12} /> Ano Escolar
+              </label>
+              <select 
+                value={anoEscolar} 
+                onChange={(e) => setAnoEscolar(e.target.value)} 
+                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all text-white appearance-none cursor-pointer"
+              >
+                {[...Array(12)].map((_, i) => (
+                  <option key={i + 1} value={i + 1}>{i + 1}º Ano</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><Smartphone size={12}/> Telemóvel do Aluno</label>
+              <input type="text" value={telemovelAluno} onChange={(e) => setTelemovelAluno(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" placeholder="Ex: 912345678" />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><Phone size={12}/> Telemóvel Encarregado (WhatsApp)</label>
+              <input type="text" required value={telefone} onChange={(e) => setTelefone(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" placeholder="Ex: 912345678" />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                <Mail size={12}/> Email do Encarregado (Relatórios)
+              </label>
+              <input 
+                type="email" 
+                required 
+                value={emailEncarregado} 
+                onChange={(e) => setEmailEncarregado(e.target.value)} 
+                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" 
+                placeholder="email@exemplo.com" 
+              />
+            </div>
+          </div>
+        </div>
+
+        <hr className="border-slate-800" />
+
+        {/* 2. PLANO DE FREQUÊNCIA */}
+        <div className="space-y-6">
+          <h2 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em]">2. Plano de Frequência</h2>
+          
           <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Limite Semanal</label>
-            <select value={limiteSemanal} onChange={(e) => setLimiteSemanal(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500">
-              {[1,2,3,4,5,99].map(n => <option key={n} value={n}>{n === 99 ? 'Ilimitado' : `${n} sessoes/semana`}</option>)}
+            <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Limite Semanal de Sessões</label>
+            <select value={limiteSemanal} onChange={(e) => setLimiteSemanal(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all">
+              {[1,2,3,4,5,99].map(n => <option key={n} value={n}>{n === 99 ? 'Ilimitado' : `${n} sessões por semana`}</option>)}
             </select>
           </div>
-        </div>
 
-        {/* DIAS DE ESTUDO */}
-        <div className="space-y-3">
-          <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><Calendar size={14} /> Dias Autorizados</label>
-          <div className="flex flex-wrap gap-2">
-            {diasSemana.map(d => (
-              <button key={d.id} type="button" onClick={() => toggleDia(d.id)} className={`flex-1 min-w-27.5 p-3 rounded-xl border text-[10px] font-black transition-all ${diasSelecionados.includes(d.id) ? 'bg-blue-600 border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>
-                {d.label}
-              </button>
-            ))}
+          <div className="space-y-3">
+            <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><Calendar size={14} /> Dias Autorizados</label>
+            <div className="flex flex-wrap gap-2">
+              {diasSemana.map(d => (
+                <button key={d.id} type="button" onClick={() => toggleDia(d.id)} className={`flex-1 min-w-27.5 p-3 rounded-xl border text-[10px] font-black transition-all ${diasSelecionados.includes(d.id) ? 'bg-blue-600 border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>
+                  {d.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* TOGGLES DE PERMISSÃO */}
-        <div className="space-y-4">
+        <hr className="border-slate-800" />
+
+        {/* 3. PERMISSÕES E COMPLIANCE */}
+        <div className="space-y-6">
+          <h2 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em]">3. Permissões e Compliance</h2>
           
-          {/* AUTONOMIA DIGITAL (FIXED ICON) */}
-          <div className={`bg-slate-950 p-5 rounded-2xl border flex items-center justify-between transition-all ${usaApp ? 'border-blue-500/30 shadow-lg shadow-blue-500/5' : 'border-slate-800 opacity-70'}`}>
-            <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-xl ${usaApp ? 'bg-blue-500/10 text-blue-500' : 'bg-slate-800 text-slate-600'}`}>
-                <Smartphone size={20} className={usaApp ? '' : 'opacity-40'} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* AUTONOMIA DIGITAL */}
+            <div className={`bg-slate-950 p-5 rounded-2xl border flex items-center justify-between transition-all ${usaApp ? 'border-blue-500/30 shadow-lg shadow-blue-500/5' : 'border-slate-800 opacity-70'}`}>
+              <div className="flex items-center gap-4">
+                <div className={`p-3 rounded-xl ${usaApp ? 'bg-blue-500/10 text-blue-500' : 'bg-slate-800 text-slate-600'}`}>
+                  <Smartphone size={20} className={usaApp ? '' : 'opacity-40'} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm">Autonomia Digital</h4>
+                  <p className="text-[10px] text-slate-500 uppercase font-black">{usaApp ? 'Check-in via App' : 'Check-in via Admin'}</p>
+                </div>
               </div>
-              <div>
-                <h4 className="font-bold text-sm">Autonomia Digital</h4>
-                <p className="text-[10px] text-slate-500 uppercase font-black">{usaApp ? 'Aluno utiliza telemóvel para check-in' : 'Check-in manual via Dashboard Admin'}</p>
-              </div>
-            </div>
-            <button type="button" onClick={() => setUsaApp(!usaApp)} className={`transition-colors ${usaApp ? 'text-blue-500' : 'text-slate-700'}`}>
-              {usaApp ? <ToggleRight size={40} /> : <ToggleLeft size={40} />}
-            </button>
-          </div>
-
-          <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex items-center justify-between">
-            <div>
-              <h4 className="font-bold text-sm">Saída Autorizada</h4>
-              <p className="text-[10px] text-slate-500 uppercase font-black">Pode sair do centro sem acompanhante</p>
-            </div>
-            <button type="button" onClick={() => setSaidaAutorizada(!saidaAutorizada)} className={`transition-colors ${saidaAutorizada ? 'text-emerald-500' : 'text-slate-700'}`}>
-              {saidaAutorizada ? <ToggleRight size={40} /> : <ToggleLeft size={40} />}
-            </button>
-          </div>
-
-          <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between ${!eMaiorDe13() ? 'bg-slate-900/50 border-slate-800 opacity-60' : 'bg-slate-950 border-orange-500/20 shadow-lg shadow-orange-500/5'}`}>
-            <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-xl ${!eMaiorDe13() ? 'bg-slate-800' : 'bg-orange-500/10'}`}>
-                <BrainCircuit size={20} className={!eMaiorDe13() ? 'text-slate-600' : 'text-orange-500'} />
-              </div>
-              <div>
-                <h4 className="font-bold text-sm flex items-center gap-2">LabAI { !eMaiorDe13() && <span className="bg-red-500/10 text-red-500 text-[8px] px-2 py-0.5 rounded-md">Bloqueado</span> }</h4>
-                <p className="text-[10px] text-slate-500 uppercase font-black">Consentimento Parental para IA</p>
-              </div>
-            </div>
-            {eMaiorDe13() ? (
-              <button type="button" onClick={() => setConsentimentoIa(!consentimentoIa)} className={`transition-colors ${consentimentoIa ? 'text-orange-500' : 'text-slate-700'}`}>
-                {consentimentoIa ? <ToggleRight size={40} /> : <ToggleLeft size={40} />}
+              <button type="button" onClick={() => setUsaApp(!usaApp)} className={`transition-colors ${usaApp ? 'text-blue-500' : 'text-slate-700'}`}>
+                {usaApp ? <ToggleRight size={40} /> : <ToggleLeft size={40} />}
               </button>
-            ) : ( <div className="text-slate-700"><ShieldAlert size={32} /></div> )}
+            </div>
+
+            {/* SAÍDA */}
+            <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-sm">Saída Autorizada</h4>
+                <p className="text-[10px] text-slate-500 uppercase font-black">Pode sair sem acompanhante</p>
+              </div>
+              <button type="button" onClick={() => setSaidaAutorizada(!saidaAutorizada)} className={`transition-colors ${saidaAutorizada ? 'text-emerald-500' : 'text-slate-700'}`}>
+                {saidaAutorizada ? <ToggleRight size={40} /> : <ToggleLeft size={40} />}
+              </button>
+            </div>
+
+            {/* LAB AI */}
+            <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between ${!eMaiorDe13() ? 'bg-slate-900/50 border-slate-800 opacity-60' : 'bg-slate-950 border-orange-500/20 shadow-lg shadow-orange-500/5'}`}>
+              <div className="flex items-center gap-4">
+                <div className={`p-3 rounded-xl ${!eMaiorDe13() ? 'bg-slate-800' : 'bg-orange-500/10'}`}>
+                  <BrainCircuit size={20} className={!eMaiorDe13() ? 'text-slate-600' : 'text-orange-500'} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm flex items-center gap-2">LabAI { !eMaiorDe13() && <span className="bg-red-500/10 text-red-500 text-[8px] px-2 py-0.5 rounded-md">Bloqueado</span> }</h4>
+                  <p className="text-[10px] text-slate-500 uppercase font-black">Consentimento Parental</p>
+                </div>
+              </div>
+              {eMaiorDe13() ? (
+                <button type="button" onClick={() => setConsentimentoIa(!consentimentoIa)} className={`transition-colors ${consentimentoIa ? 'text-orange-500' : 'text-slate-700'}`}>
+                  {consentimentoIa ? <ToggleRight size={40} /> : <ToggleLeft size={40} />}
+                </button>
+              ) : ( <div className="text-slate-700"><ShieldAlert size={32} /></div> )}
+            </div>
           </div>
+          
+          {!eMaiorDe13() && dataNascimento && (
+            <p className="text-[10px] text-red-400 font-bold bg-red-500/5 p-3 rounded-lg flex items-center gap-2">
+              <Baby size={14} /> Nota: Menores de 13 anos não podem aceder a ferramentas de IA por norma legal.
+            </p>
+          )}
         </div>
 
         <button type="submit" disabled={saving || uploading} className="w-full bg-blue-600 hover:bg-blue-500 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 shadow-xl shadow-blue-500/10">

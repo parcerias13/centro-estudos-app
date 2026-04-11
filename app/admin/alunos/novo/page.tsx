@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap, Mail } from 'lucide-react';
 
 export default function NovoAluno() {
   const router = useRouter();
@@ -18,6 +18,7 @@ export default function NovoAluno() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('123456');
   const [telefone, setTelefone] = useState(''); 
+  const [emailEncarregado, setEmailEncarregado] = useState(''); // NOVO: Email para relatórios
   const [telemovelAluno, setTelemovelAluno] = useState(''); 
   const [dataNascimento, setDataNascimento] = useState('');
   const [anoEscolar, setAnoEscolar] = useState('1');
@@ -126,6 +127,7 @@ export default function NovoAluno() {
         email,
         data_nascimento: dataNascimento,
         telefone_encarregado: telefone,
+        email_encarregado: emailEncarregado, // INSERÇÃO DO EMAIL DO ENCARREGADO
         telemovel_aluno: telemovelAluno, 
         ano_escolar: parseInt(anoEscolar),
         pacote_id: pacoteId,
@@ -196,7 +198,7 @@ export default function NovoAluno() {
               <input type="date" required value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all text-white" />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Email de Acesso</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Email de Acesso (Aluno)</label>
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" />
             </div>
             <div className="space-y-2">
@@ -204,7 +206,6 @@ export default function NovoAluno() {
               <input type="text" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" />
             </div>
 
-            {/* CAMPO ADICIONADO: ANO ESCOLAR */}
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
                 <GraduationCap size={12} /> Ano Escolar
@@ -224,9 +225,25 @@ export default function NovoAluno() {
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Smartphone size={12}/> Telemóvel do Aluno</label>
               <input type="text" value={telemovelAluno} onChange={(e) => setTelemovelAluno(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" placeholder="Ex: 912345678" />
             </div>
+            
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Phone size={12}/> Telemóvel Encarregado (WhatsApp)</label>
               <input type="text" required value={telefone} onChange={(e) => setTelefone(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" placeholder="Ex: 912345678" />
+            </div>
+
+            {/* CAMPO ADICIONADO: EMAIL DO ENCARREGADO */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                <Mail size={12}/> Email do Encarregado (Relatórios)
+              </label>
+              <input 
+                type="email" 
+                required 
+                value={emailEncarregado} 
+                onChange={(e) => setEmailEncarregado(e.target.value)} 
+                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" 
+                placeholder="email@exemplo.com" 
+              />
             </div>
           </div>
         </div>

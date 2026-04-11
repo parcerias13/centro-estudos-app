@@ -14,7 +14,6 @@ function RelatorioContent() {
   const [stats, setStats] = useState<any>({ totalVisits: 0, totalHours: 0, topSubject: '-' });
   const [history, setHistory] = useState<any[]>([]);
 
-  // ESTADOS PARA CONTROLO DE ENVIO DE EMAIL
   const [isSending, setIsSending] = useState(false);
   const [sentStatus, setSentStatus] = useState(false);
 
@@ -28,7 +27,7 @@ function RelatorioContent() {
   }, [studentId]);
 
   const fetchData = async () => {
-    // 1. Dados do Aluno (Garante que a coluna email_encarregado existe no Supabase)
+    // 1. Dados do Aluno
     const { data: alunoData } = await supabase
       .from('alunos')
       .select('*')
@@ -36,23 +35,32 @@ function RelatorioContent() {
       .single();
     setStudent(alunoData);
 
-    // 2. Histórico de Sessões
+    // LÓGICA DE DATA: Primeiro dia do mês corrente
+    const inicioMes = new Date();
+    inicioMes.setDate(1);
+    inicioMes.setHours(0, 0, 0, 0);
+
+    // 2. Histórico de Sessões - Filtro Mensal (.gte)
     const { data: entries } = await supabase
       .from('diario_bordo')
       .select('*')
-      .eq('student_id', studentId)
-      .not('checkout_at', 'is', null)
-      .order('created_at', { ascending: false });
+      .eq('aluno_id', studentId)
+      .not('saida', 'is', null)
+      .gte('entrada', inicioMes.toISOString()) // Filtra a partir do dia 1 às 00:00
+      .order('entrada', { ascending: false });
 
-    if (entries && entries.length > 0) {
-        setHistory(entries.slice(0, 10));
+    if (entries) {
+        // Mostra todos os registos do mês no histórico
+        setHistory(entries);
 
         let totalMs = 0;
         const subjects: Record<string, number> = {};
         
         entries.forEach(e => {
-            totalMs += new Date(e.checkout_at).getTime() - new Date(e.created_at).getTime();
-            subjects[e.subject_name] = (subjects[e.subject_name] || 0) + 1;
+            if (e.saida && e.entrada) {
+              totalMs += new Date(e.saida).getTime() - new Date(e.entrada).getTime();
+              subjects[e.subject_name] = (subjects[e.subject_name] || 0) + 1;
+            }
         });
 
         const topSubjectEntry = Object.entries(subjects).sort((a, b) => b[1] - a[1])[0];
@@ -67,22 +75,20 @@ function RelatorioContent() {
   };
 
   const handleSendEmail = async () => {
-    // VALIDAÇÃO CRÍTICA: Bater com o nome da coluna na DB
     if (!student?.email_encarregado) {
-      return alert("Erro: Este aluno não tem um e-mail de encarregado registado na base de dados.");
+      return alert("Erro: Este aluno não tem um e-mail de encarregado registado.");
     }
 
     setIsSending(true);
 
-    // Template HTML para o Resend
     const reportHtml = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; background: #ffffff; padding: 40px; border-radius: 20px; border: 1px solid #e2e8f0;">
-        <h1 style="color: #2563eb; font-size: 24px; font-weight: 900; text-transform: uppercase; margin-bottom: 20px;">Relatório de Performance</h1>
-        <p style="font-size: 16px;">Olá, segue o resumo das atividades do(a) aluno(a) <strong>${student.nome}</strong>.</p>
+        <h1 style="color: #2563eb; font-size: 24px; font-weight: 900; text-transform: uppercase; margin-bottom: 20px;">Relatório Mensal de Performance</h1>
+        <p style="font-size: 16px;">Olá, segue o resumo das atividades do(a) aluno(a) <strong>${student.nome}</strong> referente ao mês atual.</p>
         
         <div style="background: #f8fafc; padding: 25px; border-radius: 15px; border: 1px solid #e2e8f0; margin: 20px 0;">
-          <p style="margin: 8px 0; font-size: 15px;"><strong>Volume Total:</strong> ${stats.totalHours} horas</p>
-          <p style="margin: 8px 0; font-size: 15px;"><strong>Frequência:</strong> ${stats.totalVisits} sessões</p>
+          <p style="margin: 8px 0; font-size: 15px;"><strong>Volume no Mês:</strong> ${stats.totalHours} horas</p>
+          <p style="margin: 8px 0; font-size: 15px;"><strong>Sessões Concluídas:</strong> ${stats.totalVisits}</p>
           <p style="margin: 8px 0; font-size: 15px;"><strong>Foco Principal:</strong> ${stats.topSubject}</p>
         </div>
 
@@ -104,36 +110,35 @@ function RelatorioContent() {
         }),
       });
 
-      const result = await response.json();
-
       if (response.ok) {
         setSentStatus(true);
         setTimeout(() => setSentStatus(false), 5000);
       } else {
-        alert("Erro no Servidor: " + JSON.stringify(result.error));
+        alert("Erro ao enviar email.");
       }
     } catch (err) {
-      alert("Falha na ligação ao servidor. Verifica se o terminal não tem erros.");
+      alert("Falha na ligação ao servidor.");
     } finally {
       setIsSending(false);
     }
   };
 
-  if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
+  if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" size={32} /></div>;
   if (!student) return <div className="p-8 text-white">Aluno não encontrado.</div>;
+
+  const nomeMes = new Date().toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' });
 
   return (
     <main className="min-h-screen bg-slate-950 p-6">
       <div className="max-w-4xl mx-auto bg-white rounded-3xl overflow-hidden shadow-2xl">
         
-        {/* HEADER DO DOCUMENTO */}
         <div className="bg-slate-800 p-8 text-white flex justify-between items-start">
             <div>
                 <h1 className="text-3xl font-black uppercase tracking-wider mb-2 flex items-center gap-3">
                     <FileText size={28} className="text-blue-400" />
                     Performance
                 </h1>
-                <p className="opacity-80">Documento de Acompanhamento Escolar</p>
+                <p className="opacity-80 capitalize">Relatório de {nomeMes}</p>
             </div>
              <div className="text-right">
                 <p className="font-bold text-xl">{student.nome}</p>
@@ -146,12 +151,11 @@ function RelatorioContent() {
         </div>
 
         <div className="p-8 text-slate-800">
-            {/* CARDS DE ESTATÍSTICAS */}
             <div className="grid grid-cols-3 gap-6 mb-10">
                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
                     <div className="flex items-center gap-2 text-blue-600 mb-2">
                         <Clock size={20} />
-                        <h3 className="font-bold uppercase text-xs tracking-wider">Horas Totais</h3>
+                        <h3 className="font-bold uppercase text-xs tracking-wider">Horas no Mês</h3>
                     </div>
                     <p className="text-4xl font-black">{stats.totalHours}<span className="text-sm text-slate-500 font-normal ml-1">h</span></p>
                 </div>
@@ -161,7 +165,7 @@ function RelatorioContent() {
                         <h3 className="font-bold uppercase text-xs tracking-wider">Frequência</h3>
                     </div>
                     <p className="text-4xl font-black">{stats.totalVisits}</p>
-                    <p className="text-[10px] text-slate-400 mt-1 font-bold uppercase">Sessões Concluídas</p>
+                    <p className="text-[10px] text-slate-400 mt-1 font-bold uppercase">Sessões em {nomeMes}</p>
                 </div>
                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
                      <div className="flex items-center gap-2 text-orange-600 mb-2">
@@ -172,9 +176,8 @@ function RelatorioContent() {
                 </div>
             </div>
 
-            {/* TABELA DE ATIVIDADES */}
             <h2 className="font-bold text-xl mb-4 flex items-center gap-2 text-slate-400">
-                Últimos Registos
+                Atividades de {nomeMes}
             </h2>
             <div className="border border-slate-100 rounded-2xl overflow-hidden">
                 <table className="w-full text-left">
@@ -188,15 +191,15 @@ function RelatorioContent() {
                     </thead>
                     <tbody className="divide-y divide-slate-50 bg-white">
                         {history.length === 0 ? (
-                            <tr><td colSpan={4} className="p-10 text-center text-slate-300 font-medium">Nenhum registo encontrado.</td></tr>
+                            <tr><td colSpan={4} className="p-10 text-center text-slate-300 font-medium">Nenhum registo este mês.</td></tr>
                         ) : (
                             history.map(entry => (
                                 <tr key={entry.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="p-4 font-bold text-slate-700">{new Date(entry.created_at).toLocaleDateString('pt-PT')}</td>
+                                    <td className="p-4 font-bold text-slate-700">{new Date(entry.entrada).toLocaleDateString('pt-PT')}</td>
                                     <td className="p-4 text-sm font-medium">{entry.subject_name}</td>
                                     <td className="p-4 font-mono text-xs text-slate-400">
-                                        {new Date(entry.created_at).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})} 
-                                        {entry.checkout_at ? ` → ${new Date(entry.checkout_at).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})}` : ' -'}
+                                        {new Date(entry.entrada).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})} 
+                                        {entry.saida ? ` → ${new Date(entry.saida).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})}` : ' -'}
                                     </td>
                                     <td className="p-4 text-center">
                                         <span className="text-[10px] font-black uppercase px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">
@@ -210,14 +213,12 @@ function RelatorioContent() {
                 </table>
             </div>
 
-            {/* BOTÕES DE AÇÃO */}
             <div className="mt-10 pt-8 border-t border-slate-100 flex justify-between items-center no-print">
                 <Link href="/admin/alunos" className="flex items-center gap-2 text-slate-400 hover:text-slate-900 font-bold transition-colors text-sm">
                     <ArrowLeft size={16} /> Voltar à Gestão
                 </Link>
                 
                 <div className="flex items-center gap-4">
-                    {/* BOTÃO DE EMAIL COM FEEDBACK VISUAL */}
                     <button 
                         onClick={handleSendEmail}
                         disabled={isSending}
@@ -227,13 +228,7 @@ function RelatorioContent() {
                             : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/20'
                         }`}
                     >
-                        {isSending ? (
-                        <Loader2 className="animate-spin" size={20} />
-                        ) : sentStatus ? (
-                        <CheckCircle2 size={20} />
-                        ) : (
-                        <Mail size={20} />
-                        )}
+                        {isSending ? <Loader2 className="animate-spin" size={20} /> : sentStatus ? <CheckCircle2 size={20} /> : <Mail size={20} />}
                         {isSending ? 'A PROCESSAR...' : sentStatus ? 'ENVIADO COM SUCESSO' : 'ENVIAR POR EMAIL'}
                     </button>
 
