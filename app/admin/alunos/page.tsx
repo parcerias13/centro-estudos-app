@@ -77,7 +77,7 @@ export default function ListaAlunos() {
 
   const handleDelete = async (id: string) => {
     if (confirm('Tem a certeza que quer apagar este aluno? Todo o histórico será perdido.')) {
-      const { error } = await supabase.from('alunos').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+      const { error } = await supabase.from('alunos').delete().eq('id', id);
       if (error) {
         alert('Erro ao apagar: ' + error.message);
       } else {

@@ -129,7 +129,7 @@ export default function StudentHome() {
   const handleCheckout = async () => {
     if (!currentSession) return;
     if (!confirm('Já acabaste por hoje?')) return;
-    await supabase.from('diario_bordo').update({ saida: new Date().toISOString() }).eq('id', currentSession.id);
+    await supabase.from('diario_bordo').delete().eq('id', currentSession.id);
   };
 
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
