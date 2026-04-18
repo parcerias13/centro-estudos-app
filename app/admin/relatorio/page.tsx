@@ -93,7 +93,7 @@ function RelatorioContent() {
         </div>
 
         <p style="font-size: 12px; color: #64748b; border-top: 1px solid #eee; padding-top: 20px; margin-top: 30px;">
-          Este é um relatório automático gerado pelo sistema <strong>Centro AI</strong>.
+          Este é um relatório automático gerado pelo sistema <strong>CogniLab</strong>.
         </p>
       </div>
     `;

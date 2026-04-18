@@ -70,6 +70,7 @@ export default function DashboardAdmin() {
           )
         `) 
         .is('saida', null)
+        .is('deleted_at', null) // FILTRO ADICIONADO AQUI
         .order('entrada', { ascending: false });
       
       if (errP) throw errP;
@@ -82,7 +83,14 @@ export default function DashboardAdmin() {
         .order('date', { ascending: true });
 
       const { data: salasData } = await supabase.from('salas').select('*').order('nome');
-      const { data: aData } = await supabase.from('alunos').select('*, pacotes(nome)').order('nome');
+      
+      // ADICIONADO FILTRO PARA NÃO MOSTRAR ALUNOS APAGADOS NO CHECK-IN MANUAL
+      const { data: aData } = await supabase
+        .from('alunos')
+        .select('*, pacotes(nome)')
+        .is('deleted_at', null) 
+        .order('nome');
+        
       const { data: subData } = await supabase.from('subjects').select('*').order('name');
       
       setPresencas(presentes || []);
@@ -124,7 +132,7 @@ export default function DashboardAdmin() {
 
   const handleRejeitarEntrada = async (presencaId: string) => {
     if (!confirm("O aluno não está no centro?")) return;
-    const { error } = await supabase.from('diario_bordo').delete().eq('id', presencaId);
+    const { error } = await supabase.from('diario_bordo').update({ deleted_at: new Date().toISOString() }).eq('id', presencaId);
     if (!error) fetchDados(); 
   };
 
@@ -299,7 +307,7 @@ export default function DashboardAdmin() {
                           <span className="text-[8px] font-black block mt-1 uppercase">{p.msg_out_enviada ? 'Enviada' : 'Msg Out'}</span>
                           {p.msg_out_enviada && <CheckCircle2 size={10} className="absolute top-1 right-1" />}
                         </button>
-                        <button disabled={isSubmitting} onClick={() => safeAction(() => handleDarSaida(p.id))} className="bg-slate-800 text-slate-400 hover:bg-red-500 hover:text-white p-2.5 rounded-xl transition-all disabled:opacity-50">
+                        <button disabled={isSubmitting} onClick={() => safeAction(() => handleRejeitarEntrada(p.id))} className="bg-slate-800 text-slate-400 hover:bg-red-500 hover:text-white p-2.5 rounded-xl transition-all disabled:opacity-50">
                           {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <LogOut size={16} />}
                         </button>
                     </div>
@@ -338,7 +346,7 @@ export default function DashboardAdmin() {
 
           <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem]">
             <h4 className="font-black text-sm uppercase text-slate-500 mb-6 flex items-center justify-between">
-              <div className="flex items-center gap-2"><AlertTriangle size={16} className="text-amber-500" /> Agenda de Risco</div>
+              <div className="flex items-center gap-2"><AlertTriangle size={16} className="text-amber-500" /> Próximos Testes</div>
               <button onClick={() => setIsExamModalOpen(true)} className="p-1 bg-slate-800 hover:bg-amber-500/20 hover:text-amber-500 rounded-md transition-all">
                 <Plus size={16} />
               </button>
