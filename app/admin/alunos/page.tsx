@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
-import { UserPlus, Search, FileBarChart, Edit, Trash2, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter } from 'lucide-react';
+import { UserPlus, Search, FileBarChart, Edit, Trash2, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter, FileText } from 'lucide-react';
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,7 +13,7 @@ const supabase = createBrowserClient(
 export default function ListaAlunos() {
   const [alunos, setAlunos] = useState<any[]>([]);
   const [busca, setBusca] = useState('');
-  const [filtroAno, setFiltroAno] = useState(''); // NOVO ESTADO PARA O FILTRO DE ANO
+  const [filtroAno, setFiltroAno] = useState(''); 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { fetchAlunos(); }, []);
@@ -21,7 +21,6 @@ export default function ListaAlunos() {
   const fetchAlunos = async () => {
     setLoading(true);
     try {
-      // 1. Lógica de Tempo para a Semana Atual
       const hoje = new Date();
       const diaDaSemana = hoje.getDay() === 0 ? 6 : hoje.getDay() - 1;
       const inicioSemana = new Date(hoje);
@@ -32,13 +31,11 @@ export default function ListaAlunos() {
       fimSemana.setDate(inicioSemana.getDate() + 6);
       fimSemana.setHours(23, 59, 59, 999);
 
-      // 2. Fetch de Alunos
       const { data: dataAlunos, error: errAlunos } = await supabase
         .from('alunos')
         .select('*')
         .order('nome', { ascending: true });
 
-      // 3. Fetch de Presenças (ignora faltas)
       const { data: dataPresencas, error: errPresencas } = await supabase
         .from('diario_bordo')
         .select('student_id')
@@ -47,7 +44,6 @@ export default function ListaAlunos() {
         .neq('status', 'falta');
 
       if (dataAlunos && dataPresencas) {
-        // 4. Cruzamento de dados e ORDENAÇÃO POR PRIORIDADE
         const alunosProcessados = dataAlunos.map(aluno => {
           const contagem = dataPresencas.filter(p => p.student_id === aluno.id).length;
           return {
@@ -86,7 +82,6 @@ export default function ListaAlunos() {
     }
   };
 
-  // LOGICA DE FILTRAGEM DUPLA (NOME + ANO)
   const alunosFiltrados = alunos.filter(a => {
     const matchesNome = a.nome?.toLowerCase().includes(busca.toLowerCase());
     const matchesAno = filtroAno === '' || String(a.ano_escolar) === filtroAno;
@@ -96,7 +91,7 @@ export default function ListaAlunos() {
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
 
   return (
-    <div className="min-h-screen bg-[#0f172a] p-6 text-white">
+    <div className="min-h-screen bg-[#0f172a] p-6 text-white font-sans">
       
       <header className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-4">
@@ -104,10 +99,10 @@ export default function ListaAlunos() {
             <ArrowLeft size={20} className="text-slate-400" />
           </Link>
           <div>
-            <h1 className="text-3xl font-black tracking-tight flex items-center gap-2">
+            <h1 className="text-3xl font-black tracking-tight flex items-center gap-2 italic uppercase">
                 <Users className="text-blue-500" size={28} /> Gerir Alunos
             </h1>
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">{alunos.length} Matrículas Ativas</p>
+            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">{alunos.length} Matrículas Ativas</p>
           </div>
         </div>
         
@@ -116,7 +111,6 @@ export default function ListaAlunos() {
         </Link>
       </header>
 
-      {/* BARRA DE PESQUISA E FILTRO */}
       <div className="flex flex-col md:flex-row gap-4 mb-8">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
@@ -147,7 +141,7 @@ export default function ListaAlunos() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {alunosFiltrados.length === 0 ? (
           <div className="col-span-full text-center py-20 bg-slate-900/20 border-2 border-dashed border-slate-800 rounded-3xl">
-            <p className="text-slate-500 font-medium">Nenhum aluno encontrado.</p>
+            <p className="text-slate-500 font-medium italic">Nenhum aluno encontrado.</p>
           </div>
         ) : (
           alunosFiltrados.map((aluno) => (
@@ -157,7 +151,6 @@ export default function ListaAlunos() {
               : 'border-slate-800/60 hover:border-slate-700'
             }`}>
               <div className="flex items-center gap-5 flex-1">
-                
                 <div className="w-14 h-14 shrink-0 bg-slate-800 rounded-2xl flex items-center justify-center text-xl font-black text-slate-500 group-hover:bg-blue-600 group-hover:text-white transition-all overflow-hidden border border-slate-700/50 shadow-inner">
                   {aluno.avatar_url ? (
                     <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover" />
@@ -167,7 +160,7 @@ export default function ListaAlunos() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-lg font-bold text-white leading-tight truncate">{aluno.nome}</h3>
+                  <h3 className="text-lg font-bold text-white leading-tight truncate uppercase italic">{aluno.nome}</h3>
                   <div className="flex items-center gap-3 mt-1.5">
                     <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-slate-800 text-slate-400 rounded-md border border-slate-700">
                       {aluno.ano_escolar}º ANO
@@ -198,24 +191,35 @@ export default function ListaAlunos() {
               </div>
 
               <div className="flex items-center gap-2 ml-4">
+                {/* BOTÃO DO EXTRATO INDIVIDUAL (DOSSIER) */}
+                <Link 
+                  href={`/admin/alunos/extrato?id=${aluno.id}`} 
+                  className="p-3 bg-slate-800 text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all border border-slate-700 hover:border-blue-600 shadow-xl"
+                  title="Extrato Detalhado por Dia"
+                >
+                  <FileText size={20} />
+                </Link>
+
                 <Link 
                   href={`/admin/relatorio?id=${aluno.id}`} 
-                  className="p-3 bg-slate-800 text-slate-400 hover:bg-white hover:text-black rounded-xl transition-all border border-slate-700 hover:border-white"
-                  title="Ver Relatório"
+                  className="p-3 bg-slate-800 text-slate-400 hover:bg-white hover:text-black rounded-xl transition-all border border-slate-700 hover:border-white shadow-xl"
+                  title="Ver Relatório de Performance"
                 >
                   <FileBarChart size={20} />
                 </Link>
+
                 <Link 
                   href={`/admin/alunos/editar?id=${aluno.id}`} 
-                  className="p-3 bg-slate-800 text-slate-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all border border-slate-700 hover:border-blue-600"
-                  title="Editar"
+                  className="p-3 bg-slate-800 text-slate-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all border border-slate-700 hover:border-blue-600 shadow-xl"
+                  title="Editar Aluno"
                 >
                   <Edit size={20} />
                 </Link>
+
                 <button 
                   onClick={() => handleDelete(aluno.id)}
-                  className="p-3 bg-slate-800 text-slate-400 hover:bg-red-600 hover:text-white rounded-xl transition-all border border-slate-700 hover:border-red-600"
-                  title="Apagar"
+                  className="p-3 bg-slate-800 text-slate-400 hover:bg-red-600 hover:text-white rounded-xl transition-all border border-slate-700 hover:border-red-600 shadow-xl"
+                  title="Remover Matrícula"
                 >
                   <Trash2 size={20} />
                 </button>

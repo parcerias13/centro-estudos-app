@@ -10,17 +10,18 @@ export default function AdminLayout({
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
-  // Lista de items atualizada com Configurações
+  // Lista de items atualizada com Refeitório
   const menuItems = [
     { name: 'Dashboard', href: '/admin', icon: '📈' },
     { name: 'Alunos', href: '/admin/alunos', icon: '👥' },
     { name: 'Agenda', href: '/admin/agenda', icon: '📅' },
+    { name: 'Refeitório', href: '/admin/refeitorio', icon: '🍽️' }, // Novo item
     { name: 'Histórico', href: '/admin/historico', icon: '📜' },
     { name: 'Disciplinas', href: '/admin/disciplinas', icon: '📚' },
     { name: 'Estatísticas', href: '/admin/estatisticas', icon: '📊' },
     { name: 'Biblioteca', href: '/admin/biblioteca', icon: '📖' },
     { name: 'Equipa', href: '/admin/equipa', icon: '🛡️' },
-    { name: 'Configurações', href: '/admin/configuracoes', icon: '⚙️' },
+    { name: 'Gestão', href: '/admin/gestao', icon: '⚙️' },
   ]
 
   return (

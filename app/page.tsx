@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
-import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin } from 'lucide-react';
+import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw } from 'lucide-react';
 
 export default function StudentHome() {
   const [subjects, setSubjects] = useState<any[]>([]);
@@ -16,18 +16,17 @@ export default function StudentHome() {
   
   const [isLimitReached, setIsLimitReached] = useState(false);
   const [limitData, setLimitData] = useState({ visits: 0, limit: 0 });
+  const [showSwitchList, setShowSwitchList] = useState(false);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // --- 1. FUNÇÃO DE BUSCA (EXTRAÍDA PARA SER REUTILIZÁVEL) ---
   const fetchData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return (window.location.href = '/login');
 
-    // Buscar sessão atual
     const { data: session } = await supabase
       .from('diario_bordo')
       .select('*, salas(nome)')
@@ -37,7 +36,6 @@ export default function StudentHome() {
     
     setCurrentSession(session);
 
-    // Buscar dados do aluno
     const { data: student } = await supabase
       .from('alunos')
       .select('nome, limite_semanal, consentimento_ia')
@@ -94,13 +92,12 @@ export default function StudentHome() {
     fetchData();
   }, [fetchData]);
 
-  // --- 2. SISTEMA DE CONTROLO DE FLUXO ---
   const safeAction = async (actionFn: () => Promise<void>) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
       await actionFn();
-      await fetchData(); // EM VEZ DE RELOAD: Atualiza os dados para mudar o ecrã
+      await fetchData(); 
     } catch (error) {
       console.error("Erro na operação:", error);
     } finally {
@@ -108,28 +105,68 @@ export default function StudentHome() {
     }
   };
 
-  // --- 3. HANDLERS ATUALIZADOS ---
-  const handleCheckIn = async (subjectId: string, subjectName: string, salaId: string | null) => {
+  const handleCheckIn = async (subjectId: number, subjectName: string, salaId: string | null) => {
     if (isLimitReached || currentSession) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     
-    const { error } = await supabase.from('diario_bordo').insert({
+    const { data: newSession, error } = await supabase.from('diario_bordo').insert({
       aluno_id: user.id,
       student_id: user.id,
       subject_id: subjectId,
       subject_name: subjectName,
       sala_id: salaId,
       entrada: new Date().toISOString()
-    });
+    }).select().single();
     
-    if (error) alert(`Erro: ${error.message}`);
+    if (error) return alert(`Erro: ${error.message}`);
+
+    if (newSession) {
+      await supabase.from('atividades_estudo').insert({
+        sessao_id: newSession.id,
+        subject_id: subjectId
+      });
+    }
+  };
+
+  // CORREÇÃO: Agora recebe o newSalaId para atualizar a sala no UI
+  const handleSwitchSubject = async (newSubjectId: number, newSubjectName: string, newSalaId: string | null) => {
+    if (!currentSession) return;
+
+    await supabase.from('atividades_estudo')
+      .update({ fim: new Date().toISOString() })
+      .eq('sessao_id', currentSession.id)
+      .is('fim', null);
+
+    await supabase.from('atividades_estudo').insert({
+      sessao_id: currentSession.id,
+      subject_id: newSubjectId
+    });
+
+    // ATUALIZAÇÃO DA SALA NO DIARIO_BORDO
+    await supabase.from('diario_bordo')
+      .update({ 
+        subject_id: newSubjectId, 
+        subject_name: newSubjectName,
+        sala_id: newSalaId 
+      })
+      .eq('id', currentSession.id);
+
+    setShowSwitchList(false);
   };
 
   const handleCheckout = async () => {
     if (!currentSession) return;
     if (!confirm('Já acabaste por hoje?')) return;
-    await supabase.from('diario_bordo').delete().eq('id', currentSession.id);
+
+    await supabase.from('atividades_estudo')
+      .update({ fim: new Date().toISOString() })
+      .eq('sessao_id', currentSession.id)
+      .is('fim', null);
+
+    await supabase.from('diario_bordo')
+      .update({ saida: new Date().toISOString() })
+      .eq('id', currentSession.id);
   };
 
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
@@ -138,16 +175,18 @@ export default function StudentHome() {
     <main className={`min-h-screen bg-slate-950 text-white p-6 font-sans transition-all duration-300 ${isSubmitting ? 'pointer-events-none opacity-60' : ''}`}>
       <div className="max-w-xl mx-auto">
         
-        {/* ECRÃ DE SESSÃO ATIVA (Condicional via Estado) */}
         {currentSession ? (
           <div className="flex flex-col items-center justify-center space-y-8 animate-in fade-in zoom-in duration-500 py-12">
-            <div className="bg-emerald-500/10 text-emerald-500 p-6 rounded-full w-24 h-24 flex items-center justify-center mx-auto border-4 border-emerald-500/20 animate-pulse">
+            <div className="bg-emerald-500/10 text-emerald-500 p-6 rounded-full w-24 h-24 flex items-center justify-center mx-auto border-4 border-emerald-500/20">
               <CheckCircle2 size={48} />
             </div>
-            <div className="text-center">
+            <div className="text-center w-full">
               <h1 className="text-3xl font-black mb-2 italic">Bom Estudo, {studentName}!</h1>
-              <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl mt-4 inline-block w-full shadow-2xl">
+              
+              <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl mt-4 inline-block w-full shadow-2xl relative overflow-hidden">
                 <span className="text-2xl font-black text-blue-400">{currentSession.subject_name || 'Sessão Livre'}</span>
+                
+                {/* O Join com a tabela salas agora atualizará corretamente */}
                 {currentSession.salas?.nome && (
                   <div className="mt-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 flex items-center justify-center gap-3">
                     <MapPin size={24} className="text-emerald-500 animate-bounce" />
@@ -155,6 +194,29 @@ export default function StudentHome() {
                       <p className="text-[10px] text-emerald-500 uppercase font-black tracking-widest">A tua sala hoje:</p>
                       <p className="text-lg font-black text-white">{currentSession.salas.nome}</p>
                     </div>
+                  </div>
+                )}
+
+                <button 
+                  onClick={() => setShowSwitchList(!showSwitchList)} 
+                  className="mt-6 w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+                >
+                  <RefreshCw size={14} className={showSwitchList ? 'animate-spin' : ''} />
+                  {showSwitchList ? 'Cancelar Troca' : 'Trocar Disciplina'}
+                </button>
+
+                {showSwitchList && (
+                  <div className="mt-4 grid grid-cols-2 gap-2 animate-in slide-in-from-top-2 duration-300">
+                    {subjects.filter(s => s.id !== currentSession.subject_id).map((subject) => (
+                      <button 
+                        key={subject.id}
+                        // PASSAMOS TAMBÉM O SALA_ID PARA A FUNÇÃO
+                        onClick={() => safeAction(() => handleSwitchSubject(subject.id, subject.name, subject.sala_id))}
+                        className="bg-slate-950 border border-slate-800 p-3 rounded-xl text-[10px] font-bold hover:border-blue-500 transition-colors"
+                      >
+                        {subject.name}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
@@ -177,13 +239,12 @@ export default function StudentHome() {
                    <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Agenda</span>
                  </Link>
               </div>
-              <button onClick={() => safeAction(handleCheckout)} disabled={isSubmitting} className="w-full bg-slate-900 hover:bg-red-900/20 text-slate-400 hover:text-red-400 border border-slate-800 py-4 rounded-2xl font-black flex items-center justify-center gap-2">
+              <button onClick={() => safeAction(handleCheckout)} disabled={isSubmitting} className="w-full bg-slate-900 hover:bg-red-900/20 text-slate-400 hover:text-red-400 border border-slate-800 py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all">
                 {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <LogOut size={20} />} TERMINAR SESSÃO
               </button>
             </div>
           </div>
         ) : (
-          /* ECRÃ DE SELEÇÃO DE DISCIPLINAS */
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <header className="mb-8 flex justify-between items-center">
               <div>
@@ -251,9 +312,9 @@ export default function StudentHome() {
                       className="bg-slate-900 hover:bg-slate-800 border border-slate-800 p-5 rounded-3xl text-left transition-all relative overflow-hidden active:scale-95 disabled:opacity-50"
                     >
                       <div className="bg-blue-500/10 text-blue-500 w-10 h-10 rounded-xl flex items-center justify-center mb-3">
-                        {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <BookOpen size={20} />}
+                        <BookOpen size={20} />
                       </div>
-                      <span className="font-black text-md block text-slate-200">{isSubmitting ? 'A entrar...' : subject.name}</span>
+                      <span className="font-black text-md block text-slate-200">{subject.name}</span>
                       {subject.salas?.nome && (
                         <span className="absolute top-4 right-4 text-[8px] bg-slate-800 text-slate-400 px-2 py-1 rounded font-black uppercase tracking-widest">
                           {subject.salas.nome}
