@@ -21,19 +21,24 @@ export default function HistoryPage() {
   const fetchHistory = async () => {
     setLoading(true);
     
-    // USAR AS COLUNAS MODERNAS (entrada/saida) E O EXPLÍCITO (!aluno_id)
     let query = supabase
       .from('diario_bordo')
       .select('*, alunos!aluno_id(nome)')
       .order('entrada', { ascending: false });
 
-    // Filtro de Data Inteligente
-    if (date) {
+    // --- LÓGICA DE AUDITORIA (60 DIAS) ---
+    // Se houver texto na pesquisa, ignoramos o filtro de um dia único e recuamos 2 meses.
+    const isSearching = search.trim().length > 0;
+
+    if (isSearching) {
+      const limiteAuditoria = new Date();
+      limiteAuditoria.setDate(limiteAuditoria.getDate() - 60); 
+      query = query.gte('entrada', limiteAuditoria.toISOString());
+    } else if (date) {
       const start = new Date(date);
       start.setHours(0, 0, 0, 0);
       const end = new Date(date);
       end.setHours(23, 59, 59, 999);
-      
       query = query.gte('entrada', start.toISOString()).lte('entrada', end.toISOString());
     }
 
@@ -41,7 +46,6 @@ export default function HistoryPage() {
 
     if (error) {
        console.error("Erro ao puxar histórico:", error);
-       alert("Erro de Sincronização: " + error.message);
     }
 
     if (data) {
@@ -62,7 +66,6 @@ export default function HistoryPage() {
     fetchHistory();
   }, [date, search]);
 
-  // Função para calcular duração (Recuperada do teu código original)
   const calculateDuration = (start: string, end: string | null) => {
     if (!end) return 'A decorrer';
     const startTime = new Date(start).getTime();
@@ -108,8 +111,9 @@ export default function HistoryPage() {
               type="date" 
               value={date}
               onChange={(e) => setDate(e.target.value)}
+              disabled={search.trim().length > 0} // Desativa se estiver em modo auditoria
               style={{ colorScheme: "dark" }}
-              className="bg-slate-900 border border-slate-800 text-white p-4 rounded-2xl outline-none focus:border-blue-500 w-full cursor-pointer font-bold transition-all shadow-lg"
+              className={`bg-slate-900 border border-slate-800 text-white p-4 rounded-2xl outline-none focus:border-blue-500 w-full cursor-pointer font-bold transition-all shadow-lg ${search.trim().length > 0 ? 'opacity-30' : ''}`}
             />
           </div>
 
@@ -118,7 +122,7 @@ export default function HistoryPage() {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
             <input 
               type="text" 
-              placeholder="Procurar aluno ou disciplina..."
+              placeholder="Pesquisar aluno (Modo Auditoria)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="bg-slate-900 border border-slate-800 text-white pl-12 pr-4 py-4 rounded-2xl outline-none focus:border-blue-500 w-full transition-all shadow-lg placeholder:text-slate-600"
@@ -127,7 +131,6 @@ export default function HistoryPage() {
         </div>
       </div>
 
-      {/* TABELA DE DADOS DE ALTA PERFORMANCE */}
       <div className="bg-slate-900 border border-slate-800 rounded-4xl overflow-hidden shadow-2xl relative min-h-100">
         
         {loading && (
@@ -163,18 +166,20 @@ export default function HistoryPage() {
 
                   return (
                     <tr key={entry.id} className="hover:bg-slate-800/20 transition-colors group">
-                      
-                      {/* ALUNO */}
                       <td className="p-6 font-black text-white whitespace-nowrap">
                         <div className="flex items-center gap-3">
                           <div className={`p-2 rounded-lg ${isAtivo ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-600/20 text-blue-400'}`}>
                             <User size={16} />
                           </div>
-                          {alunoNome || 'Desconhecido'}
+                          <div>
+                            <p>{alunoNome || 'Desconhecido'}</p>
+                            {search.trim().length > 0 && (
+                              <p className="text-[9px] text-slate-500 font-bold uppercase">{new Date(entry.entrada).toLocaleDateString('pt-PT')}</p>
+                            )}
+                          </div>
                         </div>
                       </td>
 
-                      {/* DISCIPLINA */}
                       <td className="p-6 text-slate-400 font-medium whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <BookOpen size={14} className="text-slate-600" />
@@ -182,30 +187,22 @@ export default function HistoryPage() {
                         </div>
                       </td>
 
-                      {/* ENTRADA */}
                       <td className="p-6 text-center text-blue-400 font-mono font-bold whitespace-nowrap">
                         {formatTime(entry.entrada)}
                       </td>
 
-                      {/* SAÍDA */}
                       <td className="p-6 text-center font-mono font-bold text-slate-400 whitespace-nowrap">
                         {isAtivo ? '---' : formatTime(entry.saida)}
                       </td>
 
-                      {/* DURAÇÃO (O que pediste) */}
                       <td className="p-6 text-center font-mono font-black text-emerald-400 whitespace-nowrap">
                         {calculateDuration(entry.entrada, entry.saida)}
                       </td>
 
-                      {/* STATUS DA OPERAÇÃO */}
                       <td className="p-6 text-right whitespace-nowrap">
                         {isAtivo ? (
                           <span className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1 animate-pulse">
                             <Clock size={10} /> Em Estudo
-                          </span>
-                        ) : entry.status === 'validado' ? (
-                          <span className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1">
-                            <CheckCircle2 size={10} /> Concluída & Avisada
                           </span>
                         ) : (
                           <span className="bg-slate-800 text-slate-400 border border-slate-700 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1">
@@ -213,7 +210,6 @@ export default function HistoryPage() {
                           </span>
                         )}
                       </td>
-
                     </tr>
                   );
                 })
@@ -222,10 +218,11 @@ export default function HistoryPage() {
           </table>
         </div>
         
-        {/* RODAPÉ DO HISTÓRICO */}
         <div className="bg-slate-950/80 p-5 text-[10px] uppercase font-black tracking-widest text-slate-500 flex justify-between items-center border-t border-slate-800">
           <span>Total: {entries.length} {entries.length === 1 ? 'Sessão' : 'Sessões'}</span>
-          <span>Sistema Central de Operações</span>
+          <span className={search.trim().length > 0 ? 'text-amber-500 animate-pulse' : ''}>
+            {search.trim().length > 0 ? 'Visualização de Auditoria (60 dias)' : 'Visualização Diária'}
+          </span>
         </div>
       </div>
     </main>

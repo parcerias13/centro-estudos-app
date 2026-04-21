@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import Link from 'next/link';
-import { ArrowLeft, MapPin, Plus, Users, BookOpen, Loader2, Save } from 'lucide-react';
+import { ArrowLeft, MapPin, Plus, Users, BookOpen, Loader2, Save, Trash2 } from 'lucide-react';
 
 export default function GestaoSalas() {
   const [loading, setLoading] = useState(true);
@@ -55,6 +55,18 @@ export default function GestaoSalas() {
       fetchDados();
     }
     setSavingSala(false);
+  };
+
+  const handleEliminarSala = async (id: string) => {
+    if (!confirm("Tem a certeza que deseja eliminar esta sala? Isto pode afetar o roteamento de disciplinas.")) return;
+    
+    const { error } = await supabase.from('salas').delete().eq('id', id);
+    
+    if (error) {
+      alert("Erro ao eliminar sala: " + error.message);
+    } else {
+      fetchDados();
+    }
   };
 
   const handleMapearDisciplina = async (disciplinaId: string, salaId: string) => {
@@ -129,15 +141,24 @@ export default function GestaoSalas() {
                <div className="text-center p-8 border-2 border-dashed border-slate-800 rounded-3xl text-slate-600 text-xs font-bold uppercase tracking-widest">Nenhuma sala registada.</div>
              ) : (
                salas.map(sala => (
-                 <div key={sala.id} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between shadow-lg">
+                 <div key={sala.id} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-center justify-between shadow-lg group">
                    <div>
                      <p className="font-black text-white text-lg">{sala.nome}</p>
                      <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mt-1 flex items-center gap-1">
                        <Users size={12} /> Máx: {sala.capacidade}
                      </p>
                    </div>
-                   <div className="bg-blue-500/10 text-blue-500 p-3 rounded-xl border border-blue-500/20">
-                     <MapPin size={20} />
+                   <div className="flex items-center gap-2">
+                     <button 
+                       onClick={() => handleEliminarSala(sala.id)}
+                       className="p-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500 hover:text-white transition-all"
+                       title="Eliminar Sala"
+                     >
+                       <Trash2 size={18} />
+                     </button>
+                     <div className="bg-blue-500/10 text-blue-500 p-2.5 rounded-xl border border-blue-500/20">
+                       <MapPin size={18} />
+                     </div>
                    </div>
                  </div>
                ))
