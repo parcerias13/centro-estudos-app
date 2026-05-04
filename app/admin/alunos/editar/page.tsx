@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign } from 'lucide-react';
 
 function EditarAlunoContent() {
   const router = useRouter();
@@ -12,20 +12,20 @@ function EditarAlunoContent() {
   const studentId = searchParams.get('id');
 
   const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false); // Substitui o saving simples
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [erro, setErro] = useState('');
 
-  // 1. DADOS PESSOAIS (SINCRONIZADOS COM NOVO ALUNO)
+  // 1. DADOS PESSOAIS
   const [nome, setNome] = useState('');
-  const [email, setEmail] = useState(''); // Email de Acesso
-  const [password, setPassword] = useState('******'); // Apenas visual no editar
-  const [telefone, setTelefone] = useState(''); // Telemóvel Encarregado
-  const [emailEncarregado, setEmailEncarregado] = useState(''); // NOVO: Email Encarregado
-  const [telemovelAluno, setTelemovelAluno] = useState(''); // NOVO: Telemóvel Aluno
+  const [email, setEmail] = useState(''); 
+  const [password, setPassword] = useState('******'); 
+  const [telefone, setTelefone] = useState(''); 
+  const [emailEncarregado, setEmailEncarregado] = useState(''); 
+  const [telemovelAluno, setTelemovelAluno] = useState(''); 
   const [dataNascimento, setDataNascimento] = useState('');
   const [anoEscolar, setAnoEscolar] = useState('1');
-  const [limiteSemanal, setLimiteSemanal] = useState('3');
+  const [mensalidadeBase, setMensalidadeBase] = useState(''); // NOVO: Valor fixo
   const [saidaAutorizada, setSaidaAutorizada] = useState(false);
   const [consentimentoIa, setConsentimentoIa] = useState(false);
   const [usaApp, setUsaApp] = useState(true); 
@@ -43,7 +43,6 @@ function EditarAlunoContent() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // --- SISTEMA DE CONTROLO DE FLUXO (ANTI-DOUBLE CLICK) ---
   const safeAction = async (actionFn: () => Promise<void>) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
@@ -87,7 +86,7 @@ function EditarAlunoContent() {
       setTelemovelAluno(aluno.telemovel_aluno || ''); 
       setDataNascimento(aluno.data_nascimento || '');
       setAnoEscolar(aluno.ano_escolar?.toString() || '1');
-      setLimiteSemanal(aluno.limite_semanal?.toString() || '3');
+      setMensalidadeBase(aluno.mensalidade_base?.toString() || ''); // CARREGAMENTO DO VALOR FIXO
       setSaidaAutorizada(aluno.saida_autorizada || false);
       setConsentimentoIa(aluno.consentimento_ia || false);
       setUsaApp(aluno.usa_app ?? true);
@@ -120,13 +119,8 @@ function EditarAlunoContent() {
   };
 
   const toggleDia = (id: number) => {
-    const limite = parseInt(limiteSemanal);
     setDiasSelecionados(prev => {
       if (prev.includes(id)) return prev.filter(d => d !== id);
-      if (limite !== 99 && prev.length >= limite) {
-        alert(`Limite semanal: ${limite} dia(s).`);
-        return prev;
-      }
       return [...prev, id];
     });
   };
@@ -144,7 +138,7 @@ function EditarAlunoContent() {
           telemovel_aluno: telemovelAluno, 
           data_nascimento: dataNascimento,
           ano_escolar: parseInt(anoEscolar),
-          limite_semanal: parseInt(limiteSemanal),
+          mensalidade_base: parseFloat(mensalidadeBase), // ATUALIZAÇÃO DO VALOR FIXO
           saida_autorizada: saidaAutorizada,
           consentimento_ia: eMaiorDe13() ? consentimentoIa : false,
           usa_app: usaApp,
@@ -272,19 +266,28 @@ function EditarAlunoContent() {
 
         <hr className="border-slate-800" />
 
-        {/* 2. PLANO DE FREQUÊNCIA */}
+        {/* 2. PLANO FINANCEIRO E FREQUÊNCIA */}
         <div className="space-y-6">
-          <h2 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em]">2. Plano de Frequência</h2>
+          <h2 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em]">2. Plano Financeiro e Frequência</h2>
           
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Limite Semanal de Sessões</label>
-            <select value={limiteSemanal} onChange={(e) => setLimiteSemanal(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all">
-              {[1,2,3,4,5,99].map(n => <option key={n} value={n}>{n === 99 ? 'Ilimitado' : `${n} sessões por semana`}</option>)}
-            </select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-2">
+                <DollarSign size={12} /> Mensalidade Base (€)
+              </label>
+              <input 
+                type="number" 
+                required 
+                value={mensalidadeBase} 
+                onChange={(e) => setMensalidadeBase(e.target.value)} 
+                placeholder="0.00"
+                className="w-full bg-slate-950 border border-emerald-500/30 p-4 rounded-xl outline-none focus:border-emerald-500 transition-all text-emerald-500 font-bold" 
+              />
+            </div>
           </div>
 
           <div className="space-y-3">
-            <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><Calendar size={14} /> Dias Autorizados</label>
+            <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><Calendar size={14} /> Dias Previstos de Frequência</label>
             <div className="flex flex-wrap gap-2">
               {diasSemana.map(d => (
                 <button key={d.id} type="button" onClick={() => toggleDia(d.id)} className={`flex-1 min-w-27.5 p-3 rounded-xl border text-[10px] font-black transition-all ${diasSelecionados.includes(d.id) ? 'bg-blue-600 border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>

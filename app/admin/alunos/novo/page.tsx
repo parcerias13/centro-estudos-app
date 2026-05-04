@@ -4,14 +4,13 @@ import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap, Mail } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap, Mail, DollarSign } from 'lucide-react';
 
 export default function NovoAluno() {
   const router = useRouter();
-  const [isSubmitting, setIsSubmitting] = useState(false); // Substitui o loading simples
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [erro, setErro] = useState('');
-  const [pacotes, setPacotes] = useState<any[]>([]);
 
   // 1. DADOS PESSOAIS
   const [nome, setNome] = useState('');
@@ -27,8 +26,8 @@ export default function NovoAluno() {
   const [usaApp, setUsaApp] = useState(true); 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
-  // 2. LÓGICA DE NEGÓCIO
-  const [pacoteId, setPacoteId] = useState('');
+  // 2. LÓGICA DE NEGÓCIO (CONTRATO FIXO)
+  const [mensalidadeBase, setMensalidadeBase] = useState(''); 
   const [diasSelecionados, setDiasSelecionados] = useState<number[]>([]);
 
   const diasSemana = [
@@ -41,7 +40,6 @@ export default function NovoAluno() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  // --- SISTEMA DE CONTROLO DE FLUXO (ANTI-DOUBLE CLICK) ---
   const safeAction = async (actionFn: () => Promise<void>) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
@@ -53,14 +51,6 @@ export default function NovoAluno() {
       setIsSubmitting(false);
     }
   };
-
-  useEffect(() => {
-    const fetchPacotes = async () => {
-      const { data } = await supabase.from('pacotes').select('*').order('sessoes_semanais');
-      if (data) setPacotes(data);
-    };
-    fetchPacotes();
-  }, [supabase]);
 
   const eMaiorDe13 = () => {
     if (!dataNascimento) return false;
@@ -90,32 +80,20 @@ export default function NovoAluno() {
   };
 
   const toggleDia = (id: number) => {
-    if (!pacoteId) {
-      setErro('Seleciona um pacote primeiro.');
-      return;
-    }
-    const pacoteSelecionado = pacotes.find(p => p.id === pacoteId);
-    const limiteSessoes = pacoteSelecionado ? pacoteSelecionado.sessoes_semanais : 99;
     setDiasSelecionados(prev => {
       if (prev.includes(id)) return prev.filter(d => d !== id);
-      if (prev.length >= limiteSessoes) {
-        alert(`Limite de ${limiteSessoes} dia(s) para este pacote.`);
-        return prev;
-      }
       return [...prev, id];
     });
   };
 
   const handleGuardar = async () => {
-    const pacoteSelecionado = pacotes.find(p => p.id === pacoteId);
-    
-    if (pacoteSelecionado && diasSelecionados.length !== pacoteSelecionado.sessoes_semanais && pacoteSelecionado.sessoes_semanais !== 99) {
-       setErro(`Seleciona exatamente ${pacoteSelecionado.sessoes_semanais} dia(s).`);
-       return;
-    }
-
     if (!dataNascimento) {
       setErro('A data de nascimento é obrigatória.');
+      return;
+    }
+
+    if (!mensalidadeBase) {
+      setErro('Define o valor da mensalidade base.');
       return;
     }
 
@@ -141,7 +119,7 @@ export default function NovoAluno() {
         email_encarregado: emailEncarregado,
         telemovel_aluno: telemovelAluno, 
         ano_escolar: parseInt(anoEscolar),
-        pacote_id: pacoteId,
+        mensalidade_base: parseFloat(mensalidadeBase),
         saida_autorizada: saidaAutorizada,
         consentimento_ia: eMaiorDe13() ? consentimentoIa : false,
         usa_app: usaApp,
@@ -156,7 +134,7 @@ export default function NovoAluno() {
       router.refresh();
     } catch (err: any) {
       setErro(err.message);
-      throw err; // Lança para o safeAction capturar
+      throw err;
     }
   };
 
@@ -170,7 +148,7 @@ export default function NovoAluno() {
           <h1 className="text-2xl font-black flex items-center gap-2">
             <UserPlus className="text-blue-500" /> Nova Matrícula
           </h1>
-          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Configuração de Perfil e Conformidade</p>
+          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Contrato de Mensalidade Fixa</p>
         </div>
       </div>
 
@@ -260,19 +238,28 @@ export default function NovoAluno() {
 
         <hr className="border-slate-800" />
 
-        {/* 2. PLANO */}
+        {/* 2. PLANO FINANCEIRO E FREQUÊNCIA */}
         <div className="space-y-6">
-          <h2 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em]">2. Plano de Frequência</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {pacotes.map(p => (
-              <button key={p.id} type="button" onClick={() => { setPacoteId(p.id); setDiasSelecionados([]); }} className={`p-4 rounded-2xl border text-left transition-all ${pacoteId === p.id ? 'border-blue-500 bg-blue-500/10' : 'border-slate-800 bg-slate-950 opacity-60 hover:opacity-100'}`}>
-                <p className="font-bold text-sm text-white">{p.nome}</p>
-                <p className="text-[9px] text-slate-500 uppercase font-black">{p.sessoes_semanais}x por semana</p>
-              </button>
-            ))}
+          <h2 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em]">2. Plano Financeiro e Frequência</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-2">
+                <DollarSign size={12} /> Mensalidade Base (€)
+              </label>
+              <input 
+                type="number" 
+                required 
+                value={mensalidadeBase} 
+                onChange={(e) => setMensalidadeBase(e.target.value)} 
+                placeholder="0.00"
+                className="w-full bg-slate-950 border border-emerald-500/30 p-4 rounded-xl outline-none focus:border-emerald-500 transition-all text-emerald-500 font-bold" 
+              />
+            </div>
           </div>
+
           <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Calendar size={14} /> Dias Autorizados</label>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Calendar size={14} /> Dias Previstos de Frequência</label>
             <div className="flex flex-wrap gap-2">
               {diasSemana.map(d => (
                 <button key={d.id} type="button" onClick={() => toggleDia(d.id)} className={`flex-1 min-w-27.5 p-3 rounded-xl border text-[10px] font-black transition-all ${diasSelecionados.includes(d.id) ? 'bg-blue-600 border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>
