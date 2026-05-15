@@ -112,7 +112,6 @@ export default function StudentHome() {
     
     const { data: newSession, error } = await supabase.from('diario_bordo').insert({
       aluno_id: user.id,
-      student_id: user.id,
       subject_id: subjectId,
       subject_name: subjectName,
       sala_id: salaId,

@@ -156,7 +156,6 @@ export default function DashboardAdmin() {
     try {
       const { error } = await supabase.from('diario_bordo').insert({
         aluno_id: selectedAluno.id,
-        student_id: selectedAluno.id,
         subject_id: subject.id,
         subject_name: subject.name,
         sala_id: subject.sala_id, 

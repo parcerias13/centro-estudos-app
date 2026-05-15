@@ -91,7 +91,7 @@ export default function RefeitorioPage() {
 
         if (!entrada) {
           await supabase.from('diario_bordo').insert({
-            aluno_id: alunoId, student_id: alunoId, entrada: new Date().toISOString(),
+            aluno_id: alunoId, entrada: new Date().toISOString(),
             status: 'validado', subject_name: `Serviço: ${servico.nome}`
           });
         }
