@@ -25,7 +25,8 @@ async function getAdminCentroId(): Promise<string | null> {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  console.log('[config-centro] user:', user?.id ?? null, '| error:', authError?.message ?? null)
   if (!user) return null
 
   const { data: staffData } = await supabaseAdmin
@@ -33,6 +34,8 @@ async function getAdminCentroId(): Promise<string | null> {
     .select('role, centro_id')
     .eq('id', user.id)
     .single()
+
+  console.log('[config-centro] staffData:', JSON.stringify(staffData))
 
   if (staffData?.role?.toLowerCase() !== 'admin') return null
   return staffData.centro_id || null

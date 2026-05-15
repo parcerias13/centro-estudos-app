@@ -22,6 +22,7 @@ export default function GestaoTotalPage() {
   const loadTudo = useCallback(async () => {
     try {
       setLoading(true);
+      await supabase.auth.refreshSession();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return setIsAdmin(false);
 
