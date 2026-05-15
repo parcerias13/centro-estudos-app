@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import { 
   Building2, Mail, Save, Loader2, DollarSign, 
   Plus, Trash2, RefreshCw, ShieldAlert, Key
@@ -18,11 +18,6 @@ export default function GestaoTotalPage() {
   const [resendKey, setResendKey] = useState('');
 
   const [servicos, setServicos] = useState<any[]>([]);
-
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   const loadTudo = useCallback(async () => {
     try {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, CalendarDays, MapPin, CheckCircle2, XCircle, UserPlus, Search, BookOpen, X, Plus, Calendar } from 'lucide-react';
 
@@ -44,11 +44,6 @@ export default function DashboardAdmin() {
   const [selectedExamStudent, setSelectedExamStudent] = useState<any>(null);
   const [examDate, setExamDate] = useState('');
   const [examSubject, setExamSubject] = useState('');
-
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   // 1. FUNÇÃO DE BUSCA
   const fetchDados = useCallback(async () => {
