@@ -53,7 +53,7 @@ export default function RefeitorioPage() {
       const [servs, presencas, todos, consumos] = await Promise.all([
         supabase.from('servicos').select('id, nome, preco').order('nome'),
         supabase.from('view_refeitorio_hoje').select('aluno_id, aluno_nome, avatar_url'),
-        supabase.from('alunos').select('id, nome, avatar_url').is('deleted_at', null).order('nome'),
+        supabase.from('alunos').select('id, nome, avatar_url').order('nome'),
         supabase.from('consumos_diarios').select('aluno_id, servico_id').eq('data_consumo', hoje)
       ]);
 

@@ -40,8 +40,8 @@ export default function AdminStats() {
         { data: alunos }, // NOVO: Para as mensalidades fixas
         { data: salas }
       ] = await Promise.all([
-        supabase.from('diario_bordo').select('*, alunos!aluno_id(nome)').gte('entrada', primeiroDiaMes).is('deleted_at', null),
-        supabase.from('diario_bordo').select('sala_id').is('saida', null).is('deleted_at', null),
+        supabase.from('diario_bordo').select('*, alunos!aluno_id(nome)').gte('entrada', primeiroDiaMes),
+        supabase.from('diario_bordo').select('sala_id').is('saida', null),
         supabase.from('consumos_diarios').select('preco_aplicado').gte('data_consumo', primeiroDiaMes.split('T')[0]),
         supabase.from('alunos').select('mensalidade_base'),
         supabase.from('salas').select('*')

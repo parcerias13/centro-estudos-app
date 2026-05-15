@@ -46,8 +46,7 @@ function ExtratoDetalhadoContent() {
         .select('*')
         .eq('aluno_id', studentId)
         .gte('entrada', primeiroDia)
-        .lte('entrada', ultimoDia)
-        .is('deleted_at', null),
+        .lte('entrada', ultimoDia),
       supabase.from('consumos_diarios')
         .select('*')
         .eq('aluno_id', studentId)

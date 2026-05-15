@@ -65,7 +65,6 @@ export default function DashboardAdmin() {
           )
         `) 
         .is('saida', null)
-        .is('deleted_at', null) // FILTRO ADICIONADO AQUI
         .order('entrada', { ascending: false });
       
       if (errP) throw errP;
@@ -83,7 +82,6 @@ export default function DashboardAdmin() {
       const { data: aData } = await supabase
         .from('alunos')
         .select('*, pacotes(nome)')
-        .is('deleted_at', null) 
         .order('nome');
         
       const { data: subData } = await supabase.from('subjects').select('*').order('name');
@@ -127,7 +125,7 @@ export default function DashboardAdmin() {
 
   const handleRejeitarEntrada = async (presencaId: string) => {
     if (!confirm("O aluno não está no centro?")) return;
-    const { error } = await supabase.from('diario_bordo').update({ deleted_at: new Date().toISOString() }).eq('id', presencaId);
+    const { error } = await supabase.from('diario_bordo').delete().eq('id', presencaId);
     if (!error) fetchDados(); 
   };
 

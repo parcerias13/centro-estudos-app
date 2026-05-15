@@ -44,7 +44,6 @@ function RelatorioContent() {
       .select('*')
       .eq('aluno_id', studentId)
       .gte('entrada', primeiroDiaMes)
-      .is('deleted_at', null)
       .order('entrada', { ascending: false });
 
     if (entries) {
