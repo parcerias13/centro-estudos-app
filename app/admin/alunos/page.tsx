@@ -34,14 +34,14 @@ export default function ListaAlunos() {
 
       const { data: dataPresencas, error: errPresencas } = await supabase
         .from('diario_bordo')
-        .select('student_id')
+        .select('aluno_id')
         .gte('created_at', inicioSemana.toISOString())
         .lte('created_at', fimSemana.toISOString())
         .neq('status', 'falta');
 
       if (dataAlunos && dataPresencas) {
         const alunosProcessados = dataAlunos.map(aluno => {
-          const contagem = dataPresencas.filter(p => p.student_id === aluno.id).length;
+          const contagem = dataPresencas.filter(p => p.aluno_id === aluno.id).length;
           return {
             ...aluno,
             consumo_semanal: contagem
