@@ -47,6 +47,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
+  // Verificação de role para /admin/gestao via JWT (app_metadata) — sem query à base de dados
+  if (user && request.nextUrl.pathname.startsWith('/admin/gestao')) {
+    const role = user.app_metadata?.role
+    if (role?.toLowerCase() !== 'admin') {
+      return NextResponse.redirect(new URL('/admin', request.url))
+    }
+  }
+
   return response
 }
 
