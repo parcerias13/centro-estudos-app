@@ -48,13 +48,20 @@ export default function RefeitorioPage() {
 
       const [servs, presencas, todos, consumos] = await Promise.all([
         supabase.from('servicos').select('id, nome, preco').order('nome'),
-        supabase.from('view_refeitorio_hoje').select('aluno_id, aluno_nome, avatar_url'),
+        supabase.from('diario_bordo')
+          .select('aluno_id, alunos!aluno_id(nome, avatar_url)')
+          .is('saida', null)
+          .gte('entrada', hoje),
         supabase.from('alunos').select('id, nome, avatar_url').order('nome'),
         supabase.from('consumos_diarios').select('aluno_id, servico_id').eq('data_consumo', hoje)
       ]);
 
       setListaServicos(servs.data || []);
-      setAlunosPresentes(presencas.data || []);
+      setAlunosPresentes((presencas.data || []).map((p: any) => ({
+        aluno_id: p.aluno_id,
+        aluno_nome: p.alunos?.nome || '',
+        avatar_url: p.alunos?.avatar_url || null,
+      })));
       setTodosAlunos(todos.data || []);
       setConsumosHoje(consumos.data || []);
     } catch (err) {
