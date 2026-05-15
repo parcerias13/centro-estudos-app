@@ -13,7 +13,6 @@ export default function GestaoTotalPage() {
   const [success, setSuccess] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
-  const [centroId, setCentroId] = useState<string | null>(null);
   const [nomeCentro, setNomeCentro] = useState('');
   const [emailRemetente, setEmailRemetente] = useState('');
   const [resendKey, setResendKey] = useState('');
@@ -40,14 +39,12 @@ export default function GestaoTotalPage() {
         const { data: servicosRes } = await supabase.from('servicos').select('*').order('nome');
         setServicos(servicosRes || []);
 
-        if (staffData?.centro_id) {
-          setCentroId(staffData.centro_id);
-          const { data: config } = await supabase.from('config_centro').select('*').eq('id', staffData.centro_id).maybeSingle();
-          if (config) {
-            setNomeCentro(config.nome_centro || '');
-            setEmailRemetente(config.email_remetente || '');
-            setResendKey(config.resend_api_key || '');
-          }
+        const res = await fetch('/api/config-centro');
+        if (res.ok) {
+          const config = await res.json();
+          setNomeCentro(config.nome_centro || '');
+          setEmailRemetente(config.email_remetente || '');
+          setResendKey(config.resend_api_key || '');
         }
       }
     } catch (error) {
@@ -61,17 +58,16 @@ export default function GestaoTotalPage() {
 
   const handleSaveCentro = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!centroId) return;
     setSubmitting(true);
-    const { error } = await supabase.from('config_centro').update({
-      nome_centro: nomeCentro, 
-      email_remetente: emailRemetente, 
-      resend_api_key: resendKey
-    }).eq('id', centroId);
-    
-    if (!error) { 
-      setSuccess(true); 
-      setTimeout(() => setSuccess(false), 3000); 
+    const res = await fetch('/api/config-centro', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome_centro: nomeCentro, email_remetente: emailRemetente, resend_api_key: resendKey }),
+    });
+
+    if (res.ok) {
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
     }
     setSubmitting(false);
   };
