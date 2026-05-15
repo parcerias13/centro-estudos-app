@@ -30,8 +30,8 @@ export default function GestaoTotalPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return setIsAdmin(false);
 
-      const { data: staffData } = await supabase.from('staff').select('role, centro_id').eq('id', user.id).single();
-      const adminStatus = staffData?.role?.toLowerCase() === 'admin';
+      const configRes = await fetch('/api/config-centro');
+      const adminStatus = configRes.ok;
       setIsAdmin(adminStatus);
 
       if (adminStatus) {
@@ -39,13 +39,10 @@ export default function GestaoTotalPage() {
         const { data: servicosRes } = await supabase.from('servicos').select('*').order('nome');
         setServicos(servicosRes || []);
 
-        const res = await fetch('/api/config-centro');
-        if (res.ok) {
-          const config = await res.json();
-          setNomeCentro(config.nome_centro || '');
-          setEmailRemetente(config.email_remetente || '');
-          setResendKey(config.resend_api_key || '');
-        }
+        const config = await configRes.json();
+        setNomeCentro(config.nome_centro || '');
+        setEmailRemetente(config.email_remetente || '');
+        setResendKey(config.resend_api_key || '');
       }
     } catch (error) {
       console.error("Erro no load:", error);
