@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 // METADATA PROFISSIONAL PARA A DEMO
 export const metadata: Metadata = {
-  title: "Centro AI | Gestão Inteligente",
+  title: "CogniLab | Gestão Inteligente",
   description: "Plataforma de automação e gestão de performance para centros de estudo.",
 };
 

@@ -76,7 +76,7 @@ export default function AdminLayout({
         {/* Header Mobile */}
         <header className="md:hidden bg-[#1e293b] p-4 border-b border-slate-800 flex justify-between items-center sticky top-0 z-30">
           <h2 className="text-lg font-black text-white italic">
-            CENTRO<span className="text-blue-500">AI</span>
+            Cogni<span className="text-blue-500">Lab</span>
           </h2>
           <button 
             onClick={() => setIsMenuOpen(true)}
