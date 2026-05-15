@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Search, FileText, Youtube, Link as LinkIcon, ExternalLink, Library, Loader2, BookOpen } from 'lucide-react';
 
 export default function StudentLibrary() {
@@ -11,11 +11,6 @@ export default function StudentLibrary() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('Todos');
   const [subjectsList, setSubjectsList] = useState<string[]>([]);
-
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => {
     const fetchResources = async () => {

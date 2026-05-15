@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -19,10 +19,6 @@ function ExtratoDetalhadoContent() {
   const [diasDetalhados, setDiasDetalhados] = useState<any[]>([]);
   const [resumo, setResumo] = useState<any>(null);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   const carregarDados = useCallback(async () => {
     if (!studentId) return;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import { 
   Search, UserPlus, RefreshCw, X, Loader2, CheckCircle2, Clock, Utensils, Apple
 } from 'lucide-react';
@@ -35,10 +35,6 @@ export default function RefeitorioPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   // Validador de URL (Preservado do teu código)
   const getSafeAvatar = (url: string | null | undefined) => {

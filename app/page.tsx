@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw } from 'lucide-react';
 
@@ -18,10 +18,6 @@ export default function StudentHome() {
   const [limitData, setLimitData] = useState({ visits: 0, limit: 0 });
   const [showSwitchList, setShowSwitchList] = useState(false);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   const fetchData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();

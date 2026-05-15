@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { ArrowLeft, Search, FileText, Loader2, Clock, CheckCircle2, User, BookOpen } from 'lucide-react';
 
@@ -12,11 +12,6 @@ export default function HistoryPage() {
   // Filtros
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]); 
   const [search, setSearch] = useState('');
-
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   const fetchHistory = async () => {
     setLoading(true);

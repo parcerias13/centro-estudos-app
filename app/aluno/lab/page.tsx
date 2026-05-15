@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import { Send, Aperture, User, Loader2, Paperclip, X, FileText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
@@ -34,11 +34,6 @@ export default function LabAI() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
   useEffect(() => {
     const fetchAluno = async () => {
       const { data: { session } } = await supabase.auth.getSession();

@@ -1,14 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { UserPlus, Search, FileBarChart, Edit, Trash2, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter, FileText } from 'lucide-react';
 
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export default function ListaAlunos() {
   const [alunos, setAlunos] = useState<any[]>([]);
@@ -145,9 +141,9 @@ export default function ListaAlunos() {
           </div>
         ) : (
           alunosFiltrados.map((aluno) => (
-            <div key={aluno.id} className={`bg-slate-900/40 border p-5 rounded-3xl flex items-center justify-between group transition-all shadow-sm ${
-              (aluno.consumo_semanal >= aluno.limite_semanal && aluno.limite_semanal !== 99) 
-              ? 'border-red-500/30 bg-red-500/5' 
+            <div key={aluno.id} className={`bg-slate-900/40 border p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center sm:justify-between group transition-all shadow-sm ${
+              (aluno.consumo_semanal >= aluno.limite_semanal && aluno.limite_semanal !== 99)
+              ? 'border-red-500/30 bg-red-500/5'
               : 'border-slate-800/60 hover:border-slate-700'
             }`}>
               <div className="flex items-center gap-5 flex-1">
@@ -190,7 +186,7 @@ export default function ListaAlunos() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 ml-4">
+              <div className="flex items-center gap-2 mt-3 sm:mt-0 sm:ml-4">
                 {/* BOTÃO DO EXTRATO INDIVIDUAL (DOSSIER) */}
                 <Link 
                   href={`/admin/alunos/extrato?id=${aluno.id}`} 

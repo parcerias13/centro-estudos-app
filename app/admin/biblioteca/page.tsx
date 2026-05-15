@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { ArrowLeft, Library, Plus, Trash2, Link as LinkIcon, FileText, Youtube, Loader2, Save, ExternalLink, UploadCloud, GraduationCap } from 'lucide-react';
 
@@ -18,11 +18,6 @@ export default function AdminLibrary() {
   const [subjectId, setSubjectId] = useState('');
   const [anoEscolar, setAnoEscolar] = useState('10'); // Padrão 10º ano
   const [file, setFile] = useState<File | null>(null);
-
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => {
     fetchData();

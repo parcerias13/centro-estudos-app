@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import { CalendarDays, BookOpen, Loader2, ArrowLeft, Search, Filter, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import Link from 'next/link';
 
@@ -17,11 +17,6 @@ export default function AdminAgendaReadonly() {
   
   // ESTADO DE NAVEGAÇÃO SEMANAL (0 = Semana Atual, 1 = Próxima, etc.)
   const [weekOffset, setWeekOffset] = useState(0);
-
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => { 
     fetchExams(); 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Loader2, FileText, User, Clock, BookOpen, Calendar, ShieldAlert, Download, Mail, CheckCircle2 } from 'lucide-react';
@@ -17,10 +17,6 @@ function RelatorioContent() {
   const [isSending, setIsSending] = useState(false);
   const [sentStatus, setSentStatus] = useState(false);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   const fetchData = useCallback(async () => {
     if (!studentId) return;

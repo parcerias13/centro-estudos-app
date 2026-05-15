@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import { 
   ArrowLeft, Activity, RefreshCw, Layout, PieChart, Loader2, DollarSign, Clock, Award, BarChart3
 } from 'lucide-react';
@@ -20,10 +20,6 @@ export default function AdminStats() {
     roomOccupancy: []
   });
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   const processStats = useCallback(async () => {
     setLoading(true);

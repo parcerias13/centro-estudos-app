@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import { BookOpen, Plus, Trash2, ArrowLeft, Loader2, Library, CheckCircle2, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
@@ -10,11 +10,6 @@ export default function AdminDisciplinas() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [nome, setNome] = useState('');
-
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => {
     fetchDisciplinas();

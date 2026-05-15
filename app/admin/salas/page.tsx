@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { ArrowLeft, MapPin, Plus, Users, BookOpen, Loader2, Save, Trash2 } from 'lucide-react';
 
@@ -14,11 +14,6 @@ export default function GestaoSalas() {
   const [novaSalaNome, setNovaSalaNome] = useState('');
   const [novaSalaCapacidade, setNovaSalaCapacidade] = useState('10');
   const [savingSala, setSavingSala] = useState(false);
-
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => {
     fetchDados();

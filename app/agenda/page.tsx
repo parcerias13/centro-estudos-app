@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Calendar, Loader2, Plus, CheckCircle2, BookOpen } from 'lucide-react';
 import Link from 'next/link';
 
@@ -14,11 +14,6 @@ export default function StudentAgenda() {
   const [subject, setSubject] = useState('');
   const [date, setDate] = useState('');
   const [topics, setTopics] = useState('');
-
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => { 
     fetchInitialData(); 

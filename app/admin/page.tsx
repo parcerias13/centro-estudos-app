@@ -218,7 +218,7 @@ export default function DashboardAdmin() {
           <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter">Dashboard</h1>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
           <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-4 py-3 bg-emerald-600/10 text-emerald-500 border border-emerald-500/20 rounded-xl hover:bg-emerald-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-lg">
             <UserPlus size={16} /> Entrada Manual
           </button>
@@ -232,7 +232,7 @@ export default function DashboardAdmin() {
           <Link href="/admin/salas" className="flex items-center gap-2 px-4 py-3 bg-blue-600/10 text-blue-500 border border-blue-500/20 rounded-xl hover:bg-blue-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-lg">
             <MapPin size={16} /> Gestão de Salas
           </Link>
-          
+
           <button onClick={fetchDados} className="p-3 bg-slate-900 rounded-xl border border-slate-800 hover:text-blue-400 transition-all">
             <RefreshCw size={20} />
           </button>
@@ -278,7 +278,7 @@ export default function DashboardAdmin() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4 w-full md:w-auto justify-between sm:justify-start">
                     <div className="text-right mr-2">
                       <p className="text-blue-400 font-mono font-bold text-lg">
                         {new Date(p.entrada).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
