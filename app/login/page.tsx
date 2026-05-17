@@ -9,11 +9,13 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setLoginError(null);
 
     // 1. Tentar Autenticação (Verificar se a password está correta)
     const { data: { user }, error } = await supabase.auth.signInWithPassword({
@@ -22,7 +24,7 @@ export default function LoginPage() {
     });
 
     if (error) {
-      alert('Erro de Acesso: ' + error.message);
+      setLoginError('Credenciais inválidas. Verifica o email e a password.');
       setLoading(false);
       return;
     }
@@ -110,6 +112,11 @@ export default function LoginPage() {
             />
           </div>
 
+          {loginError && (
+            <p className="text-red-400 text-xs font-bold bg-red-500/10 border border-red-500/20 px-4 py-3 rounded-xl">
+              {loginError}
+            </p>
+          )}
           <button
             type="submit"
             disabled={loading}

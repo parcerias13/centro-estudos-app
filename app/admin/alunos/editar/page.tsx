@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign, KeyRound, Eye, EyeOff, RefreshCw } from 'lucide-react';
 
 function EditarAlunoContent() {
   const router = useRouter();
@@ -16,10 +16,17 @@ function EditarAlunoContent() {
   const [uploading, setUploading] = useState(false);
   const [erro, setErro] = useState('');
 
+  // Reset password inline
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [novaPassword, setNovaPassword] = useState('');
+  const [showNovaPassword, setShowNovaPassword] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState(false);
+
   // 1. DADOS PESSOAIS
   const [nome, setNome] = useState('');
-  const [email, setEmail] = useState(''); 
-  const [password, setPassword] = useState('******'); 
+  const [email, setEmail] = useState('');
   const [telefone, setTelefone] = useState(''); 
   const [emailEncarregado, setEmailEncarregado] = useState(''); 
   const [telemovelAluno, setTelemovelAluno] = useState(''); 
@@ -111,6 +118,38 @@ function EditarAlunoContent() {
     } catch (error: any) {
       setErro('Erro no upload: ' + error.message);
     } finally { setUploading(false); }
+  };
+
+  const gerarPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const pwd = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    setNovaPassword(pwd);
+    setShowNovaPassword(true);
+  };
+
+  const handleResetPassword = async () => {
+    setResetError(null);
+    setResetSuccess(false);
+    if (!novaPassword || novaPassword.length < 6) {
+      setResetError('A password deve ter no mínimo 6 caracteres.');
+      return;
+    }
+    setResetLoading(true);
+    const res = await fetch('/api/admin/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alunoId: studentId, novaPassword }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setResetSuccess(true);
+      setNovaPassword('');
+      setShowNovaPassword(false);
+      setTimeout(() => { setResetSuccess(false); setShowResetPassword(false); }, 3000);
+    } else {
+      setResetError(body?.error || `Erro (${res.status}). Tenta novamente.`);
+    }
+    setResetLoading(false);
   };
 
   const toggleDia = (id: number) => {
@@ -215,7 +254,13 @@ function EditarAlunoContent() {
 
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Password</label>
-              <input type="text" readOnly value={password} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none opacity-50 cursor-not-allowed" />
+              <button
+                type="button"
+                onClick={() => { setShowResetPassword(v => !v); setResetError(null); setResetSuccess(false); }}
+                className="w-full flex items-center justify-center gap-2 bg-slate-900 border border-slate-700 hover:border-amber-500/50 hover:text-amber-400 text-slate-400 p-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all active:scale-95"
+              >
+                <KeyRound size={16} /> Redefinir Password
+              </button>
             </div>
 
             <div className="space-y-2">
@@ -257,6 +302,58 @@ function EditarAlunoContent() {
               />
             </div>
           </div>
+
+          {showResetPassword && (
+            <div className="bg-slate-950 border border-amber-500/20 rounded-2xl p-5 space-y-4 mt-2">
+              <p className="text-[10px] font-black uppercase text-amber-500 tracking-widest">Nova Password</p>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showNovaPassword ? 'text' : 'password'}
+                    value={novaPassword}
+                    onChange={e => setNovaPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    className="w-full bg-slate-900 border border-slate-800 p-4 pr-12 rounded-xl outline-none focus:border-amber-500 transition-all font-mono text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNovaPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                  >
+                    {showNovaPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={gerarPassword}
+                  title="Gerar password aleatória"
+                  className="px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition-all active:scale-95 text-slate-400 hover:text-white shrink-0"
+                >
+                  <RefreshCw size={16} />
+                </button>
+              </div>
+              {resetError && <p className="text-red-400 text-[11px] font-bold">{resetError}</p>}
+              {resetSuccess && <p className="text-emerald-400 text-[11px] font-bold">Password atualizada com sucesso.</p>}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleResetPassword}
+                  disabled={resetLoading}
+                  className="flex-1 py-3 bg-amber-600 hover:bg-amber-500 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {resetLoading ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
+                  Guardar Nova Password
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowResetPassword(false); setNovaPassword(''); setResetError(null); }}
+                  className="px-5 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-black text-sm transition-all active:scale-95"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <hr className="border-slate-800" />

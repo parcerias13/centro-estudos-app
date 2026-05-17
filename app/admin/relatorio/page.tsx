@@ -16,6 +16,7 @@ function RelatorioContent() {
 
   const [isSending, setIsSending] = useState(false);
   const [sentStatus, setSentStatus] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
 
   const fetchData = useCallback(async () => {
@@ -77,11 +78,11 @@ function RelatorioContent() {
     fetchData();
   }, [fetchData]);
 
-  // ... (manter handleSendEmail igual ao que tinhas)
-
   const handleSendEmail = async () => {
+    setSendError(null);
     if (!student?.email_encarregado) {
-      return alert("Erro: Este aluno não tem um e-mail de encarregado registado.");
+      setSendError('Este aluno não tem um e-mail de encarregado registado.');
+      return;
     }
     setIsSending(true);
     const reportHtml = `
@@ -109,9 +110,12 @@ function RelatorioContent() {
       if (response.ok) {
         setSentStatus(true);
         setTimeout(() => setSentStatus(false), 5000);
+      } else {
+        const body = await response.json().catch(() => ({}));
+        setSendError(body?.error || `Falha no envio (${response.status}). Tenta novamente.`);
       }
-    } catch (err) {
-      alert("Falha no envio.");
+    } catch (err: any) {
+      setSendError(err?.message || 'Erro inesperado. Verifica a ligação e tenta novamente.');
     } finally {
       setIsSending(false);
     }
@@ -211,7 +215,8 @@ function RelatorioContent() {
                 <Link href="/admin/alunos" className="flex items-center gap-2 text-slate-400 hover:text-slate-900 font-bold transition-colors text-sm">
                     <ArrowLeft size={16} /> Painel de Gestão
                 </Link>
-                <div className="flex gap-4">
+                <div className="flex flex-col items-end gap-2">
+                    <div className="flex gap-4">
                     <button onClick={handleSendEmail} disabled={isSending} className={`flex items-center gap-3 px-8 py-4 rounded-2xl font-black transition-all ${sentStatus ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>
                         {isSending ? <Loader2 className="animate-spin" size={20} /> : sentStatus ? <CheckCircle2 size={20} /> : <Mail size={20} />}
                         {isSending ? 'A ENVIAR...' : sentStatus ? 'RELATÓRIO ENVIADO' : 'ENVIAR EMAIL'}
@@ -219,6 +224,10 @@ function RelatorioContent() {
                     <button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-lg shadow-blue-500/20">
                         <Download size={20} /> PDF
                     </button>
+                    </div>
+                    {sendError && (
+                      <p className="text-red-400 text-xs font-bold">{sendError}</p>
+                    )}
                 </div>
             </div>
         </div>

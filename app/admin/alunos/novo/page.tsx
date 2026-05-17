@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap, Mail, DollarSign } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap, Mail, DollarSign, Eye, EyeOff, RefreshCw } from 'lucide-react';
 
 export default function NovoAluno() {
   const router = useRouter();
@@ -15,7 +15,8 @@ export default function NovoAluno() {
   // 1. DADOS PESSOAIS
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('123456');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [telefone, setTelefone] = useState(''); 
   const [emailEncarregado, setEmailEncarregado] = useState(''); 
   const [telemovelAluno, setTelemovelAluno] = useState(''); 
@@ -72,6 +73,13 @@ export default function NovoAluno() {
     } catch (error: any) {
       setErro('Erro no upload: ' + error.message);
     } finally { setUploading(false); }
+  };
+
+  const gerarPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const pwd = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    setPassword(pwd);
+    setShowPassword(true);
   };
 
   const toggleDia = (id: number) => {
@@ -191,8 +199,34 @@ export default function NovoAluno() {
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Password</label>
-              <input type="text" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" />
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Password Provisória</label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    className="w-full bg-slate-950 border border-slate-800 p-4 pr-12 rounded-xl outline-none focus:border-blue-500 transition-all font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={gerarPassword}
+                  title="Gerar password aleatória"
+                  className="px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition-all active:scale-95 text-slate-400 hover:text-white shrink-0"
+                >
+                  <RefreshCw size={16} />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-2">

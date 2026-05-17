@@ -11,6 +11,7 @@ export default function GestaoTotalPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   const [nomeCentro, setNomeCentro] = useState('');
@@ -57,6 +58,7 @@ export default function GestaoTotalPage() {
 
   const handleSaveCentro = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaveError(null);
     setSubmitting(true);
     const res = await fetch('/api/config-centro', {
       method: 'PATCH',
@@ -67,6 +69,9 @@ export default function GestaoTotalPage() {
     if (res.ok) {
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setSaveError(body?.error || `Erro ao guardar (${res.status}). Tenta novamente.`);
     }
     setSubmitting(false);
   };
@@ -197,6 +202,9 @@ export default function GestaoTotalPage() {
               {submitting ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
               {success ? 'DADOS ATUALIZADOS' : 'GUARDAR ALTERAÇÕES'}
             </button>
+            {saveError && (
+              <p className="text-red-400 text-[11px] font-bold px-1 pt-2">{saveError}</p>
+            )}
           </form>
         </section>
 

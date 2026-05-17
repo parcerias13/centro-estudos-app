@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, CalendarDays, MapPin, CheckCircle2, XCircle, UserPlus, Search, BookOpen, X, Plus, Calendar } from 'lucide-react';
+import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, MapPin, CheckCircle2, XCircle, UserPlus, Search, X, Plus, Calendar } from 'lucide-react';
 
 
 export default function DashboardAdmin() {
@@ -28,9 +28,6 @@ export default function DashboardAdmin() {
     }
   };
 
-  // --- CONTROLO DE ACESSO (ROLE) ---
-  const [userRole, setUserRole] = useState<string | null>(null);
-
   // --- ESTADOS PARA CHECK-IN MANUAL ---
   const [alunos, setAlunos] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
@@ -48,12 +45,6 @@ export default function DashboardAdmin() {
   // 1. FUNÇÃO DE BUSCA
   const fetchDados = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: perfil } = await supabase.from('staff').select('role').eq('id', user.id).single();
-        setUserRole(perfil?.role?.toLowerCase() || 'explicador');
-      }
-
       const { data: presentes, error: errP } = await supabase
         .from('diario_bordo')
         .select(`

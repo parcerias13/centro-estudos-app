@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { 
-  ArrowLeft, Loader2, Calendar, TrendingUp, CreditCard, 
-  Utensils, Download, Printer, CheckCircle2, DollarSign
+import {
+  ArrowLeft, Loader2, Calendar,
+  Utensils, Printer, CheckCircle2, DollarSign
 } from 'lucide-react';
 
 function ExtratoDetalhadoContent() {
@@ -44,7 +44,7 @@ function ExtratoDetalhadoContent() {
         .gte('entrada', primeiroDia)
         .lte('entrada', ultimoDia),
       supabase.from('consumos_diarios')
-        .select('*')
+        .select('*, servicos(nome)')
         .eq('aluno_id', studentId)
         .gte('data_consumo', primeiroDia.split('T')[0])
         .lte('data_consumo', ultimoDia.split('T')[0])
@@ -153,7 +153,7 @@ function ExtratoDetalhadoContent() {
                     <div className="flex flex-wrap gap-2 mt-1">
                       {dia.extras.map((e: any, i: number) => (
                         <span key={i} className="text-[9px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded-md font-bold uppercase">
-                          {e.nome_servico || 'Extra'}: {e.preco_aplicado}€
+                          {e.servicos?.nome || 'Extra'}: {e.preco_aplicado}€
                         </span>
                       ))}
                     </div>

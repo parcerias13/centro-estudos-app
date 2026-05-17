@@ -8,6 +8,8 @@ import Link from 'next/link';
 export default function StudentAgenda() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState(false);
   const [exams, setExams] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]); 
   
@@ -44,6 +46,8 @@ export default function StudentAgenda() {
   const handleAgendar = async (e: React.FormEvent) => {
     e.preventDefault();
     setSending(true);
+    setFormError(null);
+    setFormSuccess(false);
 
     const { data: { user } } = await supabase.auth.getUser();
     
@@ -55,11 +59,12 @@ export default function StudentAgenda() {
     });
 
     if (error) {
-      alert("Erro ao gravar teste: " + error.message);
+      setFormError("Erro ao gravar: " + error.message);
     } else {
       setSubject(''); setDate(''); setTopics('');
+      setFormSuccess(true);
+      setTimeout(() => setFormSuccess(false), 4000);
       fetchInitialData();
-      alert("Teste agendado com sucesso! 🚀");
     }
     setSending(false);
   };
@@ -122,8 +127,18 @@ export default function StudentAgenda() {
             />
           </div>
           
-          <button 
-            disabled={sending} 
+          {formError && (
+            <p className="text-red-400 text-xs font-bold bg-red-500/10 border border-red-500/20 px-4 py-3 rounded-xl">
+              {formError}
+            </p>
+          )}
+          {formSuccess && (
+            <p className="text-emerald-400 text-xs font-bold bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 rounded-xl">
+              Teste agendado com sucesso!
+            </p>
+          )}
+          <button
+            disabled={sending}
             className="w-full bg-purple-600 hover:bg-purple-500 text-white font-black py-4 rounded-2xl transition-all shadow-lg active:scale-95 disabled:opacity-50"
           >
             {sending ? 'A GUARDAR...' : 'AGENDAR AGORA'}
