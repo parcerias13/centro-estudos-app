@@ -129,6 +129,7 @@ export default function NovoAluno() {
         consentimento_ia: eMaiorDe13() ? consentimentoIa : false,
         usa_app: usaApp,
         avatar_url: avatarUrl,
+        centro_id,
       });
       if (dbError) throw new Error(`Erro DB: ${dbError.message}`);
 
