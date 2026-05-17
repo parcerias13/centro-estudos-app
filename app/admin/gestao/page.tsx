@@ -19,6 +19,12 @@ export default function GestaoTotalPage() {
 
   const [servicos, setServicos] = useState<any[]>([]);
 
+  const [showNovoServico, setShowNovoServico] = useState(false);
+  const [novoNome, setNovoNome] = useState('');
+  const [novoPreco, setNovoPreco] = useState('');
+  const [criarError, setCriarError] = useState<string | null>(null);
+  const [criando, setCriando] = useState(false);
+
   const loadTudo = useCallback(async () => {
     try {
       setLoading(true);
@@ -65,14 +71,33 @@ export default function GestaoTotalPage() {
     setSubmitting(false);
   };
 
-  const handleCreateService = async () => {
-    const nome = prompt("Nome do novo serviço (ex: Almoço, Transporte):");
-    const preco = prompt("Preço base (€):");
-    if (nome && preco) {
-      const { error } = await supabase.from('servicos').insert({ nome, preco: parseFloat(preco) });
-      if (error) alert(error.message);
+  const handleCreateService = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCriarError(null);
+
+    const precoNum = parseFloat(novoPreco);
+    if (!novoNome.trim()) return setCriarError('O nome é obrigatório.');
+    if (isNaN(precoNum) || precoNum < 0) return setCriarError('Preço inválido.');
+
+    setCriando(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    const centro_id = user?.app_metadata?.centro_id;
+    if (!centro_id) {
+      setCriarError('Não foi possível obter o centro. Recarrega a página.');
+      setCriando(false);
+      return;
+    }
+
+    const { error } = await supabase.from('servicos').insert({ nome: novoNome.trim(), preco: precoNum, centro_id });
+    if (error) {
+      setCriarError(error.message);
+    } else {
+      setNovoNome('');
+      setNovoPreco('');
+      setShowNovoServico(false);
       loadTudo();
     }
+    setCriando(false);
   };
 
   const updatePrecoServico = async (id: string, preco: string) => {
@@ -184,13 +209,63 @@ export default function GestaoTotalPage() {
               </div>
               <h3 className="text-slate-200 font-black uppercase text-sm tracking-widest">Tarifário de Extras</h3>
             </div>
-            <button 
-              onClick={handleCreateService} 
-              className="p-2 bg-emerald-500/10 text-emerald-500 rounded-xl border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-all active:scale-90"
+            <button
+              onClick={() => { setShowNovoServico(v => !v); setCriarError(null); }}
+              className={`p-2 rounded-xl border transition-all active:scale-90 ${showNovoServico ? 'bg-slate-700 text-white border-slate-600' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500 hover:text-white'}`}
             >
               <Plus size={20} />
             </button>
           </div>
+
+          {showNovoServico && (
+            <form onSubmit={handleCreateService} className="mb-6 bg-slate-950/50 border border-slate-700 rounded-3xl p-5 space-y-4">
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1">
+                  <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Nome</label>
+                  <input
+                    type="text"
+                    value={novoNome}
+                    onChange={e => setNovoNome(e.target.value)}
+                    placeholder="ex: Almoço, Transporte"
+                    className="w-full bg-slate-900 border border-slate-800 p-3 rounded-2xl text-sm font-bold focus:border-emerald-500 outline-none transition-all"
+                    autoFocus
+                  />
+                </div>
+                <div className="w-28 space-y-1">
+                  <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Preço (€)</label>
+                  <input
+                    type="number"
+                    value={novoPreco}
+                    onChange={e => setNovoPreco(e.target.value)}
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                    className="w-full bg-slate-900 border border-slate-800 p-3 rounded-2xl text-sm font-mono font-black text-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                  />
+                </div>
+              </div>
+              {criarError && (
+                <p className="text-red-400 text-[11px] font-bold px-1">{criarError}</p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={criando}
+                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {criando ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  Criar Serviço
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowNovoServico(false); setCriarError(null); setNovoNome(''); setNovoPreco(''); }}
+                  className="px-5 py-3 bg-slate-800 hover:bg-slate-700 rounded-2xl font-black text-sm transition-all active:scale-95"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          )}
 
           <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
             {servicos.length > 0 ? servicos.map(s => (

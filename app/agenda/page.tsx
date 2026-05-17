@@ -33,7 +33,7 @@ export default function StudentAgenda() {
     const { data: examData } = await supabase
       .from('exams')
       .select('*')
-      .eq('student_id', user.id)
+      .eq('aluno_id', user.id)
       .gte('date', today) // O Filtro Bulletproof: "Maior ou igual a hoje"
       .order('date', { ascending: true });
     
@@ -48,7 +48,7 @@ export default function StudentAgenda() {
     const { data: { user } } = await supabase.auth.getUser();
     
     const { error } = await supabase.from('exams').insert({
-      student_id: user?.id,
+      aluno_id: user?.id,
       subject_name: subject,
       date: date,
       topics: topics

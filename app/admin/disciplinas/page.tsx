@@ -10,6 +10,7 @@ export default function AdminDisciplinas() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [nome, setNome] = useState('');
+  const [criarError, setCriarError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDisciplinas();
@@ -24,15 +25,23 @@ export default function AdminDisciplinas() {
 
   const handleCriar = async (e: React.FormEvent) => {
     e.preventDefault();
-    const nomeLimpo = nome.trim(); // Mantém a tua validação de trim()
+    const nomeLimpo = nome.trim();
     if (!nomeLimpo) return;
+    setCriarError(null);
     setCreating(true);
 
-    // Inserção na tabela correta 'subjects'
-    const { error } = await supabase.from('subjects').insert({ name: nomeLimpo });
+    const { data: { user } } = await supabase.auth.getUser();
+    const centro_id = user?.app_metadata?.centro_id;
+    if (!centro_id) {
+      setCriarError('Não foi possível obter o centro. Recarrega a página.');
+      setCreating(false);
+      return;
+    }
+
+    const { error } = await supabase.from('subjects').insert({ name: nomeLimpo, centro_id });
 
     if (error) {
-      alert(`ERRO: ${error.message}\n(Verifica se correste o SQL para desativar o RLS)`);
+      setCriarError(error.message);
     } else {
       setNome('');
       fetchDisciplinas();
@@ -90,7 +99,10 @@ export default function AdminDisciplinas() {
                     className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl outline-none focus:border-orange-500 transition-all text-white placeholder:text-slate-700 font-bold"
                   />
                 </div>
-                <button 
+                {criarError && (
+                  <p className="text-red-400 text-[11px] font-bold px-1">{criarError}</p>
+                )}
+                <button
                   disabled={creating || !nome.trim()}
                   className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-black py-4 rounded-2xl transition-all active:scale-95 shadow-lg shadow-orange-900/20 flex items-center justify-center gap-2"
                 >

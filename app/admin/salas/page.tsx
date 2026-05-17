@@ -14,6 +14,7 @@ export default function GestaoSalas() {
   const [novaSalaNome, setNovaSalaNome] = useState('');
   const [novaSalaCapacidade, setNovaSalaCapacidade] = useState('10');
   const [savingSala, setSavingSala] = useState(false);
+  const [salaError, setSalaError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDados();
@@ -35,15 +36,25 @@ export default function GestaoSalas() {
   const handleCriarSala = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!novaSalaNome) return;
+    setSalaError(null);
     setSavingSala(true);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const centro_id = user?.app_metadata?.centro_id;
+    if (!centro_id) {
+      setSalaError('Não foi possível obter o centro. Recarrega a página.');
+      setSavingSala(false);
+      return;
+    }
 
     const { error } = await supabase.from('salas').insert({
       nome: novaSalaNome,
-      capacidade: parseInt(novaSalaCapacidade)
+      capacidade: parseInt(novaSalaCapacidade),
+      centro_id
     });
 
     if (error) {
-      alert("Erro ao criar sala: " + error.message);
+      setSalaError("Erro ao criar sala: " + error.message);
     } else {
       setNovaSalaNome('');
       setNovaSalaCapacidade('10');
@@ -123,6 +134,9 @@ export default function GestaoSalas() {
                   className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 text-sm font-bold font-mono"
                 />
               </div>
+              {salaError && (
+                <p className="text-red-400 text-[11px] font-bold px-1">{salaError}</p>
+              )}
               <button type="submit" disabled={savingSala} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl transition-all active:scale-95 flex justify-center items-center gap-2 mt-2">
                 {savingSala ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} GRAVAR SALA
               </button>

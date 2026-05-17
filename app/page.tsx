@@ -75,7 +75,7 @@ export default function StudentHome() {
     const { data: teste } = await supabase
       .from('exams')
       .select('*')
-      .eq('student_id', user.id)
+      .eq('aluno_id', user.id)
       .gte('date', hojeStr)
       .order('date', { ascending: true })
       .limit(1)

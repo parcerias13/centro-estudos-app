@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -96,13 +95,15 @@ export default function NovoAluno() {
     setErro('');
 
     try {
-      const adminAuthClient = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        { auth: { persistSession: false } }
-      );
+      // Capturar centro_id antes do signUp — o signUp pode sobrescrever a sessão atual
+      const { data: { user: adminUser } } = await supabase.auth.getUser();
+      const centro_id = adminUser?.app_metadata?.centro_id;
+      if (!centro_id) {
+        setErro('Não foi possível obter o centro. Recarrega a página.');
+        return;
+      }
 
-      const { data: authData, error: authError } = await adminAuthClient.auth.signUp({ email, password });
+      const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
       if (authError) throw new Error(`Erro Auth: ${authError.message}`);
       const novoId = authData.user!.id;
 
@@ -113,7 +114,7 @@ export default function NovoAluno() {
         data_nascimento: dataNascimento,
         telefone_encarregado: telefone,
         email_encarregado: emailEncarregado,
-        telemovel_aluno: telemovelAluno, 
+        telemovel_aluno: telemovelAluno,
         ano_escolar: parseInt(anoEscolar),
         mensalidade_base: parseFloat(mensalidadeBase),
         saida_autorizada: saidaAutorizada,
@@ -123,8 +124,11 @@ export default function NovoAluno() {
       });
       if (dbError) throw new Error(`Erro DB: ${dbError.message}`);
 
-      const horarios = diasSelecionados.map(dia => ({ aluno_id: novoId, dia_semana: dia }));
-      await supabase.from('aluno_horarios').insert(horarios);
+      if (diasSelecionados.length > 0) {
+        const horarios = diasSelecionados.map(dia => ({ aluno_id: novoId, dia_semana: dia, centro_id }));
+        const { error: horariosError } = await supabase.from('aluno_horarios').insert(horarios);
+        if (horariosError) throw new Error(`Erro Horários: ${horariosError.message}`);
+      }
 
       router.push('/admin/alunos');
       router.refresh();

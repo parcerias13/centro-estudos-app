@@ -10,6 +10,7 @@ export default function AdminLibrary() {
   const [subjects, setSubjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Formulário - Adicionado anoEscolar
   const [title, setTitle] = useState('');
@@ -39,7 +40,16 @@ export default function AdminLibrary() {
   const handleAdd = async (e: any) => {
     e.preventDefault();
     if (!title || !subjectId || !anoEscolar) return;
+    setSubmitError(null);
     setSubmitting(true);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const centro_id = user?.app_metadata?.centro_id;
+    if (!centro_id) {
+      setSubmitError('Não foi possível obter o centro. Recarrega a página.');
+      setSubmitting(false);
+      return;
+    }
 
     let finalUrl = url;
 
@@ -53,7 +63,7 @@ export default function AdminLibrary() {
         .upload(filePath, file);
 
       if (uploadError) {
-        alert('Erro no upload: ' + uploadError.message);
+        setSubmitError('Erro no upload: ' + uploadError.message);
         setSubmitting(false);
         return;
       }
@@ -61,21 +71,21 @@ export default function AdminLibrary() {
       const { data: { publicUrl } } = supabase.storage
         .from('materiais')
         .getPublicUrl(filePath);
-      
+
       finalUrl = publicUrl;
     }
 
-    // INSERÇÃO: Agora inclui o ano_escolar
     const { error } = await supabase.from('resources').insert({
       title,
       url: finalUrl,
       type,
       subject_id: subjectId,
-      ano_escolar: parseInt(anoEscolar) // Campo crítico para a segregação
+      ano_escolar: parseInt(anoEscolar),
+      centro_id
     });
 
     if (error) {
-      alert('Erro ao guardar: ' + error.message);
+      setSubmitError('Erro ao guardar: ' + error.message);
     } else {
       setTitle('');
       setUrl('');
@@ -214,8 +224,11 @@ export default function AdminLibrary() {
                     )}
                 </div>
 
-                <button 
-                  type="submit" 
+                {submitError && (
+                  <p className="text-red-400 text-[11px] font-bold px-1">{submitError}</p>
+                )}
+                <button
+                  type="submit"
                   disabled={submitting}
                   className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-4 rounded-2xl transition-all active:scale-95 shadow-lg shadow-orange-900/20 flex items-center justify-center gap-2"
                 >

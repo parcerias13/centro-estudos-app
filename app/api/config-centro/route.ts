@@ -25,8 +25,7 @@ async function getAdminCentroId(): Promise<string | null> {
     }
   )
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  console.log('[config-centro] user:', user?.id ?? null, '| error:', authError?.message ?? null)
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
   const { data: staffData } = await supabaseAdmin
@@ -35,12 +34,9 @@ async function getAdminCentroId(): Promise<string | null> {
     .eq('id', user.id)
     .single()
 
-  console.log('[config-centro] staffData:', JSON.stringify(staffData))
-
   if (staffData?.role?.toLowerCase() !== 'admin') return null
   return staffData.centro_id || null
 }
-
 export async function GET() {
   const centroId = await getAdminCentroId()
   if (!centroId) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })

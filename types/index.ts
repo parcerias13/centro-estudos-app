@@ -20,7 +20,7 @@ export interface Subject {
 
 export interface Checkin {
   id: number;
-  student_id: string;
+  aluno_id: string;
   subject_id: number;
   status: 'present' | 'verified' | 'checkout';
   assigned_room?: string;

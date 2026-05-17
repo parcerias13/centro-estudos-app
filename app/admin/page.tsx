@@ -175,7 +175,7 @@ export default function DashboardAdmin() {
     setIsSubmitting(true);
     try {
       const { error } = await supabase.from('exams').insert({
-        student_id: selectedExamStudent.id,
+        aluno_id: selectedExamStudent.id,
         subject_name: examSubject,
         date: examDate
       });

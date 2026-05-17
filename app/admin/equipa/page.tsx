@@ -9,6 +9,7 @@ export default function AdminTeam() {
   const [team, setTeam] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Formulário
   const [name, setName] = useState('');
@@ -26,33 +27,52 @@ export default function AdminTeam() {
     setLoading(false);
   };
 
+  const getAdminContext = async (): Promise<{ centro_id: string } | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const role_meta = user?.app_metadata?.role;
+    const centro_id = user?.app_metadata?.centro_id;
+
+    if (role_meta?.toLowerCase() !== 'admin') {
+      setFormError('Sem permissões de administrador para esta ação.');
+      return null;
+    }
+    if (!centro_id) {
+      setFormError('Não foi possível obter o centro. Recarrega a página.');
+      return null;
+    }
+    return { centro_id };
+  };
+
   const handleAdd = async (e: any) => {
     e.preventDefault();
     if (!email || !name || !password) return;
+    setFormError(null);
     setSubmitting(true);
 
-    // 1. Criar o utilizador na Autenticação (Auth) para ele poder fazer login
+    const ctx = await getAdminContext();
+    if (!ctx) { setSubmitting(false); return; }
+
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: email.toLowerCase().trim(),
       password: password,
     });
 
     if (authError) {
-      alert('Erro na Autenticação: ' + authError.message);
+      setFormError('Erro na Autenticação: ' + authError.message);
       setSubmitting(false);
       return;
     }
 
-    // 2. Inserir na tabela staff para aparecer na lista
     const { error: dbError } = await supabase.from('staff').insert({
       id: authData.user?.id,
       email: email.toLowerCase().trim(),
       name,
-      role
+      role,
+      centro_id: ctx.centro_id
     });
 
     if (dbError) {
-      alert('Erro na Base de Dados: ' + dbError.message);
+      setFormError('Erro na Base de Dados: ' + dbError.message);
     } else {
       setName('');
       setEmail('');
@@ -64,6 +84,11 @@ export default function AdminTeam() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Remover este membro da equipa? Ele deixará de ter acesso ao Admin.')) return;
+    setFormError(null);
+
+    const ctx = await getAdminContext();
+    if (!ctx) return;
+
     await supabase.from('staff').delete().eq('id', id);
     fetchTeam();
   };
@@ -154,8 +179,11 @@ export default function AdminTeam() {
               </select>
             </div>
 
-            <button 
-              type="submit" 
+            {formError && (
+              <p className="text-red-400 text-[11px] font-bold px-1">{formError}</p>
+            )}
+            <button
+              type="submit"
               disabled={submitting}
               className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition-all active:scale-95 shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2 mt-4"
             >
