@@ -143,13 +143,18 @@ export default function DashboardAdmin() {
     if (!selectedAluno) return;
     setIsSubmitting(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const centro_id = user?.app_metadata?.centro_id;
+      if (!centro_id) throw new Error('Não foi possível obter o centro.');
+
       const { error } = await supabase.from('diario_bordo').insert({
         aluno_id: selectedAluno.id,
         subject_id: subject.id,
         subject_name: subject.name,
-        sala_id: subject.sala_id, 
+        sala_id: subject.sala_id,
         entrada: new Date().toISOString(),
-        status: 'validado'
+        status: 'validado',
+        centro_id,
       });
       if (error) throw error;
       setIsModalOpen(false);

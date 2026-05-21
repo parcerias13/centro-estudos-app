@@ -36,7 +36,7 @@ export default function StudentHome() {
       .from('alunos')
       .select('nome, limite_semanal, consentimento_ia')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
     
     if (student) {
       setStudentName(student.nome?.split(' ')[0] || 'Aluno');
@@ -103,23 +103,28 @@ export default function StudentHome() {
 
   const handleCheckIn = async (subjectId: number, subjectName: string, salaId: string | null) => {
     if (isLimitReached || currentSession) return;
+    await supabase.auth.refreshSession();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    
+    const centro_id = user.app_metadata?.centro_id;
+    if (!centro_id) return;
+
     const { data: newSession, error } = await supabase.from('diario_bordo').insert({
       aluno_id: user.id,
       subject_id: subjectId,
       subject_name: subjectName,
       sala_id: salaId,
-      entrada: new Date().toISOString()
+      entrada: new Date().toISOString(),
+      centro_id,
     }).select().single();
-    
+
     if (error) return alert(`Erro: ${error.message}`);
 
     if (newSession) {
       await supabase.from('atividades_estudo').insert({
         sessao_id: newSession.id,
-        subject_id: subjectId
+        subject_id: subjectId,
+        centro_id,
       });
     }
   };

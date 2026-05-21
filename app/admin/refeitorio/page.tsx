@@ -77,6 +77,13 @@ export default function RefeitorioPage() {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
+    const { data: { user } } = await supabase.auth.getUser();
+    const centro_id = user?.app_metadata?.centro_id;
+    if (!centro_id) {
+      setIsSubmitting(false);
+      return;
+    }
+
     const jaConsumiu = consumosHoje.some(c => c.aluno_id === alunoId && c.servico_id === servico.id);
     const hoje = new Date().toISOString().split('T')[0];
 
@@ -95,7 +102,8 @@ export default function RefeitorioPage() {
         if (!entrada) {
           await supabase.from('diario_bordo').insert({
             aluno_id: alunoId, entrada: new Date().toISOString(),
-            status: 'validado', subject_name: `Serviço: ${servico.nome}`
+            status: 'validado', subject_name: `Serviço: ${servico.nome}`,
+            centro_id,
           });
         }
 

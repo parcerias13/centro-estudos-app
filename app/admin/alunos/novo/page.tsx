@@ -103,7 +103,6 @@ export default function NovoAluno() {
     setErro('');
 
     try {
-      // Capturar centro_id antes do signUp — o signUp pode sobrescrever a sessão atual
       const { data: { user: adminUser } } = await supabase.auth.getUser();
       const centro_id = adminUser?.app_metadata?.centro_id;
       if (!centro_id) {
@@ -111,33 +110,30 @@ export default function NovoAluno() {
         return;
       }
 
-      const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
-      if (authError) throw new Error(`Erro Auth: ${authError.message}`);
-      const novoId = authData.user!.id;
-
-      const { error: dbError } = await supabase.from('alunos').insert({
-        id: novoId,
-        nome,
-        email,
-        data_nascimento: dataNascimento,
-        telefone_encarregado: telefone,
-        email_encarregado: emailEncarregado,
-        telemovel_aluno: telemovelAluno,
-        ano_escolar: parseInt(anoEscolar),
-        mensalidade_base: parseFloat(mensalidadeBase),
-        saida_autorizada: saidaAutorizada,
-        consentimento_ia: eMaiorDe13() ? consentimentoIa : false,
-        usa_app: usaApp,
-        avatar_url: avatarUrl,
-        centro_id,
+      const res = await fetch('/api/admin/criar-aluno', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          password,
+          nome,
+          data_nascimento: dataNascimento,
+          telefone_encarregado: telefone,
+          email_encarregado: emailEncarregado,
+          telemovel_aluno: telemovelAluno,
+          ano_escolar: parseInt(anoEscolar),
+          mensalidade_base: parseFloat(mensalidadeBase),
+          saida_autorizada: saidaAutorizada,
+          consentimento_ia: eMaiorDe13() ? consentimentoIa : false,
+          usa_app: usaApp,
+          avatar_url: avatarUrl,
+          centro_id,
+          dias_selecionados: diasSelecionados,
+        }),
       });
-      if (dbError) throw new Error(`Erro DB: ${dbError.message}`);
 
-      if (diasSelecionados.length > 0) {
-        const horarios = diasSelecionados.map(dia => ({ aluno_id: novoId, dia_semana: dia, centro_id }));
-        const { error: horariosError } = await supabase.from('aluno_horarios').insert(horarios);
-        if (horariosError) throw new Error(`Erro Horários: ${horariosError.message}`);
-      }
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Erro (${res.status})`);
 
       router.push('/admin/alunos');
       router.refresh();
