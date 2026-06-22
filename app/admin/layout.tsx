@@ -17,9 +17,8 @@ export default function AdminLayout({
     { name: 'Agenda', href: '/admin/agenda', icon: '📅' },
     { name: 'Refeitório', href: '/admin/refeitorio', icon: '🍽️' }, // Novo item
     { name: 'Histórico', href: '/admin/historico', icon: '📜' },
-    { name: 'Disciplinas', href: '/admin/disciplinas', icon: '📚' },
+    { name: 'Disciplinas e Materiais', href: '/admin/disciplinas', icon: '📚' },
     { name: 'Performance', href: '/admin/performance', icon: '📊' },
-    { name: 'Biblioteca', href: '/admin/biblioteca', icon: '📖' },
     { name: 'Equipa', href: '/admin/equipa', icon: '🛡️' },
     { name: 'Gestão', href: '/admin/gestao', icon: '⚙️' },
   ]

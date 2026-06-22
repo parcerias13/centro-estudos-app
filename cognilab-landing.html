@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CogniLab — Gere o teu centro de estudos. Sem Excel. Sem caos.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #0a0a0a;
+  --surface: #111111;
+  --surface2: #161616;
+  --border: rgba(255,255,255,0.07);
+  --border-bright: rgba(255,255,255,0.12);
+  --cyan: #00d4ff;
+  --cyan-dim: rgba(0,212,255,0.15);
+  --cyan-glow: rgba(0,212,255,0.08);
+  --white: #ffffff;
+  --grey: #888888;
+  --grey-light: #aaaaaa;
+  --text: #e8e8e8;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  line-height: 1.6;
+  overflow-x: hidden;
+  cursor: none;
+}
+
+/* ── CURSOR ─────────────────────────────────────── */
+#cursor-dot {
+  position: fixed;
+  width: 8px;
+  height: 8px;
+  background: var(--cyan);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  transition: transform 0.1s ease;
+  transform: translate(-50%, -50%);
+}
+
+#cursor-ring {
+  position: fixed;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(0,212,255,0.4);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9998;
+  transition: transform 0.18s ease, width 0.2s ease, height 0.2s ease, border-color 0.2s ease;
+  transform: translate(-50%, -50%);
+}
+
+body.cursor-hover #cursor-ring {
+  width: 52px;
+  height: 52px;
+  border-color: rgba(0,212,255,0.7);
+}
+
+/* ── NAV ─────────────────────────────────────────── */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 48px;
+  height: 72px;
+  background: rgba(10,10,10,0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.3s;
+}
+
+.nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.nav-logo svg { width: 36px; height: 36px; flex-shrink: 0; }
+.nav-logo-text { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+.nav-logo-text span { color: var(--cyan); }
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+  list-style: none;
+}
+
+.nav-links a {
+  color: var(--grey-light);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: color 0.2s;
+}
+
+.nav-links a:hover { color: var(--white); }
+
+.btn-demo {
+  background: var(--cyan);
+  color: #000;
+  padding: 10px 22px;
+  border-radius: 100px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: 0.01em;
+  transition: opacity 0.2s, transform 0.2s;
+  white-space: nowrap;
+}
+
+.btn-demo:hover { opacity: 0.88; transform: translateY(-1px); }
+
+/* ── HERO ────────────────────────────────────────── */
+#hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 120px 24px 80px;
+  overflow: hidden;
+}
+
+.hero-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -60%);
+  width: 700px;
+  height: 500px;
+  background: radial-gradient(ellipse at center, rgba(0,212,255,0.12) 0%, rgba(0,140,255,0.06) 40%, transparent 70%);
+  pointer-events: none;
+  filter: blur(1px);
+}
+
+.hero-noise {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0,212,255,0.08);
+  border: 1px solid rgba(0,212,255,0.2);
+  border-radius: 100px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cyan);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 32px;
+}
+
+.hero-badge-dot {
+  width: 6px; height: 6px;
+  background: var(--cyan);
+  border-radius: 50%;
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.7); }
+}
+
+h1 {
+  font-size: clamp(42px, 6vw, 80px);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--white);
+  max-width: 820px;
+  margin-bottom: 24px;
+}
+
+h1 em {
+  font-style: normal;
+  color: var(--cyan);
+}
+
+.hero-sub {
+  font-size: clamp(16px, 2vw, 20px);
+  color: var(--grey-light);
+  max-width: 520px;
+  font-weight: 400;
+  margin-bottom: 44px;
+  line-height: 1.65;
+}
+
+.hero-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--cyan);
+  color: #000;
+  padding: 16px 32px;
+  border-radius: 100px;
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: -0.01em;
+  transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 0 40px rgba(0,212,255,0.2);
+  margin-bottom: 80px;
+}
+
+.hero-cta:hover {
+  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 0 60px rgba(0,212,255,0.3);
+}
+
+.hero-cta svg { width: 18px; height: 18px; }
+
+/* ── DASHBOARD MOCKUP ───────────────────────────── */
+.dashboard-mockup {
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  background: var(--surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(0,212,255,0.06),
+    0 40px 120px rgba(0,0,0,0.8),
+    0 0 80px rgba(0,212,255,0.04);
+}
+
+.mockup-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  background: #0d0d0d;
+  border-bottom: 1px solid var(--border);
+}
+
+.mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
+.mockup-dot.red { background: #ff5f57; }
+.mockup-dot.yellow { background: #ffbd2e; }
+.mockup-dot.green { background: #28c840; }
+
+.mockup-url {
+  flex: 1;
+  background: var(--surface2);
+  border-radius: 6px;
+  padding: 5px 14px;
+  font-size: 11px;
+  color: var(--grey);
+  font-family: monospace;
+  text-align: center;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.mockup-body {
+  display: flex;
+  min-height: 420px;
+}
+
+.mockup-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: #0d0d0d;
+  border-right: 1px solid var(--border);
+  padding: 20px 0;
+}
+
+.mockup-sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 18px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.mockup-sidebar-logo svg { width: 22px; height: 22px; }
+.mockup-sidebar-logo-text { font-size: 13px; font-weight: 700; }
+.mockup-sidebar-logo-text span { color: var(--cyan); }
+
+.mockup-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px;
+  font-size: 12px;
+  color: var(--grey);
+  cursor: default;
+  border-radius: 0;
+  transition: background 0.15s;
+}
+
+.mockup-nav-item.active {
+  background: rgba(0,212,255,0.08);
+  color: var(--cyan);
+  border-left: 2px solid var(--cyan);
+}
+
+.mockup-nav-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+.mockup-main {
+  flex: 1;
+  padding: 24px;
+  overflow: hidden;
+}
+
+.mockup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.mockup-title { font-size: 16px; font-weight: 700; color: var(--white); }
+
+.mockup-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0,212,255,0.1);
+  border: 1px solid rgba(0,212,255,0.2);
+  border-radius: 100px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--cyan);
+  font-weight: 600;
+}
+
+.mockup-badge-dot { width: 5px; height: 5px; background: var(--cyan); border-radius: 50%; animation: pulse-dot 2s infinite; }
+
+.mockup-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.mockup-stat {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.mockup-stat-val { font-size: 22px; font-weight: 800; color: var(--white); letter-spacing: -0.03em; }
+.mockup-stat-val.cyan { color: var(--cyan); }
+.mockup-stat-label { font-size: 10px; color: var(--grey); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.mockup-list { display: flex; flex-direction: column; gap: 6px; }
+
+.mockup-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.mockup-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mockup-row-info { flex: 1; }
+.mockup-row-name { font-size: 12px; font-weight: 600; color: var(--white); }
+.mockup-row-sub { font-size: 10px; color: var(--grey); margin-top: 1px; }
+
+.mockup-status {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+
+.mockup-status.present { background: rgba(0,212,255,0.1); color: var(--cyan); }
+.mockup-status.out { background: rgba(255,255,255,0.05); color: var(--grey); }
+
+/* ── SECTIONS COMMON ────────────────────────────── */
+section { padding: 120px 24px; }
+
+.section-inner { max-width: 1080px; margin: 0 auto; }
+
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: clamp(32px, 4vw, 52px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--white);
+  line-height: 1.15;
+  margin-bottom: 20px;
+}
+
+.section-sub {
+  font-size: 18px;
+  color: var(--grey-light);
+  max-width: 560px;
+  line-height: 1.65;
+}
+
+/* ── FUNCIONALIDADES ────────────────────────────── */
+#funcionalidades { background: var(--bg); }
+
+.features-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: start;
+  margin-top: 72px;
+}
+
+.features-intro .section-sub { max-width: 380px; }
+
+.features-list { display: flex; flex-direction: column; gap: 0; }
+
+.feature-item {
+  display: flex;
+  gap: 20px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--border);
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.feature-item:first-child { border-top: 1px solid var(--border); }
+.feature-item.visible { opacity: 1; transform: translateY(0); }
+
+.feature-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(0,212,255,0.08);
+  border: 1px solid rgba(0,212,255,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--cyan);
+}
+
+.feature-icon svg { width: 20px; height: 20px; }
+
+.feature-text {}
+.feature-name { font-size: 16px; font-weight: 700; color: var(--white); margin-bottom: 6px; }
+.feature-desc { font-size: 14px; color: var(--grey-light); line-height: 1.6; }
+
+/* ── PREÇOS ─────────────────────────────────────── */
+#precos {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.pricing-header { text-align: center; margin-bottom: 40px; }
+.pricing-header .section-label { justify-content: center; display: flex; }
+.pricing-header .section-sub { margin: 0 auto; text-align: center; }
+
+.pricing-all-same {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(0,212,255,0.06);
+  border: 1px solid rgba(0,212,255,0.18);
+  border-radius: 14px;
+  padding: 14px 28px;
+  max-width: 620px;
+  margin: 0 auto 52px;
+  font-size: 14px;
+  color: var(--grey-light);
+  line-height: 1.5;
+}
+
+.pricing-all-same svg { width: 20px; height: 20px; color: var(--cyan); flex-shrink: 0; }
+.pricing-all-same strong { color: var(--white); }
+
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.plan-features-shared {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 32px;
+  padding: 20px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.plan-features-shared li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--grey-light);
+}
+
+.plan-features-shared li svg {
+  width: 15px; height: 15px;
+  color: var(--cyan);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.plan-card {
+  background: var(--surface2);
+  border: 1px solid var(--border-bright);
+  border-radius: 20px;
+  padding: 36px 32px;
+  position: relative;
+  transition: transform 0.25s ease, border-color 0.25s ease;
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+.plan-card.visible { opacity: 1; transform: translateY(0); }
+.plan-card:hover { transform: translateY(-4px); border-color: rgba(0,212,255,0.25); }
+
+.plan-card.featured {
+  border-color: rgba(0,212,255,0.35);
+  background: linear-gradient(160deg, rgba(0,212,255,0.05) 0%, var(--surface2) 60%);
+}
+
+.plan-card.featured::before {
+  content: 'Mais popular';
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--cyan);
+  color: #000;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+
+.plan-name { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--grey); margin-bottom: 16px; }
+.plan-price { font-size: 52px; font-weight: 800; color: var(--white); letter-spacing: -0.04em; line-height: 1; margin-bottom: 4px; }
+.plan-price span { font-size: 20px; font-weight: 500; color: var(--grey); vertical-align: super; margin-right: 2px; }
+.plan-period { font-size: 13px; color: var(--grey); margin-bottom: 14px; }
+
+.plan-size-pill {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0,212,255,0.08);
+  border: 1px solid rgba(0,212,255,0.18);
+  border-radius: 100px;
+  padding: 4px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cyan);
+  letter-spacing: 0.02em;
+  margin-bottom: 32px;
+}
+
+.plan-btn {
+  display: block;
+  text-align: center;
+  padding: 13px;
+  border-radius: 100px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: opacity 0.2s, transform 0.2s;
+  letter-spacing: 0.01em;
+}
+
+.plan-btn.outline {
+  border: 1px solid var(--border-bright);
+  color: var(--white);
+}
+
+.plan-btn.outline:hover { border-color: rgba(0,212,255,0.4); color: var(--cyan); }
+
+.plan-btn.filled {
+  background: var(--cyan);
+  color: #000;
+}
+
+.plan-btn.filled:hover { opacity: 0.88; transform: translateY(-1px); }
+
+/* ── CTA FINAL ──────────────────────────────────── */
+#contacto { background: var(--bg); }
+
+.cta-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  align-items: center;
+}
+
+.cta-text .section-title { max-width: 440px; }
+.cta-text .section-sub { max-width: 400px; margin-top: 16px; }
+
+.cta-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 28px;
+  font-size: 13px;
+  color: var(--grey);
+}
+
+.cta-note svg { width: 16px; height: 16px; color: var(--cyan); }
+
+.contact-form {
+  background: var(--surface);
+  border: 1px solid var(--border-bright);
+  border-radius: 20px;
+  padding: 40px;
+}
+
+.form-group { margin-bottom: 20px; }
+
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--grey);
+  margin-bottom: 8px;
+}
+
+.form-group input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border-bright);
+  border-radius: 10px;
+  padding: 13px 16px;
+  font-size: 15px;
+  color: var(--white);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input::placeholder { color: var(--grey); }
+
+.form-group input:focus {
+  border-color: rgba(0,212,255,0.4);
+  box-shadow: 0 0 0 3px rgba(0,212,255,0.06);
+}
+
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.form-submit {
+  width: 100%;
+  padding: 15px;
+  background: var(--cyan);
+  color: #000;
+  border: none;
+  border-radius: 100px;
+  font-size: 15px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
+  margin-top: 8px;
+  box-shadow: 0 0 30px rgba(0,212,255,0.15);
+}
+
+.form-submit:hover {
+  opacity: 0.88;
+  transform: translateY(-1px);
+  box-shadow: 0 0 40px rgba(0,212,255,0.25);
+}
+
+/* ── FOOTER ─────────────────────────────────────── */
+footer {
+  padding: 40px 48px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.footer-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.footer-logo svg { width: 28px; height: 28px; }
+.footer-logo-text { font-size: 15px; font-weight: 700; }
+.footer-logo-text span { color: var(--cyan); }
+
+.footer-copy { font-size: 13px; color: var(--grey); }
+
+/* ── SCROLL ANIMATIONS ──────────────────────────── */
+.fade-up {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.fade-up.visible { opacity: 1; transform: translateY(0); }
+
+/* ── RESPONSIVE ─────────────────────────────────── */
+/* ── MOCKUP V2 — DASHBOARD REAL ─────────────────── */
+
+.mockup-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 175px;
+}
+
+.mockup-sidebar-nav { flex: 1; }
+
+.mockup-sidebar-bottom {
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+.mockup-sidebar-bottom .mockup-nav-item {
+  color: #555;
+}
+
+.mockup-sidebar-bottom .mockup-nav-item:hover { color: #888; }
+
+.mockup-main {
+  flex: 1;
+  padding: 16px 18px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.mockup-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mockup-page-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--white);
+}
+
+.mockup-action-btns { display: flex; gap: 6px; }
+
+.mockup-btn {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border-bright);
+  color: var(--grey-light);
+  background: var(--surface2);
+  cursor: default;
+  white-space: nowrap;
+}
+
+.mockup-btn.primary {
+  background: rgba(0,212,255,0.1);
+  border-color: rgba(0,212,255,0.3);
+  color: var(--cyan);
+}
+
+.mockup-section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.mockup-section-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--grey);
+}
+
+.mockup-live {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #22c55e;
+  letter-spacing: 0.04em;
+  background: rgba(34,197,94,0.08);
+  border: 1px solid rgba(34,197,94,0.2);
+  border-radius: 100px;
+  padding: 2px 8px;
+}
+
+.mockup-live-dot {
+  width: 5px; height: 5px;
+  background: #22c55e;
+  border-radius: 50%;
+  animation: pulse-dot 2s infinite;
+}
+
+/* Right panel */
+.mockup-right {
+  width: 195px;
+  flex-shrink: 0;
+  background: #0d0d0d;
+  border-left: 1px solid var(--border);
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.mockup-total-card {
+  background: linear-gradient(140deg, #005f99 0%, #0088cc 50%, #00b8e6 100%);
+  border-radius: 10px;
+  padding: 14px 12px;
+  text-align: center;
+}
+
+.mockup-total-label {
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.7);
+  margin-bottom: 6px;
+}
+
+.mockup-total-number {
+  font-size: 44px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.mockup-right-section-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--grey);
+  margin-bottom: 10px;
+}
+
+.mockup-room { margin-bottom: 10px; }
+.mockup-room:last-child { margin-bottom: 0; }
+
+.mockup-room-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.mockup-room-name { font-size: 11px; font-weight: 600; color: var(--grey-light); }
+.mockup-room-count { font-size: 10px; color: var(--grey); }
+
+.mockup-progress {
+  height: 4px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.mockup-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #0077bb, #00d4ff);
+}
+
+.mockup-test-item {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.mockup-test-item:last-child { border-bottom: none; }
+
+.mockup-test-subj {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 2px;
+}
+
+.mockup-test-meta { font-size: 10px; color: var(--grey); }
+
+.mockup-test-badge {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 100px;
+  background: rgba(0,212,255,0.08);
+  color: var(--cyan);
+  border: 1px solid rgba(0,212,255,0.18);
+}
+
+/* ── RESPONSIVE ─────────────────────────────────── */
+@media (max-width: 900px) {
+  nav { padding: 0 24px; }
+  .nav-links { gap: 20px; }
+
+  .features-layout { grid-template-columns: 1fr; gap: 48px; }
+  .pricing-grid { grid-template-columns: 1fr; max-width: 400px; }
+  .cta-layout { grid-template-columns: 1fr; gap: 48px; }
+
+  .mockup-sidebar, .mockup-right { display: none; }
+  footer { flex-direction: column; gap: 16px; text-align: center; }
+}
+
+@media (max-width: 640px) {
+  nav { padding: 0 16px; }
+  .nav-links { display: none; }
+  section { padding: 80px 16px; }
+  .form-row { grid-template-columns: 1fr; }
+  .mockup-stats { grid-template-columns: repeat(3, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<div id="cursor-dot"></div>
+<div id="cursor-ring"></div>
+
+<!-- ── SVG LOGO INLINE ──────────────────────────── -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#0088cc"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<!-- ── NAV ─────────────────────────────────────── -->
+<nav>
+  <a href="#" class="nav-logo">
+    <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="20" r="19" fill="url(#logo-grad)" fill-opacity="0.12" stroke="url(#logo-grad)" stroke-width="1.5"/>
+      <circle cx="20" cy="20" r="4" fill="url(#logo-grad)"/>
+      <line x1="20" y1="20" x2="8" y2="8" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="20" y1="20" x2="32" y2="8" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="20" y1="20" x2="8" y2="32" stroke="#00a8cc" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+      <line x1="20" y1="20" x2="32" y2="32" stroke="#00a8cc" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+    </svg>
+    <span class="nav-logo-text">Cogni<span>Lab</span></span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#funcionalidades">Funcionalidades</a></li>
+    <li><a href="#precos">Preços</a></li>
+    <li><a href="#contacto" class="btn-demo">Pedir Demo</a></li>
+  </ul>
+</nav>
+
+<!-- ── HERO ────────────────────────────────────── -->
+<section id="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-noise"></div>
+
+  <h1>Gestão do centro de estudos.<br><em>Sem Excel. Sem caos.</em></h1>
+
+  <p class="hero-sub">
+    Presenças, extratos, comunicação com encarregados de educação e inteligência artificial — tudo numa única plataforma, desenvolvida para centros de estudos em Portugal.
+  </p>
+
+  <a href="#contacto" class="hero-cta">
+    Pedir uma demo gratuita
+    <svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M3.75 9H14.25M14.25 9L9.75 4.5M14.25 9L9.75 13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </a>
+
+  <!-- DASHBOARD MOCKUP -->
+  <div class="dashboard-mockup fade-up visible">
+    <!-- Browser chrome -->
+    <div class="mockup-bar">
+      <div class="mockup-dot red"></div>
+      <div class="mockup-dot yellow"></div>
+      <div class="mockup-dot green"></div>
+      <div class="mockup-url">app.cognilab.pt/admin/dashboard</div>
+    </div>
+
+    <div class="mockup-body" style="min-height:490px">
+
+      <!-- ── SIDEBAR ── -->
+      <div class="mockup-sidebar">
+        <div class="mockup-sidebar-logo">
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="20" cy="20" r="19" fill="url(#logo-grad)" fill-opacity="0.15" stroke="url(#logo-grad)" stroke-width="1.5"/>
+            <circle cx="20" cy="20" r="4" fill="#00d4ff"/>
+            <line x1="20" y1="20" x2="9" y2="9" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="20" y1="20" x2="31" y2="9" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span class="mockup-sidebar-logo-text">Cogni<span>Lab</span></span>
+        </div>
+        <div class="mockup-sidebar-nav">
+          <div class="mockup-nav-item active">
+            <svg viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.5"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.5"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity="0.5"/></svg>
+            Dashboard
+          </div>
+          <div class="mockup-nav-item">
+            <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="2.8" stroke="currentColor" stroke-width="1.3"/><path d="M2 13c0-3 2.7-4.8 6-4.8s6 1.8 6 4.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            Alunos
+          </div>
+          <div class="mockup-nav-item">
+            <svg viewBox="0 0 16 16" fill="none"><rect x="1.5" y="2.5" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M5 1v3M11 1v3M1.5 7h13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            Agenda
+          </div>
+          <div class="mockup-nav-item">
+            <svg viewBox="0 0 16 16" fill="none"><path d="M4 3v10M12 3v10M4 8h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="4" cy="3" r="1.2" fill="currentColor"/><circle cx="12" cy="3" r="1.2" fill="currentColor"/><circle cx="4" cy="13" r="1.2" fill="currentColor"/><circle cx="12" cy="13" r="1.2" fill="currentColor"/></svg>
+            Refeitório
+          </div>
+          <div class="mockup-nav-item">
+            <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v3.5l2.5 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Histórico
+          </div>
+          <div class="mockup-nav-item">
+            <svg viewBox="0 0 16 16" fill="none"><path d="M2 12.5C2 10 4.5 9 8 9s6 1 6 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M3 3.5h10M3 6.5h7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            Disciplinas
+          </div>
+          <div class="mockup-nav-item">
+            <svg viewBox="0 0 16 16" fill="none"><path d="M2 13V9M6 13V6M10 13V4M14 13V2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            Performance
+          </div>
+          <div class="mockup-nav-item">
+            <svg viewBox="0 0 16 16" fill="none"><path d="M2 13h12M2 10.5c0-1 .9-1.5 2-1.5h8c1.1 0 2 .5 2 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><rect x="4" y="4" width="8" height="5.5" rx="1" stroke="currentColor" stroke-width="1.3"/></svg>
+            Biblioteca
+          </div>
+          <div class="mockup-nav-item">
+            <svg viewBox="0 0 16 16" fill="none"><circle cx="5.5" cy="5" r="2.3" stroke="currentColor" stroke-width="1.3"/><circle cx="10.5" cy="5" r="2.3" stroke="currentColor" stroke-width="1.3"/><path d="M1 13c0-2.5 2-4 4.5-4M9 13c0-2.5 2-4 4.5-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            Equipa
+          </div>
+          <div class="mockup-nav-item">
+            <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2" fill="currentColor"/><path d="M8 2v1.5M8 12.5V14M2 8h1.5M12.5 8H14M3.5 3.5l1.1 1.1M11.4 11.4l1.1 1.1M3.5 12.5l1.1-1.1M11.4 4.6l1.1-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            Gestão
+          </div>
+        </div>
+        <div class="mockup-sidebar-bottom">
+          <div class="mockup-nav-item">
+            <svg viewBox="0 0 16 16" fill="none"><path d="M6 8h7M11 6l2 2-2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 4V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            Terminar Sessão
+          </div>
+        </div>
+      </div>
+
+      <!-- ── MAIN CONTENT ── -->
+      <div class="mockup-main">
+        <!-- Page header -->
+        <div class="mockup-page-header">
+          <div class="mockup-page-title">Dashboard</div>
+          <div class="mockup-action-btns">
+            <div class="mockup-btn primary">Entrada Manual</div>
+            <div class="mockup-btn">Gestão de Salas</div>
+          </div>
+        </div>
+
+        <!-- Monitorização -->
+        <div class="mockup-section-row">
+          <div class="mockup-section-label">Monitorização de Sala</div>
+          <div class="mockup-live">
+            <div class="mockup-live-dot"></div>
+            AO VIVO
+          </div>
+        </div>
+
+        <!-- Student list -->
+        <div class="mockup-list">
+          <div class="mockup-row">
+            <div class="mockup-avatar" style="background:rgba(0,212,255,0.15);color:#00d4ff;font-size:10px">MA</div>
+            <div class="mockup-row-info">
+              <div class="mockup-row-name">Maria Alves</div>
+              <div class="mockup-row-sub">Entrada 14:02 · 9.º ano</div>
+            </div>
+            <div class="mockup-status present">Presente</div>
+          </div>
+          <div class="mockup-row">
+            <div class="mockup-avatar" style="background:rgba(160,100,255,0.15);color:#a064ff;font-size:10px">RC</div>
+            <div class="mockup-row-info">
+              <div class="mockup-row-name">Rodrigo Costa</div>
+              <div class="mockup-row-sub">Entrada 13:50 · 8.º ano</div>
+            </div>
+            <div class="mockup-status present">Presente</div>
+          </div>
+          <div class="mockup-row">
+            <div class="mockup-avatar" style="background:rgba(255,180,0,0.12);color:#ffb400;font-size:10px">JS</div>
+            <div class="mockup-row-info">
+              <div class="mockup-row-name">João Santos</div>
+              <div class="mockup-row-sub">Entrada 14:15 · 11.º ano</div>
+            </div>
+            <div class="mockup-status present">Presente</div>
+          </div>
+          <div class="mockup-row">
+            <div class="mockup-avatar" style="background:rgba(255,255,255,0.05);color:#555;font-size:10px">BM</div>
+            <div class="mockup-row-info">
+              <div class="mockup-row-name">Beatriz Mendes</div>
+              <div class="mockup-row-sub">Saída 15:47 · 10.º ano</div>
+            </div>
+            <div class="mockup-status out">Saiu</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── RIGHT PANEL ── -->
+      <div class="mockup-right">
+        <!-- Total no centro -->
+        <div class="mockup-total-card">
+          <div class="mockup-total-label">Total no Centro</div>
+          <div class="mockup-total-number">3</div>
+        </div>
+
+        <!-- Lotação das salas -->
+        <div>
+          <div class="mockup-right-section-label">Lotação das Salas</div>
+          <div class="mockup-room">
+            <div class="mockup-room-row">
+              <span class="mockup-room-name">Sala 1</span>
+              <span class="mockup-room-count">2 / 8</span>
+            </div>
+            <div class="mockup-progress">
+              <div class="mockup-progress-fill" style="width:25%"></div>
+            </div>
+          </div>
+          <div class="mockup-room">
+            <div class="mockup-room-row">
+              <span class="mockup-room-name">Sala 2</span>
+              <span class="mockup-room-count">1 / 6</span>
+            </div>
+            <div class="mockup-progress">
+              <div class="mockup-progress-fill" style="width:17%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Próximos testes -->
+        <div>
+          <div class="mockup-right-section-label">Próximos Testes</div>
+          <div class="mockup-test-item">
+            <div class="mockup-test-subj">Matemática</div>
+            <div class="mockup-test-meta">12 Jun · 9.º A</div>
+            <div class="mockup-test-badge">Em 3 dias</div>
+          </div>
+          <div class="mockup-test-item">
+            <div class="mockup-test-subj">Física e Química</div>
+            <div class="mockup-test-meta">14 Jun · 11.º B</div>
+            <div class="mockup-test-badge">Em 5 dias</div>
+          </div>
+          <div class="mockup-test-item">
+            <div class="mockup-test-subj">Português</div>
+            <div class="mockup-test-meta">18 Jun · 8.º A</div>
+            <div class="mockup-test-badge">Em 9 dias</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── FUNCIONALIDADES ───────────────────────────── -->
+<section id="funcionalidades">
+  <div class="section-inner">
+    <div class="features-layout">
+      <div class="features-intro fade-up">
+        <p class="section-label">Funcionalidades</p>
+        <h2 class="section-title">Tudo o que um centro de estudos precisa, num só lugar.</h2>
+        <p class="section-sub">Desenvolvido para a realidade dos centros de estudos em Portugal — sem complicações, sem formações longas.</p>
+      </div>
+      <div class="features-list">
+        <div class="feature-item">
+          <div class="feature-icon">
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="10" cy="10" r="8.5" stroke="currentColor" stroke-width="1.6"/>
+              <circle cx="10" cy="10" r="3" fill="currentColor"/>
+              <path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="feature-text">
+            <div class="feature-name">Presenças em tempo real</div>
+            <div class="feature-desc">Registo digital de entrada e saída. O painel atualiza ao segundo — sem listas em papel, sem confusões.</div>
+          </div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon">
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 4h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M2 4l8 7 8-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="feature-text">
+            <div class="feature-name">Avisos automáticos aos pais</div>
+            <div class="feature-desc">Notificação instantânea por WhatsApp ou email quando o filho entra ou sai do centro. Zero chamadas desnecessárias.</div>
+          </div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon">
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="2" y="3" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M6 8h8M6 11h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <path d="M2 7h16" stroke="currentColor" stroke-width="1.6"/>
+            </svg>
+          </div>
+          <div class="feature-text">
+            <div class="feature-name">Extratos mensais automáticos</div>
+            <div class="feature-desc">Mensalidade, refeições e extras consolidados num extrato enviado por email sem precisar de tocar em Excel.</div>
+          </div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon">
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 4h12a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M7 9h6M7 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <rect x="6" y="1.5" width="2" height="5" rx="1" fill="currentColor"/>
+              <rect x="12" y="1.5" width="2" height="5" rx="1" fill="currentColor"/>
+            </svg>
+          </div>
+          <div class="feature-text">
+            <div class="feature-name">Biblioteca de materiais</div>
+            <div class="feature-desc">Professores partilham fichas, exercícios e apontamentos. Alunos acedem a qualquer hora, de qualquer dispositivo.</div>
+          </div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon">
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 2C5.6 2 2 5.6 2 10s3.6 8 8 8 8-3.6 8-8-3.6-8-8-8z" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M7.5 7.5C8 6.5 9 6 10 6c1.5 0 2.5 1 2.5 2.5 0 1.5-1.5 2-1.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <circle cx="10" cy="14.5" r="0.8" fill="currentColor"/>
+            </svg>
+          </div>
+          <div class="feature-text">
+            <div class="feature-name">LabAI — tutor de IA por aluno</div>
+            <div class="feature-desc">Cada aluno tem um tutor de inteligência artificial personalizado. Explica, exercita e adapta-se ao ritmo de aprendizagem individual.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── PREÇOS ────────────────────────────────────── -->
+<section id="precos">
+  <div class="section-inner">
+    <div class="pricing-header fade-up">
+      <p class="section-label">Preços</p>
+      <h2 class="section-title">Mesmo serviço. Para todos os centros.</h2>
+      <p class="section-sub">O preço varia apenas com o número de alunos. Nada mais.</p>
+    </div>
+
+    <div class="pricing-all-same fade-up">
+      <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10 2C5.58 2 2 5.58 2 10s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8zm-.75 11.5V9h1.5v4.5h-1.5zm0-6V6h1.5v1.5h-1.5z" fill="currentColor"/>
+      </svg>
+      <span><strong>Todos os planos incluem exatamente as mesmas funcionalidades.</strong> Presenças, extratos, avisos aos pais, biblioteca, LabAI e suporte — sem exceções.</span>
+    </div>
+
+    <div class="pricing-grid">
+
+      <!-- STARTER -->
+      <div class="plan-card fade-up">
+        <div class="plan-name">Starter</div>
+        <div class="plan-price"><span>€</span>79</div>
+        <div class="plan-period">por mês</div>
+        <div class="plan-size-pill">até 40 alunos</div>
+        <a href="#contacto" class="plan-btn outline">Começar agora</a>
+      </div>
+
+      <!-- GROWTH -->
+      <div class="plan-card featured fade-up" style="transition-delay:0.1s">
+        <div class="plan-name">Growth</div>
+        <div class="plan-price"><span>€</span>119</div>
+        <div class="plan-period">por mês</div>
+        <div class="plan-size-pill">até 80 alunos</div>
+        <a href="#contacto" class="plan-btn filled">Começar agora</a>
+      </div>
+
+      <!-- SCALE -->
+      <div class="plan-card fade-up" style="transition-delay:0.2s">
+        <div class="plan-name">Scale</div>
+        <div class="plan-price"><span>€</span>149</div>
+        <div class="plan-period">por mês</div>
+        <div class="plan-size-pill">alunos ilimitados</div>
+        <a href="#contacto" class="plan-btn outline">Começar agora</a>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA FINAL ─────────────────────────────────── -->
+<section id="contacto">
+  <div class="section-inner">
+    <div class="cta-layout">
+      <div class="cta-text fade-up">
+        <p class="section-label">Solicitar uma demo</p>
+        <h2 class="section-title">30 minutos que podem transformar a gestão do centro.</h2>
+        <p class="section-sub">A demonstração é ao vivo, adaptada ao centro em questão. Sem compromisso, sem pressão comercial.</p>
+        <div class="cta-note">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M8 1.5C4.41 1.5 1.5 4.41 1.5 8S4.41 14.5 8 14.5 14.5 11.59 14.5 8 11.59 1.5 8 1.5zm.75 10.5h-1.5v-5h1.5v5zm0-6.5h-1.5V4h1.5v1.5z" fill="currentColor"/></svg>
+          Respondemos em menos de 24 horas
+        </div>
+      </div>
+      <div class="contact-form fade-up" style="transition-delay:0.15s">
+        <form onsubmit="handleSubmit(event)">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="nome">Nome</label>
+              <input type="text" id="nome" name="nome" placeholder="Nome completo" required>
+            </div>
+            <div class="form-group">
+              <label for="centro">Centro de estudo</label>
+              <input type="text" id="centro" name="centro" placeholder="Nome do centro" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" placeholder="email@centro.pt" required>
+          </div>
+          <div class="form-group">
+            <label for="telefone">Telefone</label>
+            <input type="tel" id="telefone" name="telefone" placeholder="+351 900 000 000">
+          </div>
+          <button type="submit" class="form-submit">Pedir demo gratuita →</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ─────────────────────────────────────── -->
+<footer>
+  <a href="#" class="footer-logo">
+    <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="20" r="19" fill="url(#logo-grad)" fill-opacity="0.12" stroke="url(#logo-grad)" stroke-width="1.5"/>
+      <circle cx="20" cy="20" r="4" fill="url(#logo-grad)"/>
+      <line x1="20" y1="20" x2="8" y2="8" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="20" y1="20" x2="32" y2="8" stroke="#00d4ff" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="20" y1="20" x2="8" y2="32" stroke="#00a8cc" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+      <line x1="20" y1="20" x2="32" y2="32" stroke="#00a8cc" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+    </svg>
+    <span class="footer-logo-text">Cogni<span>Lab</span></span>
+  </a>
+  <p class="footer-copy">© 2026 CogniLab. Todos os direitos reservados.</p>
+</footer>
+
+<script>
+  // ── CURSOR ──────────────────────────────────────
+  const dot = document.getElementById('cursor-dot');
+  const ring = document.getElementById('cursor-ring');
+  let mx = 0, my = 0, rx = 0, ry = 0;
+
+  document.addEventListener('mousemove', e => {
+    mx = e.clientX; my = e.clientY;
+    dot.style.left = mx + 'px';
+    dot.style.top = my + 'px';
+  });
+
+  function animRing() {
+    rx += (mx - rx) * 0.12;
+    ry += (my - ry) * 0.12;
+    ring.style.left = rx + 'px';
+    ring.style.top = ry + 'px';
+    requestAnimationFrame(animRing);
+  }
+  animRing();
+
+  document.querySelectorAll('a, button, input, .plan-card, .feature-item').forEach(el => {
+    el.addEventListener('mouseenter', () => document.body.classList.add('cursor-hover'));
+    el.addEventListener('mouseleave', () => document.body.classList.remove('cursor-hover'));
+  });
+
+  // ── SCROLL ANIMATIONS ────────────────────────────
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        const delay = parseFloat(entry.target.style.transitionDelay || '0');
+        setTimeout(() => entry.target.classList.add('visible'), delay * 1000);
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.fade-up, .feature-item, .plan-card').forEach(el => observer.observe(el));
+
+  // Feature items stagger
+  document.querySelectorAll('.feature-item').forEach((el, i) => {
+    el.style.transitionDelay = (i * 0.08) + 's';
+  });
+
+  // ── FORM ─────────────────────────────────────────
+  function handleSubmit(e) {
+    e.preventDefault();
+    const btn = e.target.querySelector('.form-submit');
+    btn.textContent = 'Enviado! Entraremos em contacto em breve.';
+    btn.style.background = 'rgba(0,212,255,0.15)';
+    btn.style.color = '#00d4ff';
+    btn.style.border = '1px solid rgba(0,212,255,0.3)';
+    btn.style.borderRadius = '100px';
+    btn.disabled = true;
+  }
+
+  // ── NAV SCROLL ───────────────────────────────────
+  const nav = document.querySelector('nav');
+  window.addEventListener('scroll', () => {
+    nav.style.background = window.scrollY > 20
+      ? 'rgba(10,10,10,0.96)'
+      : 'rgba(10,10,10,0.85)';
+  });
+</script>
+</body>
+</html>
