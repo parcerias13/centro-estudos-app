@@ -49,30 +49,25 @@ export default function AdminTeam() {
     setFormError(null);
     setSubmitting(true);
 
-    const ctx = await getAdminContext();
-    if (!ctx) { setSubmitting(false); return; }
+    const { data: { user } } = await supabase.auth.getUser();
+    const centro_id = user?.app_metadata?.centro_id;
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: email.toLowerCase().trim(),
-      password: password,
+    const res = await fetch('/api/admin/criar-staff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: email.toLowerCase().trim(),
+        password,
+        name,
+        role,
+        centro_id,
+      }),
     });
 
-    if (authError) {
-      setFormError('Erro na Autenticação: ' + authError.message);
-      setSubmitting(false);
-      return;
-    }
+    const result = await res.json();
 
-    const { error: dbError } = await supabase.from('staff').insert({
-      id: authData.user?.id,
-      email: email.toLowerCase().trim(),
-      name,
-      role,
-      centro_id: ctx.centro_id
-    });
-
-    if (dbError) {
-      setFormError('Erro na Base de Dados: ' + dbError.message);
+    if (!res.ok) {
+      setFormError(result.error || 'Erro ao criar membro da equipa.');
     } else {
       setName('');
       setEmail('');
