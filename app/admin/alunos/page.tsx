@@ -146,7 +146,7 @@ export default function ListaAlunos() {
               ? 'border-red-500/30 bg-red-500/5'
               : 'border-slate-800/60 hover:border-slate-700'
             }`}>
-              <div className="flex items-center gap-5 flex-1">
+              <div className="flex items-center gap-5 flex-1 min-w-0">
                 <div className="w-14 h-14 shrink-0 bg-slate-800 rounded-2xl flex items-center justify-center text-xl font-black text-slate-500 group-hover:bg-blue-600 group-hover:text-white transition-all overflow-hidden border border-slate-700/50 shadow-inner">
                   {aluno.avatar_url ? (
                     <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover" />
@@ -157,7 +157,7 @@ export default function ListaAlunos() {
 
                 <div className="flex-1 min-w-0">
                   <h3 className="text-lg font-bold text-white leading-tight truncate uppercase italic">{aluno.nome}</h3>
-                  <div className="flex items-center gap-3 mt-1.5">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
                     <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-slate-800 text-slate-400 rounded-md border border-slate-700">
                       {aluno.ano_escolar}º ANO
                     </span>
@@ -186,7 +186,7 @@ export default function ListaAlunos() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 mt-3 sm:mt-0 sm:ml-4">
+              <div className="flex items-center gap-2 mt-3 sm:mt-0 sm:ml-4 shrink-0">
                 {/* BOTÃO DO EXTRATO INDIVIDUAL (DOSSIER) */}
                 <Link 
                   href={`/admin/alunos/extrato?id=${aluno.id}`} 

@@ -17,15 +17,15 @@ export default function AdminTeam() {
   const [role, setRole] = useState('Explicador');
   const [password, setPassword] = useState(''); // ESTADO MOVIDO PARA DENTRO
 
-  useEffect(() => {
-    fetchTeam();
-  }, []);
-
   const fetchTeam = async () => {
     const { data } = await supabase.from('staff').select('*').order('name');
     if (data) setTeam(data);
     setLoading(false);
   };
+
+  useEffect(() => {
+    fetchTeam();
+  }, []);
 
   const getAdminContext = async (): Promise<{ centro_id: string } | null> => {
     const { data: { user } } = await supabase.auth.getUser();

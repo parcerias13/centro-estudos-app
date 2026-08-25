@@ -17,10 +17,6 @@ export default function StudentAgenda() {
   const [date, setDate] = useState('');
   const [topics, setTopics] = useState('');
 
-  useEffect(() => { 
-    fetchInitialData(); 
-  }, []);
-
   const fetchInitialData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -42,6 +38,10 @@ export default function StudentAgenda() {
     if (examData) setExams(examData);
     setLoading(false);
   };
+
+  useEffect(() => {
+    fetchInitialData();
+  }, []);
 
   const handleAgendar = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -18,14 +18,6 @@ export default function AdminAgendaReadonly() {
   // ESTADO DE NAVEGAÇÃO SEMANAL (0 = Semana Atual, 1 = Próxima, etc.)
   const [weekOffset, setWeekOffset] = useState(0);
 
-  useEffect(() => { 
-    fetchExams(); 
-  }, []);
-
-  useEffect(() => {
-    aplicarFiltros();
-  }, [filtroAluno, filtroAno, filtroDisciplina, weekOffset, allExams]);
-
   const fetchExams = async () => {
     // Puxamos um range largo para permitir navegação (ex: desde 1 mês atrás até ao futuro)
     const { data, error } = await supabase
@@ -85,6 +77,14 @@ export default function AdminAgendaReadonly() {
     });
     setGroupedExams(groups);
   };
+
+  useEffect(() => {
+    fetchExams();
+  }, []);
+
+  useEffect(() => {
+    aplicarFiltros();
+  }, [filtroAluno, filtroAno, filtroDisciplina, weekOffset, allExams]);
 
   const { start, end } = getWeekRange(weekOffset);
 

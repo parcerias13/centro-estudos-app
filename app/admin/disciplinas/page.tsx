@@ -46,10 +46,6 @@ export default function DisciplinasEMateriais() {
   const [uploadingMat, setUploadingMat] = useState(false);
   const [matError, setMatError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchAll();
-  }, []);
-
   const fetchAll = async () => {
     const [{ data: subjs }, { data: res }] = await Promise.all([
       supabase.from('subjects').select('*').order('name'),
@@ -59,6 +55,10 @@ export default function DisciplinasEMateriais() {
     if (res) setResources(res);
     setLoading(false);
   };
+
+  useEffect(() => {
+    fetchAll();
+  }, []);
 
   const getSubjectResources = (subjectId: string) =>
     resources.filter((r) => r.subject_id === subjectId);

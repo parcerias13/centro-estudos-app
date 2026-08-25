@@ -16,10 +16,6 @@ export default function GestaoSalas() {
   const [savingSala, setSavingSala] = useState(false);
   const [salaError, setSalaError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchDados();
-  }, []);
-
   const fetchDados = async () => {
     setLoading(true);
     // Buscar Salas
@@ -29,9 +25,13 @@ export default function GestaoSalas() {
     // Buscar Disciplinas
     const { data: discData } = await supabase.from('subjects').select('*').order('name');
     if (discData) setDisciplinas(discData);
-    
+
     setLoading(false);
   };
+
+  useEffect(() => {
+    fetchDados();
+  }, []);
 
   const handleCriarSala = async (e: React.FormEvent) => {
     e.preventDefault();
