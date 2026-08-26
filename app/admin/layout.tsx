@@ -1,7 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+
+const ROLE_ALLOWED_MENU: Record<string, string[]> = {
+  professor: ['Dashboard', 'Alunos', 'Agenda', 'Disciplinas e Materiais'],
+  secretaria: ['Dashboard', 'Alunos', 'Agenda', 'Refeitório', 'Histórico'],
+}
 
 export default function AdminLayout({
   children,
@@ -9,6 +15,13 @@ export default function AdminLayout({
   children: React.ReactNode
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [role, setRole] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setRole(user?.app_metadata?.role?.toLowerCase() ?? null)
+    })
+  }, [])
 
   // Lista de items atualizada com Refeitório
   const menuItems = [
@@ -22,6 +35,13 @@ export default function AdminLayout({
     { name: 'Equipa', href: '/admin/equipa', icon: '🛡️' },
     { name: 'Gestão', href: '/admin/gestao', icon: '⚙️' },
   ]
+
+  const visibleMenuItems =
+    role === 'admin'
+      ? menuItems
+      : role && ROLE_ALLOWED_MENU[role]
+        ? menuItems.filter((item) => ROLE_ALLOWED_MENU[role].includes(item.name))
+        : []
 
   return (
     <div className="flex min-h-screen bg-[#0f172a]">
@@ -50,7 +70,7 @@ export default function AdminLayout({
         </div>
 
         <nav className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
-          {menuItems.map((item) => (
+          {visibleMenuItems.map((item) => (
             <Link 
               key={item.href}
               href={item.href} 
