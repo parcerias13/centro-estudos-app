@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap, Mail, DollarSign, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap, Mail, DollarSign, Eye, EyeOff, RefreshCw, FileText, MapPin } from 'lucide-react';
 
 export default function NovoAluno() {
   const router = useRouter();
@@ -18,8 +18,10 @@ export default function NovoAluno() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [telefone, setTelefone] = useState(''); 
-  const [emailEncarregado, setEmailEncarregado] = useState(''); 
-  const [telemovelAluno, setTelemovelAluno] = useState(''); 
+  const [emailEncarregado, setEmailEncarregado] = useState('');
+  const [nifEncarregado, setNifEncarregado] = useState('');
+  const [moradaEncarregado, setMoradaEncarregado] = useState('');
+  const [telemovelAluno, setTelemovelAluno] = useState('');
   const [dataNascimento, setDataNascimento] = useState('');
   const [anoEscolar, setAnoEscolar] = useState('1');
   const [saidaAutorizada, setSaidaAutorizada] = useState(false);
@@ -120,6 +122,8 @@ export default function NovoAluno() {
           data_nascimento: dataNascimento,
           telefone_encarregado: telefone,
           email_encarregado: emailEncarregado,
+          nif_encarregado: nifEncarregado,
+          morada_encarregado: moradaEncarregado,
           telemovel_aluno: telemovelAluno,
           ano_escolar: parseInt(anoEscolar),
           mensalidade_base: parseFloat(mensalidadeBase),
@@ -261,7 +265,33 @@ export default function NovoAluno() {
                 value={emailEncarregado} 
                 onChange={(e) => setEmailEncarregado(e.target.value)} 
                 className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" 
-                placeholder="email@exemplo.com" 
+                placeholder="email@exemplo.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                <FileText size={12}/> NIF do Encarregado
+              </label>
+              <input
+                type="text"
+                value={nifEncarregado}
+                onChange={(e) => setNifEncarregado(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all"
+                placeholder="Ex: 123456789"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                <MapPin size={12}/> Morada do Encarregado
+              </label>
+              <input
+                type="text"
+                value={moradaEncarregado}
+                onChange={(e) => setMoradaEncarregado(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all"
+                placeholder="Rua Exemplo, 123, Porto"
               />
             </div>
           </div>

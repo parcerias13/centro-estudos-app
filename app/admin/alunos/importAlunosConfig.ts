@@ -9,6 +9,8 @@ export const CABECALHOS = [
   'Dias Semana',
   'Saida Autorizada',
   'Usa App',
+  'NIF Encarregado',
+  'Morada Encarregado',
 ] as const;
 
 export const LINHA_EXEMPLO = [
@@ -22,6 +24,8 @@ export const LINHA_EXEMPLO = [
   '1,3,5',
   'sim',
   'sim',
+  '123456789',
+  'Rua Exemplo, 123, Porto',
 ];
 
 export interface AlunoImportado {
@@ -35,6 +39,8 @@ export interface AlunoImportado {
   dias_selecionados: number[];
   saida_autorizada: boolean | null;
   usa_app: boolean | null;
+  nif_encarregado: string | null;
+  morada_encarregado: string | null;
 }
 
 export interface LinhaImportacao {
@@ -110,6 +116,8 @@ export function mapearLinha(linhaBruta: Record<string, unknown>, linhaExcel: num
     dias_selecionados: paraDiasSelecionados(linhaBruta['Dias Semana']),
     saida_autorizada: paraBooleanoOuNull(linhaBruta['Saida Autorizada']),
     usa_app: paraBooleanoOuNull(linhaBruta['Usa App']),
+    nif_encarregado: paraTextoOuNull(linhaBruta['NIF Encarregado']),
+    morada_encarregado: paraTextoOuNull(linhaBruta['Morada Encarregado']),
   };
 
   const erros: string[] = [];

@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign, KeyRound, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign, KeyRound, Eye, EyeOff, RefreshCw, FileText, MapPin } from 'lucide-react';
 
 function EditarAlunoContent() {
   const router = useRouter();
@@ -28,8 +28,10 @@ function EditarAlunoContent() {
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [telefone, setTelefone] = useState(''); 
-  const [emailEncarregado, setEmailEncarregado] = useState(''); 
-  const [telemovelAluno, setTelemovelAluno] = useState(''); 
+  const [emailEncarregado, setEmailEncarregado] = useState('');
+  const [nifEncarregado, setNifEncarregado] = useState('');
+  const [moradaEncarregado, setMoradaEncarregado] = useState('');
+  const [telemovelAluno, setTelemovelAluno] = useState('');
   const [dataNascimento, setDataNascimento] = useState('');
   const [anoEscolar, setAnoEscolar] = useState('1');
   const [mensalidadeBase, setMensalidadeBase] = useState(''); // NOVO: Valor fixo
@@ -84,8 +86,10 @@ function EditarAlunoContent() {
       setNome(aluno.nome || '');
       setEmail(aluno.email || '');
       setTelefone(aluno.telefone_encarregado || '');
-      setEmailEncarregado(aluno.email_encarregado || ''); 
-      setTelemovelAluno(aluno.telemovel_aluno || ''); 
+      setEmailEncarregado(aluno.email_encarregado || '');
+      setNifEncarregado(aluno.nif_encarregado || '');
+      setMoradaEncarregado(aluno.morada_encarregado || '');
+      setTelemovelAluno(aluno.telemovel_aluno || '');
       setDataNascimento(aluno.data_nascimento || '');
       setAnoEscolar(aluno.ano_escolar?.toString() || '1');
       setMensalidadeBase(aluno.mensalidade_base?.toString() || ''); // CARREGAMENTO DO VALOR FIXO
@@ -168,8 +172,10 @@ function EditarAlunoContent() {
           nome,
           email,
           telefone_encarregado: telefone,
-          email_encarregado: emailEncarregado, 
-          telemovel_aluno: telemovelAluno, 
+          email_encarregado: emailEncarregado,
+          nif_encarregado: nifEncarregado,
+          morada_encarregado: moradaEncarregado,
+          telemovel_aluno: telemovelAluno,
           data_nascimento: dataNascimento,
           ano_escolar: parseInt(anoEscolar),
           mensalidade_base: parseFloat(mensalidadeBase), // ATUALIZAÇÃO DO VALOR FIXO
@@ -298,7 +304,33 @@ function EditarAlunoContent() {
                 value={emailEncarregado} 
                 onChange={(e) => setEmailEncarregado(e.target.value)} 
                 className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" 
-                placeholder="email@exemplo.com" 
+                placeholder="email@exemplo.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                <FileText size={12}/> NIF do Encarregado
+              </label>
+              <input
+                type="text"
+                value={nifEncarregado}
+                onChange={(e) => setNifEncarregado(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all"
+                placeholder="Ex: 123456789"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                <MapPin size={12}/> Morada do Encarregado
+              </label>
+              <input
+                type="text"
+                value={moradaEncarregado}
+                onChange={(e) => setMoradaEncarregado(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all"
+                placeholder="Rua Exemplo, 123, Porto"
               />
             </div>
           </div>

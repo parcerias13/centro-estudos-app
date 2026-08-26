@@ -92,6 +92,8 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
               data_nascimento: linha.dados.data_nascimento,
               telefone_encarregado: linha.dados.telefone_encarregado,
               email_encarregado: linha.dados.email_encarregado,
+              nif_encarregado: linha.dados.nif_encarregado,
+              morada_encarregado: linha.dados.morada_encarregado,
               telemovel_aluno: linha.dados.telemovel_aluno,
               ano_escolar: linha.dados.ano_escolar,
               mensalidade_base: linha.dados.mensalidade_base,

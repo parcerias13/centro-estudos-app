@@ -41,7 +41,7 @@ export async function POST(req: Request) {
 
   const {
     email, password, nome, data_nascimento, telefone_encarregado,
-    email_encarregado, telemovel_aluno, ano_escolar, mensalidade_base,
+    email_encarregado, nif_encarregado, morada_encarregado, telemovel_aluno, ano_escolar, mensalidade_base,
     saida_autorizada, consentimento_ia, usa_app, avatar_url,
     centro_id, dias_selecionados,
   } = await req.json()
@@ -74,6 +74,8 @@ export async function POST(req: Request) {
     data_nascimento,
     telefone_encarregado,
     email_encarregado,
+    nif_encarregado,
+    morada_encarregado,
     telemovel_aluno,
     ano_escolar,
     mensalidade_base,
