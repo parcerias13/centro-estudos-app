@@ -1,16 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import { UserPlus, Search, FileBarChart, Edit, Trash2, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter, FileText } from 'lucide-react';
+import ExcelJS from 'exceljs';
+import { UserPlus, Search, FileBarChart, Edit, Trash2, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter, FileText, FileSpreadsheet, UploadCloud } from 'lucide-react';
+import { CABECALHOS, LINHA_EXEMPLO } from './importAlunosConfig';
+import ImportarAlunosModal from './ImportarAlunosModal';
 
 
 export default function ListaAlunos() {
   const [alunos, setAlunos] = useState<any[]>([]);
   const [busca, setBusca] = useState('');
-  const [filtroAno, setFiltroAno] = useState(''); 
+  const [filtroAno, setFiltroAno] = useState('');
   const [loading, setLoading] = useState(true);
+  const [ficheiroImportacao, setFicheiroImportacao] = useState<File | null>(null);
+  const inputImportacaoRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchAlunos(); }, []);
 
@@ -78,6 +83,48 @@ export default function ListaAlunos() {
     }
   };
 
+  const handleDownloadTemplate = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Alunos');
+
+    sheet.addRow([...CABECALHOS]);
+    sheet.addRow(LINHA_EXEMPLO);
+
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    sheet.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+    });
+
+    sheet.getRow(2).eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
+    });
+
+    sheet.columns.forEach((coluna, i) => {
+      const cabecalho = CABECALHOS[i]?.length ?? 0;
+      const exemplo = String(LINHA_EXEMPLO[i] ?? '').length;
+      coluna.width = Math.max(18, cabecalho + 2, exemplo + 2);
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'template_importacao_alunos.xlsx';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileSelecionado = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) setFicheiroImportacao(file);
+    e.target.value = '';
+  };
+
   const alunosFiltrados = alunos.filter(a => {
     const matchesNome = a.nome?.toLowerCase().includes(busca.toLowerCase());
     const matchesAno = filtroAno === '' || String(a.ano_escolar) === filtroAno;
@@ -102,10 +149,41 @@ export default function ListaAlunos() {
           </div>
         </div>
         
-        <Link href="/admin/alunos/novo" className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-blue-900/20 transition-all active:scale-95">
-          <UserPlus size={20} /> NOVA MATRÍCULA
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleDownloadTemplate}
+            className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-slate-800 transition-all active:scale-95"
+          >
+            <FileSpreadsheet size={18} /> TEMPLATE
+          </button>
+
+          <button
+            onClick={() => inputImportacaoRef.current?.click()}
+            className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-slate-800 transition-all active:scale-95"
+          >
+            <UploadCloud size={18} /> IMPORTAR EXCEL
+          </button>
+          <input
+            ref={inputImportacaoRef}
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleFileSelecionado}
+            className="hidden"
+          />
+
+          <Link href="/admin/alunos/novo" className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-blue-900/20 transition-all active:scale-95">
+            <UserPlus size={20} /> NOVA MATRÍCULA
+          </Link>
+        </div>
       </header>
+
+      {ficheiroImportacao && (
+        <ImportarAlunosModal
+          file={ficheiroImportacao}
+          onClose={() => setFicheiroImportacao(null)}
+          onImported={fetchAlunos}
+        />
+      )}
 
       <div className="flex flex-col md:flex-row gap-4 mb-8">
         <div className="relative flex-1">
