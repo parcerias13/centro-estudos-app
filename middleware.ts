@@ -1,6 +1,19 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+const ROLE_ALLOWED_PATHS: Record<string, string[]> = {
+  professor: ['/admin/alunos', '/admin/agenda', '/admin/disciplinas'],
+  secretaria: ['/admin/alunos', '/admin/agenda', '/admin/refeitorio', '/admin/historico', '/admin/relatorio'],
+}
+
+function isPathAllowed(pathname: string, allowedPaths: string[]) {
+  // "/admin" (raiz, dashboard) é sempre permitido a qualquer role reconhecido
+  if (pathname === '/admin') return true
+  return allowedPaths.some(
+    (allowed) => pathname === allowed || pathname.startsWith(allowed + '/')
+  )
+}
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
@@ -47,11 +60,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // Verificação de role para /admin/gestao via JWT (app_metadata) — sem query à base de dados
-  if (user && request.nextUrl.pathname.startsWith('/admin/gestao')) {
-    const role = user.app_metadata?.role
-    if (role?.toLowerCase() !== 'admin') {
-      return NextResponse.redirect(new URL('/admin', request.url))
+  // Verificação de role para /admin/* via JWT (app_metadata) — sem query à base de dados
+  if (user && request.nextUrl.pathname.startsWith('/admin')) {
+    const role = user.app_metadata?.role?.toLowerCase()
+
+    if (role === 'admin') {
+      // acesso total
+    } else if (role === 'professor' || role === 'secretaria') {
+      if (!isPathAllowed(request.nextUrl.pathname, ROLE_ALLOWED_PATHS[role])) {
+        return NextResponse.redirect(new URL('/admin', request.url))
+      }
+    } else {
+      return NextResponse.redirect(new URL('/login', request.url))
     }
   }
 
