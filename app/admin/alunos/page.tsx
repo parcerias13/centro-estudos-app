@@ -4,9 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import ExcelJS from 'exceljs';
-import { UserPlus, Search, FileBarChart, Edit, Trash2, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter, FileText, FileSpreadsheet, UploadCloud } from 'lucide-react';
+import { UserPlus, Search, FileBarChart, Edit, Trash2, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter, FileText, FileSpreadsheet, UploadCloud, Receipt } from 'lucide-react';
 import { CABECALHOS, LINHA_EXEMPLO } from './importAlunosConfig';
 import ImportarAlunosModal from './ImportarAlunosModal';
+import ExportarFaturacaoModal from './ExportarFaturacaoModal';
 
 
 export default function ListaAlunos() {
@@ -16,6 +17,7 @@ export default function ListaAlunos() {
   const [loading, setLoading] = useState(true);
   const [ficheiroImportacao, setFicheiroImportacao] = useState<File | null>(null);
   const inputImportacaoRef = useRef<HTMLInputElement>(null);
+  const [mostrarExportarFaturacao, setMostrarExportarFaturacao] = useState(false);
 
   useEffect(() => { fetchAlunos(); }, []);
 
@@ -171,6 +173,13 @@ export default function ListaAlunos() {
             className="hidden"
           />
 
+          <button
+            onClick={() => setMostrarExportarFaturacao(true)}
+            className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-slate-800 transition-all active:scale-95"
+          >
+            <Receipt size={18} /> EXPORTAR FATURAÇÃO
+          </button>
+
           <Link href="/admin/alunos/novo" className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-blue-900/20 transition-all active:scale-95">
             <UserPlus size={20} /> NOVA MATRÍCULA
           </Link>
@@ -182,6 +191,13 @@ export default function ListaAlunos() {
           file={ficheiroImportacao}
           onClose={() => setFicheiroImportacao(null)}
           onImported={fetchAlunos}
+        />
+      )}
+
+      {mostrarExportarFaturacao && (
+        <ExportarFaturacaoModal
+          alunos={alunos}
+          onClose={() => setMostrarExportarFaturacao(false)}
         />
       )}
 
