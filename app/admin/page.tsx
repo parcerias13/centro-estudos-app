@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, MapPin, CheckCircle2, XCircle, UserPlus, Search, X, Plus, Calendar } from 'lucide-react';
+import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, MapPin, CheckCircle2, XCircle, UserPlus, Search, X, Plus, Calendar, ChevronDown, ChevronUp, Undo2 } from 'lucide-react';
 
 
 export default function DashboardAdmin() {
@@ -33,7 +33,11 @@ export default function DashboardAdmin() {
   const [subjects, setSubjects] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedAluno, setSelectedAluno] = useState<any>(null);
+  const [selectedSubject, setSelectedSubject] = useState<any>(null);
+  const [mostrarOutros, setMostrarOutros] = useState(false);
+  const [alunosEmCheckin, setAlunosEmCheckin] = useState<Set<string>>(new Set());
+  const [toastCheckin, setToastCheckin] = useState<{ nome: string; disciplina: string; registoId: string } | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // --- ESTADOS PARA AGENDAMENTO DE TESTES ---
   const [isExamModalOpen, setIsExamModalOpen] = useState(false);
@@ -72,7 +76,7 @@ export default function DashboardAdmin() {
       // ADICIONADO FILTRO PARA NÃO MOSTRAR ALUNOS APAGADOS NO CHECK-IN MANUAL
       const { data: aData } = await supabase
         .from('alunos')
-        .select('*, pacotes(nome)')
+        .select('*, pacotes(nome), aluno_horarios(dia_semana)')
         .order('nome');
         
       const { data: subData } = await supabase.from('subjects').select('*').order('name');
@@ -139,31 +143,59 @@ export default function DashboardAdmin() {
     if (!error) fetchDados(); 
   };
 
-  const handleManualCheckIn = async (subject: any) => {
-    if (!selectedAluno) return;
-    setIsSubmitting(true);
+  const handleManualCheckIn = async (aluno: any) => {
+    if (!selectedSubject) return alert('Seleciona a disciplina primeiro.');
+    if (alunosEmCheckin.has(aluno.id)) return;
+
+    setAlunosEmCheckin(prev => new Set(prev).add(aluno.id));
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const centro_id = user?.app_metadata?.centro_id;
       if (!centro_id) throw new Error('Não foi possível obter o centro.');
 
-      const { error } = await supabase.from('diario_bordo').insert({
-        aluno_id: selectedAluno.id,
-        subject_id: subject.id,
-        subject_name: subject.name,
-        sala_id: subject.sala_id,
+      const { data, error } = await supabase.from('diario_bordo').insert({
+        aluno_id: aluno.id,
+        subject_id: selectedSubject.id,
+        subject_name: selectedSubject.name,
+        sala_id: selectedSubject.sala_id,
         entrada: new Date().toISOString(),
         status: 'validado',
         centro_id,
-      });
+      }).select().single();
       if (error) throw error;
-      setIsModalOpen(false);
-      setSelectedAluno(null);
-      setSearchQuery('');
+
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      setToastCheckin({ nome: aluno.nome, disciplina: selectedSubject.name, registoId: data.id });
+      toastTimeoutRef.current = setTimeout(() => setToastCheckin(null), 3000);
+
       fetchDados();
+    } catch (error: any) {
+      alert('Erro ao fazer check-in: ' + error.message);
     } finally {
-      setIsSubmitting(false);
+      setAlunosEmCheckin(prev => {
+        const next = new Set(prev);
+        next.delete(aluno.id);
+        return next;
+      });
     }
+  };
+
+  const handleUndoCheckin = async (registoId: string) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToastCheckin(null);
+    const { error } = await supabase.from('diario_bordo').delete().eq('id', registoId);
+    if (error) alert('Erro ao desfazer: ' + error.message);
+    fetchDados();
+  };
+
+  const handleCloseCheckinModal = () => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setIsModalOpen(false);
+    setSelectedSubject(null);
+    setSearchQuery('');
+    setMostrarOutros(false);
+    setToastCheckin(null);
+    fetchDados();
   };
 
   const handleCreateExam = async () => {
@@ -189,8 +221,33 @@ export default function DashboardAdmin() {
     }
   };
 
-  const alunosDisponiveis = alunos.filter(a => !presencas.some(p => p.aluno_id === a.id) && a.nome.toLowerCase().includes(searchQuery.toLowerCase()));
+  const diaSemanaAtual = new Date().getDay();
+  const checkinsAtivosIds = new Set(presencas.filter(p => p.status === 'validado').map(p => p.aluno_id));
+  const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(searchQuery.toLowerCase()));
+  const alunosDoDia = alunosFiltrados.filter(a => a.aluno_horarios?.some((h: any) => h.dia_semana === diaSemanaAtual));
+  const outrosAlunos = alunosFiltrados.filter(a => !a.aluno_horarios?.some((h: any) => h.dia_semana === diaSemanaAtual));
   const alunosFiltradosExame = alunos.filter(a => a.nome.toLowerCase().includes(examSearchQuery.toLowerCase()));
+
+  const renderAlunoCheckinRow = (aluno: any) => {
+    const isValidUrl = aluno.avatar_url && (aluno.avatar_url.startsWith('http://') || aluno.avatar_url.startsWith('https://'));
+    const jaPresente = checkinsAtivosIds.has(aluno.id);
+    const aProcessar = alunosEmCheckin.has(aluno.id);
+    return (
+      <div key={aluno.id} className="w-full p-3 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-black text-emerald-500 shrink-0">
+          {isValidUrl ? <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover rounded-xl" /> : aluno.nome.charAt(0)}
+        </div>
+        <p className="font-bold text-sm flex-1 truncate">{aluno.nome}</p>
+        <button
+          disabled={jaPresente || aProcessar || !selectedSubject}
+          onClick={() => handleManualCheckIn(aluno)}
+          className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 disabled:opacity-40 ${jaPresente ? 'bg-emerald-600 text-white' : 'bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white'}`}
+        >
+          {aProcessar ? <Loader2 className="animate-spin" size={14} /> : jaPresente ? 'Presente' : 'Check-in'}
+        </button>
+      </div>
+    );
+  };
 
   const salasStatus = salas.map(sala => {
     const count = presencas.filter(p => p.sala_id === sala.id).length;
@@ -354,20 +411,52 @@ export default function DashboardAdmin() {
       {/* --- MODAIS --- */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-[2.5rem] shadow-3xl p-6 animate-in zoom-in duration-200">
-            <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-black uppercase italic">Check-in Manual</h3><button onClick={() => { setIsModalOpen(false); setSelectedAluno(null); }}><X size={20}/></button></div>
-            {!selectedAluno ? (
-                <>
-                  <div className="relative mb-4"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} /><input autoFocus placeholder="Quem chegou?" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 pl-12 rounded-2xl outline-none focus:border-emerald-500 transition-all font-bold" /></div>
-                  <div className="max-h-60 overflow-y-auto space-y-2">{alunosDisponiveis.map(aluno => {
-                    const isValidUrl = aluno.avatar_url && (aluno.avatar_url.startsWith('http://') || aluno.avatar_url.startsWith('https://'));
-                    return (<button key={aluno.id} onClick={() => setSelectedAluno(aluno)} className="w-full p-4 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-center gap-3 hover:border-emerald-500 transition-all group"><div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-black text-emerald-500">{isValidUrl ? <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover rounded-xl" /> : aluno.nome.charAt(0)}</div><div className="text-left"><p className="font-bold text-sm">{aluno.nome}</p></div></button>);
-                  })}</div>
-                </>
-            ) : (
-                <div className="space-y-4"><div className="flex items-center gap-4 bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/20"><div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center font-black text-white text-xl">{selectedAluno.nome.charAt(0)}</div><div><p className="text-lg font-black">{selectedAluno.nome}</p></div><button onClick={() => setSelectedAluno(null)} className="ml-auto text-xs font-black text-slate-500 uppercase">Trocar</button></div><div className="grid grid-cols-2 gap-2">{subjects.map(sub => (<button key={sub.id} disabled={isSubmitting} onClick={() => handleManualCheckIn(sub)} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl hover:border-blue-500 transition-all text-xs font-bold">{sub.name}</button>))}</div></div>
-            )}
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-[2.5rem] shadow-3xl p-6 animate-in zoom-in duration-200 max-h-[85vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-black uppercase italic">Check-in Manual</h3>
+              <button onClick={handleCloseCheckinModal}><X size={20}/></button>
+            </div>
+
+            <select
+              value={selectedSubject?.id || ''}
+              onChange={(e) => setSelectedSubject(subjects.find(s => String(s.id) === e.target.value) || null)}
+              className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl outline-none font-bold text-white mb-3"
+            >
+              <option value="">Disciplina...</option>
+              {subjects.map(sub => (<option key={sub.id} value={sub.id}>{sub.name}</option>))}
+            </select>
+
+            <div className="relative mb-4">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+              <input autoFocus placeholder="Procurar aluno..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 pl-12 rounded-2xl outline-none focus:border-emerald-500 transition-all font-bold" />
+            </div>
+
+            <div className="overflow-y-auto space-y-5 flex-1">
+              <div className="space-y-2">
+                <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest px-1">Alunos do dia</p>
+                {alunosDoDia.length === 0 ? (
+                  <p className="text-xs text-slate-600 italic px-1">Nenhum aluno com aulas hoje.</p>
+                ) : alunosDoDia.map(renderAlunoCheckinRow)}
+              </div>
+
+              <div className="space-y-2">
+                <button onClick={() => setMostrarOutros(v => !v)} className="w-full flex items-center justify-between px-1 py-2 text-[10px] font-black uppercase text-slate-500 tracking-widest">
+                  <span>Outros alunos ({outrosAlunos.length})</span>
+                  {mostrarOutros ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                {mostrarOutros && outrosAlunos.map(renderAlunoCheckinRow)}
+              </div>
+            </div>
           </div>
+
+          {toastCheckin && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-slate-900 border border-emerald-500/40 rounded-2xl shadow-2xl px-5 py-4 flex items-center gap-4 animate-in slide-in-from-bottom duration-200">
+              <p className="text-sm font-bold text-emerald-400">✓ {toastCheckin.nome} — {toastCheckin.disciplina}</p>
+              <button onClick={() => handleUndoCheckin(toastCheckin.registoId)} className="flex items-center gap-1 text-[10px] font-black uppercase text-slate-400 hover:text-white transition-all shrink-0">
+                <Undo2 size={14} /> Desfazer
+              </button>
+            </div>
+          )}
         </div>
       )}
 
