@@ -65,6 +65,13 @@ app/
 - ✅ Soft-delete removido completamente — deleção direta sem `deleted_at`
 - ✅ Diário de bordo com coluna unificada `aluno_id` (sem duplicação com `student_id`)
 - ✅ Refeitório com filtro de alunos presentes alinhado com o dashboard
+- ✅ API route `criar-staff` server-side com `app_metadata.role` + rollback
+- ✅ Middleware com controlo de acesso por role (admin/professor/secretaria)
+- ✅ Menu lateral filtrado por role
+- ✅ Importação de Excel de alunos com template formatado (xlsx + exceljs)
+- ✅ Campos NIF e morada do encarregado na ficha de aluno
+- ✅ Exportação de faturação mensal em Excel com seleção de alunos
+- ✅ Check-in manual em lote com dropdown de disciplina e toast desfazer
 
 ---
 
@@ -114,6 +121,10 @@ app/
 ---
 
 ## Roadmap — Por Fazer (Prioridade para Setembro 2026)
+
+### 🎯 Próximo a Fazer (imediato)
+- [ ] Integração Stripe (pagamentos)
+- [ ] Chatbot/LabAI
 
 ### 🔴 Crítico
 - [ ] Refactoring completo para multitenancy (ver secção acima)
