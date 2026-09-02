@@ -170,37 +170,37 @@ export default function StudentHome() {
       .eq('id', currentSession.id);
   };
 
-  if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
+  if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
 
   return (
-    <main className={`min-h-screen bg-slate-950 text-white p-6 font-sans transition-all duration-300 ${isSubmitting ? 'pointer-events-none opacity-60' : ''}`}>
+    <main className={`min-h-screen bg-page text-primary p-6 font-sans transition-all duration-300 ${isSubmitting ? 'pointer-events-none opacity-60' : ''}`}>
       <div className="max-w-xl mx-auto">
         
         {currentSession ? (
           <div className="flex flex-col items-center justify-center space-y-8 animate-in fade-in zoom-in duration-500 py-12">
-            <div className="bg-emerald-500/10 text-emerald-500 p-6 rounded-full w-24 h-24 flex items-center justify-center mx-auto border-4 border-emerald-500/20">
+            <div className="bg-success-bg text-success p-6 rounded-full w-24 h-24 flex items-center justify-center mx-auto border-4 border-success/20">
               <CheckCircle2 size={48} />
             </div>
             <div className="text-center w-full">
               <h1 className="text-3xl font-black mb-2 italic">Bom Estudo, {studentName}!</h1>
               
-              <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl mt-4 inline-block w-full shadow-2xl relative overflow-hidden">
-                <span className="text-2xl font-black text-blue-400">{currentSession.subject_name || 'Sessão Livre'}</span>
+              <div className="bg-surface border border-border p-6 rounded-3xl mt-4 inline-block w-full shadow-2xl relative overflow-hidden">
+                <span className="text-2xl font-black text-accent">{currentSession.subject_name || 'Sessão Livre'}</span>
                 
                 {/* O Join com a tabela salas agora atualizará corretamente */}
                 {currentSession.salas?.nome && (
-                  <div className="mt-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 flex items-center justify-center gap-3">
-                    <MapPin size={24} className="text-emerald-500 animate-bounce" />
+                  <div className="mt-4 bg-success-bg border border-success/30 rounded-2xl p-4 flex items-center justify-center gap-3">
+                    <MapPin size={24} className="text-success animate-bounce" />
                     <div className="text-left">
-                      <p className="text-[10px] text-emerald-500 uppercase font-black tracking-widest">A tua sala hoje:</p>
-                      <p className="text-lg font-black text-white">{currentSession.salas.nome}</p>
+                      <p className="text-[10px] text-success uppercase font-black tracking-widest">A tua sala hoje:</p>
+                      <p className="text-lg font-black text-primary">{currentSession.salas.nome}</p>
                     </div>
                   </div>
                 )}
 
                 <button 
                   onClick={() => setShowSwitchList(!showSwitchList)} 
-                  className="mt-6 w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+                  className="mt-6 w-full py-3 bg-raised hover:bg-border text-secondary rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
                 >
                   <RefreshCw size={14} className={showSwitchList ? 'animate-spin' : ''} />
                   {showSwitchList ? 'Cancelar Troca' : 'Trocar Disciplina'}
@@ -213,7 +213,7 @@ export default function StudentHome() {
                         key={subject.id}
                         // PASSAMOS TAMBÉM O SALA_ID PARA A FUNÇÃO
                         onClick={() => safeAction(() => handleSwitchSubject(subject.id, subject.name, subject.sala_id))}
-                        className="bg-slate-950 border border-slate-800 p-3 rounded-xl text-[10px] font-bold hover:border-blue-500 transition-colors"
+                        className="bg-page border border-border p-3 rounded-xl text-[10px] font-bold hover:border-accent transition-colors"
                       >
                         {subject.name}
                       </button>
@@ -225,22 +225,22 @@ export default function StudentHome() {
 
             <div className="w-full space-y-4">
               <div className={`grid ${hasIaConsent ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-6`}>
-                 <Link href="/biblioteca" className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group">
+                 <Link href="/biblioteca" className="bg-surface border border-border p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group">
                    <Library size={24} className="text-orange-500" />
-                   <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Biblioteca</span>
+                   <span className="text-[8px] font-black uppercase tracking-widest text-secondary">Biblioteca</span>
                  </Link>
                  {hasIaConsent && (
-                   <Link href="/aluno/lab" className="bg-slate-900 border border-orange-500/50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 shadow-lg shadow-orange-900/10">
+                   <Link href="/aluno/lab" className="bg-surface border border-orange-500/50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 shadow-lg shadow-orange-900/10">
                      <BrainCircuit size={24} className="text-orange-400" />
                      <span className="text-[8px] font-black uppercase tracking-widest text-orange-400">Lab AI</span>
                    </Link>
                  )}
-                 <Link href="/agenda" className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group">
+                 <Link href="/agenda" className="bg-surface border border-border p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group">
                    <Calendar size={24} className="text-purple-500" />
-                   <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Agenda</span>
+                   <span className="text-[8px] font-black uppercase tracking-widest text-secondary">Agenda</span>
                  </Link>
               </div>
-              <button onClick={() => safeAction(handleCheckout)} disabled={isSubmitting} className="w-full bg-slate-900 hover:bg-red-900/20 text-slate-400 hover:text-red-400 border border-slate-800 py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all">
+              <button onClick={() => safeAction(handleCheckout)} disabled={isSubmitting} className="w-full bg-surface hover:bg-danger-bg text-secondary hover:text-danger border border-border py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all">
                 {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <LogOut size={20} />} TERMINAR SESSÃO
               </button>
             </div>
@@ -250,58 +250,58 @@ export default function StudentHome() {
             <header className="mb-8 flex justify-between items-center">
               <div>
                 <h1 className="text-3xl font-black italic tracking-tighter">Olá, {studentName} 👋</h1>
-                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">O que vamos estudar hoje?</p>
+                <p className="text-secondary text-xs font-bold uppercase tracking-widest mt-1">O que vamos estudar hoje?</p>
               </div>
               <div className="flex gap-2">
-                <Link href="/perfil" className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-slate-300"><User size={20} /></Link>
-                <button onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login'; }} className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-slate-300"><LogOut size={20} /></button>
+                <Link href="/perfil" className="bg-surface p-3 rounded-xl border border-border text-secondary"><User size={20} /></Link>
+                <button onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login'; }} className="bg-surface p-3 rounded-xl border border-border text-secondary"><LogOut size={20} /></button>
               </div>
             </header>
 
             {proximoTeste && (
-              <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl mb-6 flex items-center gap-4">
-                <div className="bg-amber-500 p-3 rounded-xl text-black"><GraduationCap size={20} /></div>
+              <div className="bg-warning-bg border border-warning/20 p-4 rounded-2xl mb-6 flex items-center gap-4">
+                <div className="bg-warning-bg p-3 rounded-xl text-warning"><GraduationCap size={20} /></div>
                 <div>
-                  <p className="text-[10px] font-black uppercase text-amber-500/60 tracking-widest">Alvo de Foco</p>
-                  <p className="text-sm font-bold text-amber-100">Teste de {proximoTeste.subject_name} dia {new Date(proximoTeste.date).getDate()}!</p>
+                  <p className="text-[10px] font-black uppercase text-warning/60 tracking-widest">Alvo de Foco</p>
+                  <p className="text-sm font-bold text-warning">Teste de {proximoTeste.subject_name} dia {new Date(proximoTeste.date).getDate()}!</p>
                 </div>
               </div>
             )}
 
             {isLimitReached ? (
-              <div className="bg-red-950/30 border border-red-900/50 p-8 rounded-4xl text-center space-y-6 py-20">
-                <div className="bg-red-500/10 text-red-500 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto"><ShieldAlert size={40} /></div>
-                <h2 className="text-2xl font-black text-white italic uppercase">Limite Semanal Atingido</h2>
+              <div className="bg-danger-bg border border-danger/50 p-8 rounded-4xl text-center space-y-6 py-20">
+                <div className="bg-danger-bg text-danger p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto"><ShieldAlert size={40} /></div>
+                <h2 className="text-2xl font-black text-primary italic uppercase">Limite Semanal Atingido</h2>
               </div>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-3 mb-8">
                     <Link href="/agenda" className="bg-linear-to-br from-purple-900/50 to-blue-900/50 border border-purple-500/30 p-5 rounded-3xl h-32 flex flex-col justify-between">
                         <div className="bg-purple-500/20 p-2 rounded-lg text-purple-400 w-fit"><Calendar size={20} /></div>
-                        <p className="font-black text-white text-lg">Agenda</p>
+                        <p className="font-black text-primary text-lg">Agenda</p>
                     </Link>
                     <Link href="/biblioteca" className="bg-linear-to-br from-orange-900/50 to-red-900/50 border border-orange-500/30 p-5 rounded-3xl h-32 flex flex-col justify-between">
                         <div className="bg-orange-500/20 p-2 rounded-lg text-orange-400 w-fit"><Library size={20} /></div>
-                        <p className="font-black text-white text-lg">Biblioteca</p>
+                        <p className="font-black text-primary text-lg">Biblioteca</p>
                     </Link>
                     {hasIaConsent && (
                       <Link href="/aluno/lab" className="col-span-2 bg-linear-to-r from-orange-600 to-orange-400 p-5 rounded-3xl flex items-center justify-between shadow-xl shadow-orange-900/20">
                           <div className="flex items-center gap-4">
-                            <div className="bg-white/20 p-3 rounded-2xl text-white"><BrainCircuit size={28} /></div>
+                            <div className="bg-white/20 p-3 rounded-2xl text-primary"><BrainCircuit size={28} /></div>
                             <div>
-                              <p className="font-black text-white text-xl italic uppercase tracking-tighter">My Personal Lab</p>
+                              <p className="font-black text-primary text-xl italic uppercase tracking-tighter">My Personal Lab</p>
                               <p className="text-[10px] text-white/80 font-bold uppercase tracking-widest">Estudo Inteligente com IA</p>
                             </div>
                           </div>
-                          <span className="bg-white/20 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase">Premium</span>
+                          <span className="bg-white/20 text-primary text-[10px] font-black px-3 py-1 rounded-full uppercase">Premium</span>
                       </Link>
                     )}
                 </div>
 
                 <div className="flex justify-between items-center mb-4 px-1">
-                    <h3 className="font-black text-slate-400 text-xs uppercase tracking-widest">Escolhe a tua Disciplina</h3>
-                    <span className="text-[10px] text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1 rounded-full font-black">
-                      Sessões: <span className="text-blue-400">{limitData.visits}</span> / {limitData.limit > 0 ? limitData.limit : 'Livre'}
+                    <h3 className="font-black text-secondary text-xs uppercase tracking-widest">Escolhe a tua Disciplina</h3>
+                    <span className="text-[10px] text-secondary bg-surface border border-border px-3 py-1 rounded-full font-black">
+                      Sessões: <span className="text-accent">{limitData.visits}</span> / {limitData.limit > 0 ? limitData.limit : 'Livre'}
                     </span>
                 </div>
                 <div className="grid grid-cols-2 gap-3 pb-10">
@@ -310,14 +310,14 @@ export default function StudentHome() {
                       key={subject.id} 
                       disabled={isSubmitting}
                       onClick={() => safeAction(() => handleCheckIn(subject.id, subject.name, subject.sala_id))} 
-                      className="bg-slate-900 hover:bg-slate-800 border border-slate-800 p-5 rounded-3xl text-left transition-all relative overflow-hidden active:scale-95 disabled:opacity-50"
+                      className="bg-surface hover:bg-raised border border-border p-5 rounded-3xl text-left transition-all relative overflow-hidden active:scale-95 disabled:opacity-50"
                     >
-                      <div className="bg-blue-500/10 text-blue-500 w-10 h-10 rounded-xl flex items-center justify-center mb-3">
+                      <div className="bg-accent-soft text-accent w-10 h-10 rounded-xl flex items-center justify-center mb-3">
                         <BookOpen size={20} />
                       </div>
-                      <span className="font-black text-md block text-slate-200">{subject.name}</span>
+                      <span className="font-black text-md block text-primary">{subject.name}</span>
                       {subject.salas?.nome && (
-                        <span className="absolute top-4 right-4 text-[8px] bg-slate-800 text-slate-400 px-2 py-1 rounded font-black uppercase tracking-widest">
+                        <span className="absolute top-4 right-4 text-[8px] bg-raised text-secondary px-2 py-1 rounded font-black uppercase tracking-widest">
                           {subject.salas.nome}
                         </span>
                       )}

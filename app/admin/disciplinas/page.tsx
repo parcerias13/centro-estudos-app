@@ -176,19 +176,19 @@ export default function DisciplinasEMateriais() {
   };
 
   const getTypeIcon = (type: string) => {
-    if (type === 'pdf') return <FileText size={16} className="text-red-400" />;
-    if (type === 'video') return <Youtube size={16} className="text-red-500" />;
-    return <LinkIcon size={16} className="text-blue-400" />;
+    if (type === 'pdf') return <FileText size={16} className="text-danger" />;
+    if (type === 'video') return <Youtube size={16} className="text-danger" />;
+    return <LinkIcon size={16} className="text-accent" />;
   };
 
   if (loading) return (
-    <div className="min-h-screen bg-[#0f172a] flex items-center justify-center">
-      <Loader2 className="animate-spin text-blue-500" size={32} />
+    <div className="min-h-screen bg-page flex items-center justify-center">
+      <Loader2 className="animate-spin text-accent" size={32} />
     </div>
   );
 
   return (
-    <main className="min-h-screen bg-[#0f172a] p-8 text-white font-sans">
+    <main className="min-h-screen bg-page p-8 text-primary font-sans">
       <div className="max-w-4xl mx-auto">
 
         {/* CABEÇALHO */}
@@ -197,16 +197,16 @@ export default function DisciplinasEMateriais() {
             <div className="bg-orange-500/10 text-orange-400 p-3 rounded-2xl border border-orange-500/20 inline-flex mb-4">
               <Library size={24} />
             </div>
-            <h1 className="text-4xl font-black italic tracking-tighter uppercase text-white">
+            <h1 className="text-4xl font-black italic tracking-tighter uppercase text-primary">
               Disciplinas e Materiais
             </h1>
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-2">
+            <p className="text-muted text-xs font-bold uppercase tracking-widest mt-2">
               Gere as disciplinas e os materiais de estudo
             </p>
           </div>
           <button
             onClick={() => { setShowAddSubject(true); setNewSubjectName(''); setSubjectError(null); }}
-            className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-white font-black py-3 px-5 rounded-2xl transition-all active:scale-95 shadow-lg shadow-orange-900/20 text-sm shrink-0 mt-2"
+            className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-primary font-black py-3 px-5 rounded-2xl transition-all active:scale-95 shadow-lg shadow-orange-900/20 text-sm shrink-0 mt-2"
           >
             <Plus size={18} /> Adicionar Disciplina
           </button>
@@ -215,9 +215,9 @@ export default function DisciplinasEMateriais() {
         {/* LISTA DE DISCIPLINAS */}
         <div className="space-y-3">
           {subjects.length === 0 ? (
-            <div className="bg-slate-900/40 border-2 border-dashed border-slate-800 p-12 rounded-3xl text-center">
-              <AlertCircle size={32} className="mx-auto mb-3 text-slate-700" />
-              <p className="text-slate-600 font-bold italic">Nenhuma disciplina registada.</p>
+            <div className="bg-surface/40 border-2 border-dashed border-border p-12 rounded-3xl text-center">
+              <AlertCircle size={32} className="mx-auto mb-3 text-muted" />
+              <p className="text-muted font-bold italic">Nenhuma disciplina registada.</p>
             </div>
           ) : (
             subjects.map((subj) => {
@@ -226,27 +226,27 @@ export default function DisciplinasEMateriais() {
               const isExpanded = expandedId === subj.id;
 
               return (
-                <div key={subj.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                <div key={subj.id} className="bg-surface border border-border rounded-2xl overflow-hidden">
 
                   {/* ROW CLICÁVEL */}
                   <div
-                    className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-800/50 transition-colors group"
+                    className="flex items-center justify-between p-5 cursor-pointer hover:bg-raised/50 transition-colors group"
                     onClick={() => setExpandedId(isExpanded ? null : subj.id)}
                   >
                     <div className="flex items-center gap-4">
-                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 group-hover:border-orange-500/30 transition-colors">
-                        <BookOpen size={18} className="text-slate-400 group-hover:text-orange-500 transition-colors" />
+                      <div className="bg-page p-2.5 rounded-xl border border-border group-hover:border-orange-500/30 transition-colors">
+                        <BookOpen size={18} className="text-secondary group-hover:text-orange-500 transition-colors" />
                       </div>
                       <div>
-                        <span className="font-black text-lg text-slate-200">{subj.name}</span>
+                        <span className="font-black text-lg text-primary">{subj.name}</span>
                         <div className="flex items-center gap-2 mt-0.5">
                           {years && (
                             <>
-                              <span className="text-[10px] font-bold text-slate-500">{years}</span>
-                              <span className="text-slate-700 text-xs">·</span>
+                              <span className="text-[10px] font-bold text-muted">{years}</span>
+                              <span className="text-muted text-xs">·</span>
                             </>
                           )}
-                          <span className="text-[10px] font-bold text-slate-500">
+                          <span className="text-[10px] font-bold text-muted">
                             {subjResources.length}{' '}
                             {subjResources.length === 1 ? 'material' : 'materiais'}
                           </span>
@@ -256,25 +256,25 @@ export default function DisciplinasEMateriais() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDeleteSubject(subj.id, subj.name); }}
-                        className="p-2 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                        className="p-2 text-muted hover:text-danger hover:bg-danger-bg rounded-xl transition-all opacity-0 group-hover:opacity-100"
                         title="Eliminar disciplina"
                       >
                         <Trash2 size={16} />
                       </button>
                       {isExpanded
-                        ? <ChevronDown size={18} className="text-slate-400" />
-                        : <ChevronRight size={18} className="text-slate-600" />
+                        ? <ChevronDown size={18} className="text-secondary" />
+                        : <ChevronRight size={18} className="text-muted" />
                       }
                     </div>
                   </div>
 
                   {/* PAINEL EXPANDIDO */}
                   {isExpanded && (
-                    <div className="border-t border-slate-800 px-5 pb-5 pt-4">
+                    <div className="border-t border-border px-5 pb-5 pt-4">
 
                       {/* LISTA DE MATERIAIS */}
                       {subjResources.length === 0 ? (
-                        <p className="text-slate-600 text-sm font-bold italic py-3 text-center">
+                        <p className="text-muted text-sm font-bold italic py-3 text-center">
                           Sem materiais publicados nesta disciplina.
                         </p>
                       ) : (
@@ -282,13 +282,13 @@ export default function DisciplinasEMateriais() {
                           {subjResources.map((res) => (
                             <div
                               key={res.id}
-                              className="flex items-center justify-between bg-slate-950 border border-slate-800 p-4 rounded-xl group/res"
+                              className="flex items-center justify-between bg-page border border-border p-4 rounded-xl group/res"
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 {getTypeIcon(res.type)}
                                 <div className="min-w-0">
-                                  <p className="font-bold text-sm text-slate-200 truncate">{res.title}</p>
-                                  <p className="text-[10px] text-slate-500 font-bold">
+                                  <p className="font-bold text-sm text-primary truncate">{res.title}</p>
+                                  <p className="text-[10px] text-muted font-bold">
                                     {res.ano_escolar}º ano · {new Date(res.created_at).toLocaleDateString('pt-PT')}
                                   </p>
                                 </div>
@@ -298,7 +298,7 @@ export default function DisciplinasEMateriais() {
                                   href={res.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="p-2 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition-all"
+                                  className="p-2 text-muted hover:text-accent hover:bg-accent-soft rounded-xl transition-all"
                                   title="Download / Abrir"
                                   onClick={(e) => e.stopPropagation()}
                                 >
@@ -306,7 +306,7 @@ export default function DisciplinasEMateriais() {
                                 </a>
                                 <button
                                   onClick={() => handleDeleteMaterial(res.id, res.url)}
-                                  className="p-2 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover/res:opacity-100"
+                                  className="p-2 text-muted hover:text-danger hover:bg-danger-bg rounded-xl transition-all opacity-0 group-hover/res:opacity-100"
                                   title="Remover material"
                                 >
                                   <Trash2 size={15} />
@@ -321,16 +321,16 @@ export default function DisciplinasEMateriais() {
                       {addingMaterialFor === subj.id ? (
                         <form
                           onSubmit={(e) => handleAddMaterial(e, subj.id)}
-                          className="bg-slate-950 border border-slate-700 p-5 rounded-xl space-y-4 mt-2"
+                          className="bg-page border border-border p-5 rounded-xl space-y-4 mt-2"
                         >
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-black uppercase text-slate-400 tracking-widest">
+                            <span className="text-xs font-black uppercase text-secondary tracking-widest">
                               Novo Material
                             </span>
                             <button
                               type="button"
                               onClick={() => setAddingMaterialFor(null)}
-                              className="text-slate-600 hover:text-slate-300 transition-colors"
+                              className="text-muted hover:text-secondary transition-colors"
                             >
                               <X size={16} />
                             </button>
@@ -338,7 +338,7 @@ export default function DisciplinasEMateriais() {
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="text-[9px] font-black uppercase text-slate-500 tracking-widest">
+                              <label className="text-[9px] font-black uppercase text-muted tracking-widest">
                                 Título
                               </label>
                               <input
@@ -348,17 +348,17 @@ export default function DisciplinasEMateriais() {
                                 value={matTitle}
                                 onChange={(e) => setMatTitle(e.target.value)}
                                 placeholder="Ex: Resumo Cap. 1"
-                                className="w-full bg-slate-900 border border-slate-800 p-3 rounded-xl outline-none focus:border-orange-500 text-white text-sm font-bold mt-1 placeholder:text-slate-700"
+                                className="w-full bg-surface border border-border p-3 rounded-xl outline-none focus:border-orange-500 text-primary text-sm font-bold mt-1 placeholder:text-muted"
                               />
                             </div>
                             <div>
-                              <label className="text-[9px] font-black uppercase text-slate-500 tracking-widest">
+                              <label className="text-[9px] font-black uppercase text-muted tracking-widest">
                                 Ano Escolar
                               </label>
                               <select
                                 value={matAno}
                                 onChange={(e) => setMatAno(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-800 text-white p-3 rounded-xl outline-none focus:border-orange-500 font-bold mt-1 text-sm appearance-none"
+                                className="w-full bg-surface border border-border text-primary p-3 rounded-xl outline-none focus:border-orange-500 font-bold mt-1 text-sm appearance-none"
                               >
                                 {Array.from({ length: 12 }, (_, i) => i + 1).map((ano) => (
                                   <option key={ano} value={ano}>{ano}º Ano</option>
@@ -368,7 +368,7 @@ export default function DisciplinasEMateriais() {
                           </div>
 
                           <div>
-                            <label className="text-[9px] font-black uppercase text-slate-500 tracking-widest">
+                            <label className="text-[9px] font-black uppercase text-muted tracking-widest">
                               Tipo
                             </label>
                             <div className="flex gap-2 mt-1">
@@ -379,8 +379,8 @@ export default function DisciplinasEMateriais() {
                                   onClick={() => { setMatType(t); setMatFile(null); setMatUrl(''); }}
                                   className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase border transition-all ${
                                     matType === t
-                                      ? 'bg-orange-600 border-orange-500 text-white'
-                                      : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-600'
+                                      ? 'bg-orange-600 border-orange-500 text-primary'
+                                      : 'bg-surface border-border text-muted hover:border-border'
                                   }`}
                                 >
                                   {t}
@@ -389,11 +389,11 @@ export default function DisciplinasEMateriais() {
                             </div>
                           </div>
 
-                          <div className="bg-slate-900 border border-slate-800 p-3 rounded-xl">
+                          <div className="bg-surface border border-border p-3 rounded-xl">
                             {matType === 'pdf' ? (
                               <label className="cursor-pointer flex items-center gap-3">
-                                <Upload size={18} className={matFile ? 'text-emerald-500' : 'text-slate-600'} />
-                                <span className="text-sm font-bold text-slate-400">
+                                <Upload size={18} className={matFile ? 'text-success' : 'text-muted'} />
+                                <span className="text-sm font-bold text-secondary">
                                   {matFile ? matFile.name : 'Selecionar PDF'}
                                 </span>
                                 <input
@@ -410,19 +410,19 @@ export default function DisciplinasEMateriais() {
                                 value={matUrl}
                                 onChange={(e) => setMatUrl(e.target.value)}
                                 placeholder={matType === 'video' ? 'Link do YouTube...' : 'https://...'}
-                                className="w-full bg-transparent text-white outline-none font-bold text-sm placeholder:text-slate-700"
+                                className="w-full bg-transparent text-primary outline-none font-bold text-sm placeholder:text-muted"
                               />
                             )}
                           </div>
 
                           {matError && (
-                            <p className="text-red-400 text-[11px] font-bold">{matError}</p>
+                            <p className="text-danger text-[11px] font-bold">{matError}</p>
                           )}
 
                           <button
                             type="submit"
                             disabled={uploadingMat}
-                            className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-black py-3 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 text-sm"
+                            className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-primary font-black py-3 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 text-sm"
                           >
                             {uploadingMat
                               ? <><Loader2 className="animate-spin" size={16} /> A publicar...</>
@@ -433,7 +433,7 @@ export default function DisciplinasEMateriais() {
                       ) : (
                         <button
                           onClick={() => openAddMaterial(subj.id)}
-                          className="flex items-center gap-2 text-sm font-black text-slate-500 hover:text-orange-400 transition-colors py-2 mt-1"
+                          className="flex items-center gap-2 text-sm font-black text-muted hover:text-orange-400 transition-colors py-2 mt-1"
                         >
                           <Plus size={16} /> Adicionar material
                         </button>
@@ -450,19 +450,19 @@ export default function DisciplinasEMateriais() {
       {/* MODAL: ADICIONAR DISCIPLINA */}
       {showAddSubject && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl p-8 w-full max-w-md shadow-2xl">
+          <div className="bg-surface border border-border rounded-3xl p-8 w-full max-w-md shadow-2xl">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black text-white">Nova Disciplina</h2>
+              <h2 className="text-xl font-black text-primary">Nova Disciplina</h2>
               <button
                 onClick={() => { setShowAddSubject(false); setNewSubjectName(''); setSubjectError(null); }}
-                className="text-slate-500 hover:text-white transition-colors"
+                className="text-muted hover:text-primary transition-colors"
               >
                 <X size={22} />
               </button>
             </div>
             <form onSubmit={handleAddSubject} className="space-y-4">
               <div>
-                <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
+                <label className="text-[10px] font-black uppercase text-muted tracking-widest">
                   Nome da Disciplina
                 </label>
                 <input
@@ -472,15 +472,15 @@ export default function DisciplinasEMateriais() {
                   value={newSubjectName}
                   onChange={(e) => setNewSubjectName(e.target.value)}
                   placeholder="Ex: Biologia"
-                  className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl outline-none focus:border-orange-500 text-white font-bold mt-2 placeholder:text-slate-700"
+                  className="w-full bg-page border border-border p-4 rounded-2xl outline-none focus:border-orange-500 text-primary font-bold mt-2 placeholder:text-muted"
                 />
               </div>
               {subjectError && (
-                <p className="text-red-400 text-[11px] font-bold">{subjectError}</p>
+                <p className="text-danger text-[11px] font-bold">{subjectError}</p>
               )}
               <button
                 disabled={creatingSubject || !newSubjectName.trim()}
-                className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white font-black py-4 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-primary font-black py-4 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2"
               >
                 {creatingSubject
                   ? <><Loader2 className="animate-spin" size={18} /> A criar...</>

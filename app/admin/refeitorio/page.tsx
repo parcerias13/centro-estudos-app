@@ -127,22 +127,22 @@ export default function RefeitorioPage() {
     a.nome.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (loading) return <div className="min-h-screen bg-[#0f172a] flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
+  if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
 
   return (
-    <main className={`min-h-screen bg-[#0f172a] p-4 md:p-8 text-white transition-all ${isSubmitting ? 'opacity-60 pointer-events-none' : ''}`}>
+    <main className={`min-h-screen bg-page p-4 md:p-8 text-primary transition-all ${isSubmitting ? 'opacity-60 pointer-events-none' : ''}`}>
       
       <header className="mb-10 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-black italic uppercase tracking-tighter">Refeitório & Serviços</h1>
-          <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Gestão Dinâmica de Consumos</p>
+          <p className="text-[10px] text-muted font-black uppercase tracking-widest">Gestão Dinâmica de Consumos</p>
         </div>
         
         <div className="flex items-center gap-3">
-          <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-6 py-3 bg-emerald-600/10 text-emerald-500 border border-emerald-500/20 rounded-xl hover:bg-emerald-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest shadow-lg">
+          <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-6 py-3 bg-success-bg text-success border border-success/20 rounded-xl hover:bg-success hover:text-on-success transition-all text-[10px] font-black uppercase tracking-widest shadow-lg">
             <UserPlus size={16} /> Adicionar Aluno
           </button>
-          <button onClick={fetchDados} className="p-3 bg-slate-900 rounded-xl border border-slate-800 hover:text-blue-400">
+          <button onClick={fetchDados} className="p-3 bg-surface rounded-xl border border-border hover:text-accent">
             <RefreshCw size={20} />
           </button>
         </div>
@@ -150,28 +150,28 @@ export default function RefeitorioPage() {
 
       <div className="space-y-4 max-w-5xl">
         <div className="flex items-center justify-between px-2 mb-2">
-          <h2 className="flex items-center gap-2 text-slate-400 font-black uppercase text-xs tracking-widest">
+          <h2 className="flex items-center gap-2 text-secondary font-black uppercase text-xs tracking-widest">
             <Clock size={14} /> Alunos no Centro
           </h2>
         </div>
 
         {alunosPresentes.length === 0 ? (
-          <div className="bg-slate-900/40 border-2 border-dashed border-slate-800 p-20 rounded-4xl text-center italic opacity-50">
+          <div className="bg-surface/40 border-2 border-dashed border-border p-20 rounded-4xl text-center italic opacity-50">
             Nenhum aluno com check-in hoje...
           </div>
         ) : (
           alunosPresentes.map((aluno) => {
             const safeUrl = getSafeAvatar(aluno.avatar_url);
             return (
-              <div key={aluno.aluno_id} className="bg-slate-900 border border-slate-800 p-5 rounded-4xl flex flex-col lg:flex-row items-center justify-between transition-all gap-6 group hover:border-slate-700">
+              <div key={aluno.aluno_id} className="bg-surface border border-border p-5 rounded-4xl flex flex-col lg:flex-row items-center justify-between transition-all gap-6 group hover:border-border">
                 <div className="flex items-center gap-4 w-full lg:w-1/3">
-                  <div className="w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-xl font-black border border-slate-700/50 bg-slate-800 overflow-hidden">
+                  <div className="w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-xl font-black border border-border/50 bg-raised overflow-hidden">
                     {/* snyk:ignore:javascript/DOMXSS */}
-                    {safeUrl ? <img src={safeUrl} alt="" className="w-full h-full object-cover" /> : <span className="text-slate-500">{aluno.aluno_nome.charAt(0)}</span>}
+                    {safeUrl ? <img src={safeUrl} alt="" className="w-full h-full object-cover" /> : <span className="text-muted">{aluno.aluno_nome.charAt(0)}</span>}
                   </div>
                   <div>
-                    <h3 className="text-lg font-black group-hover:text-blue-400 transition-colors">{aluno.aluno_nome}</h3>
-                    <p className="text-[10px] text-emerald-500 font-black uppercase flex items-center gap-1">
+                    <h3 className="text-lg font-black group-hover:text-accent transition-colors">{aluno.aluno_nome}</h3>
+                    <p className="text-[10px] text-success font-black uppercase flex items-center gap-1">
                       <CheckCircle2 size={10} /> Em Sala
                     </p>
                   </div>
@@ -187,8 +187,8 @@ export default function RefeitorioPage() {
                         onClick={() => handleConsumo(aluno.aluno_id, servico)}
                         className={`flex items-center gap-2 px-4 py-3 rounded-xl transition-all border text-[10px] font-black uppercase tracking-tighter ${
                           ativo 
-                          ? 'bg-blue-600 border-blue-400 text-white shadow-lg' 
-                          : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-600'
+                          ? 'bg-accent border-accent text-on-accent shadow-lg' 
+                          : 'bg-page border-border text-muted hover:border-border'
                         }`}
                       >
                         {servico.nome === 'Almoço' ? <Utensils size={14} /> : servico.nome === 'Lanche' ? <Apple size={14} /> : <div className="w-2 h-2 rounded-full bg-current" />}
@@ -205,33 +205,33 @@ export default function RefeitorioPage() {
 
       {/* MODAL DE ADIÇÃO MANUAL - Preservado e Reforçado */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-xl rounded-4xl shadow-3xl p-8 animate-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-page/90 backdrop-blur-md">
+          <div className="bg-surface border border-border w-full max-w-xl rounded-4xl shadow-3xl p-8 animate-in zoom-in duration-200">
             <div className="flex justify-between items-center mb-8">
-              <h3 className="text-2xl font-black uppercase italic text-white tracking-tighter">Registar Serviço Extra</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white transition-colors"><X size={24}/></button>
+              <h3 className="text-2xl font-black uppercase italic text-primary tracking-tighter">Registar Serviço Extra</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-secondary hover:text-primary transition-colors"><X size={24}/></button>
             </div>
             
             <div className="relative mb-6">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={20} />
               <input 
                 autoFocus 
                 placeholder="Qual o aluno?" 
                 value={searchQuery} 
                 onChange={(e) => setSearchQuery(e.target.value)} 
-                className="w-full bg-slate-950 border border-slate-800 p-5 pl-14 rounded-2xl outline-none focus:border-emerald-500 transition-all font-bold text-white text-lg" 
+                className="w-full bg-page border border-border p-5 pl-14 rounded-2xl outline-none focus:border-success transition-all font-bold text-primary text-lg" 
               />
             </div>
 
             <div className="max-h-80 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
               {alunosFiltrados.map(aluno => (
-                <div key={aluno.id} className="w-full p-4 bg-slate-950 border border-slate-800 rounded-2xl flex flex-col gap-4">
-                  <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
-                    <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-black text-slate-500 overflow-hidden">
+                <div key={aluno.id} className="w-full p-4 bg-page border border-border rounded-2xl flex flex-col gap-4">
+                  <div className="flex items-center gap-3 border-b border-border pb-3">
+                    <div className="w-10 h-10 rounded-xl bg-raised flex items-center justify-center font-black text-muted overflow-hidden">
                       {/* snyk:ignore:javascript/DOMXSS */}
                       {aluno.avatar_url ? <img src={aluno.avatar_url} className="w-full h-full object-cover" /> : aluno.nome.charAt(0)}
                     </div>
-                    <p className="font-bold text-white">{aluno.nome}</p>
+                    <p className="font-bold text-primary">{aluno.nome}</p>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-2">
@@ -239,7 +239,7 @@ export default function RefeitorioPage() {
                       <button 
                         key={s.id}
                         onClick={() => handleConsumo(aluno.id, s)}
-                        className="p-3 bg-slate-900 border border-slate-700 rounded-xl text-[9px] font-black uppercase hover:bg-emerald-600 hover:text-white transition-all"
+                        className="p-3 bg-surface border border-border rounded-xl text-[9px] font-black uppercase hover:bg-success hover:text-on-success transition-all"
                       >
                         + {s.nome} ({s.preco}€)
                       </button>

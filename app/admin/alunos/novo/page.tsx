@@ -148,23 +148,23 @@ export default function NovoAluno() {
   };
 
   return (
-    <main className={`min-h-screen bg-slate-950 text-white p-6 max-w-4xl mx-auto pb-20 transition-all ${isSubmitting ? 'pointer-events-none opacity-60' : ''}`}>
+    <main className={`min-h-screen bg-page text-primary p-6 max-w-4xl mx-auto pb-20 transition-all ${isSubmitting ? 'pointer-events-none opacity-60' : ''}`}>
       <div className="flex items-center gap-4 mb-8">
-        <Link href="/admin/alunos" className="bg-slate-900 p-3 rounded-xl hover:bg-slate-800 transition-colors border border-slate-800">
-          <ArrowLeft size={20} className="text-slate-400" />
+        <Link href="/admin/alunos" className="bg-surface p-3 rounded-xl hover:bg-raised transition-colors border border-border">
+          <ArrowLeft size={20} className="text-secondary" />
         </Link>
         <div>
           <h1 className="text-2xl font-black flex items-center gap-2">
-            <UserPlus className="text-blue-500" /> Nova Matrícula
+            <UserPlus className="text-accent" /> Nova Matrícula
           </h1>
-          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Contrato de Mensalidade Fixa</p>
+          <p className="text-muted text-xs font-bold uppercase tracking-widest mt-1">Contrato de Mensalidade Fixa</p>
         </div>
       </div>
 
-      <form onSubmit={(e) => { e.preventDefault(); safeAction(handleGuardar); }} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-10">
+      <form onSubmit={(e) => { e.preventDefault(); safeAction(handleGuardar); }} className="bg-surface border border-border rounded-3xl p-8 shadow-2xl space-y-10">
         
         {erro && (
-          <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl flex items-start gap-3 text-red-500">
+          <div className="bg-danger-bg border border-danger/30 p-4 rounded-xl flex items-start gap-3 text-danger">
             <ShieldAlert className="shrink-0" size={20} />
             <p className="text-sm font-bold">{erro}</p>
           </div>
@@ -172,14 +172,14 @@ export default function NovoAluno() {
 
         {/* 1. IDENTIFICAÇÃO */}
         <div className="space-y-6">
-          <h2 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em]">1. Identificação e Perfil</h2>
+          <h2 className="text-[10px] font-black uppercase text-accent tracking-[0.2em]">1. Identificação e Perfil</h2>
           <div className="flex flex-col items-center gap-4 py-4">
             <div className="relative group">
-              <div className={`w-24 h-24 rounded-3xl border border-slate-800 overflow-hidden shadow-2xl flex items-center justify-center transition-all ${!avatarUrl ? 'bg-slate-950' : ''}`}>
+              <div className={`w-24 h-24 rounded-3xl border border-border overflow-hidden shadow-2xl flex items-center justify-center transition-all ${!avatarUrl ? 'bg-page' : ''}`}>
                 {avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover" /> : <Camera size={30} className="text-slate-800" />}
-                {uploading && <div className="absolute inset-0 bg-slate-950/80 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>}
+                {uploading && <div className="absolute inset-0 bg-page/80 flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>}
               </div>
-              <label className="absolute -bottom-2 -right-2 bg-blue-600 p-2.5 rounded-xl cursor-pointer hover:bg-blue-500 shadow-xl transition-all">
+              <label className="absolute -bottom-2 -right-2 bg-accent hover:bg-accent-hover text-on-accent p-2.5 rounded-xl cursor-pointer shadow-xl transition-all">
                 <Camera size={16} />
                 <input type="file" accept="image/*" onChange={handleUpload} className="hidden" disabled={uploading} />
               </label>
@@ -188,19 +188,19 @@ export default function NovoAluno() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nome Completo</label>
-              <input type="text" required value={nome} onChange={(e) => setNome(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" />
+              <label className="text-[10px] font-black text-muted uppercase tracking-widest">Nome Completo</label>
+              <input type="text" required value={nome} onChange={(e) => setNome(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all" />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Data de Nascimento</label>
-              <input type="date" required value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all text-white" />
+              <label className="text-[10px] font-black text-muted uppercase tracking-widest">Data de Nascimento</label>
+              <input type="date" required value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all text-primary" />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Email de Acesso (Aluno)</label>
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" />
+              <label className="text-[10px] font-black text-muted uppercase tracking-widest">Email de Acesso (Aluno)</label>
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all" />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Password Provisória</label>
+              <label className="text-[10px] font-black text-muted uppercase tracking-widest">Password Provisória</label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <input
@@ -209,12 +209,12 @@ export default function NovoAluno() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Mínimo 6 caracteres"
-                    className="w-full bg-slate-950 border border-slate-800 p-4 pr-12 rounded-xl outline-none focus:border-blue-500 transition-all font-mono"
+                    className="w-full bg-page border border-border p-4 pr-12 rounded-xl outline-none focus:border-accent transition-all font-mono"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors"
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
@@ -223,7 +223,7 @@ export default function NovoAluno() {
                   type="button"
                   onClick={gerarPassword}
                   title="Gerar password aleatória"
-                  className="px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition-all active:scale-95 text-slate-400 hover:text-white shrink-0"
+                  className="px-4 bg-raised hover:bg-border border border-border rounded-xl transition-all active:scale-95 text-secondary hover:text-primary shrink-0"
                 >
                   <RefreshCw size={16} />
                 </button>
@@ -231,13 +231,13 @@ export default function NovoAluno() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <label className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
                 <GraduationCap size={12} /> Ano Escolar
               </label>
               <select 
                 value={anoEscolar} 
                 onChange={(e) => setAnoEscolar(e.target.value)} 
-                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all text-white appearance-none cursor-pointer"
+                className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all text-primary appearance-none cursor-pointer"
               >
                 {[...Array(12)].map((_, i) => (
                   <option key={i + 1} value={i + 1}>{i + 1}º Ano</option>
@@ -246,17 +246,17 @@ export default function NovoAluno() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Smartphone size={12}/> Telemóvel do Aluno</label>
-              <input type="text" value={telemovelAluno} onChange={(e) => setTelemovelAluno(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" placeholder="Ex: 912345678" />
+              <label className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2"><Smartphone size={12}/> Telemóvel do Aluno</label>
+              <input type="text" value={telemovelAluno} onChange={(e) => setTelemovelAluno(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all" placeholder="Ex: 912345678" />
             </div>
             
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Phone size={12}/> Telemóvel Encarregado (WhatsApp)</label>
-              <input type="text" required value={telefone} onChange={(e) => setTelefone(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" placeholder="Ex: 912345678" />
+              <label className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2"><Phone size={12}/> Telemóvel Encarregado (WhatsApp)</label>
+              <input type="text" required value={telefone} onChange={(e) => setTelefone(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all" placeholder="Ex: 912345678" />
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <label className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
                 <Mail size={12}/> Email do Encarregado (Relatórios)
               </label>
               <input 
@@ -264,48 +264,48 @@ export default function NovoAluno() {
                 required 
                 value={emailEncarregado} 
                 onChange={(e) => setEmailEncarregado(e.target.value)} 
-                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all" 
+                className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all" 
                 placeholder="email@exemplo.com"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <label className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
                 <FileText size={12}/> NIF do Encarregado
               </label>
               <input
                 type="text"
                 value={nifEncarregado}
                 onChange={(e) => setNifEncarregado(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all"
+                className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all"
                 placeholder="Ex: 123456789"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <label className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
                 <MapPin size={12}/> Morada do Encarregado
               </label>
               <input
                 type="text"
                 value={moradaEncarregado}
                 onChange={(e) => setMoradaEncarregado(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all"
+                className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all"
                 placeholder="Rua Exemplo, 123, Porto"
               />
             </div>
           </div>
         </div>
 
-        <hr className="border-slate-800" />
+        <hr className="border-border" />
 
         {/* 2. PLANO FINANCEIRO E FREQUÊNCIA */}
         <div className="space-y-6">
-          <h2 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em]">2. Plano Financeiro e Frequência</h2>
+          <h2 className="text-[10px] font-black uppercase text-accent tracking-[0.2em]">2. Plano Financeiro e Frequência</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-2">
+              <label className="text-[10px] font-black text-success uppercase tracking-widest flex items-center gap-2">
                 <DollarSign size={12} /> Mensalidade Base (€)
               </label>
               <input 
@@ -314,16 +314,16 @@ export default function NovoAluno() {
                 value={mensalidadeBase} 
                 onChange={(e) => setMensalidadeBase(e.target.value)} 
                 placeholder="0.00"
-                className="w-full bg-slate-950 border border-emerald-500/30 p-4 rounded-xl outline-none focus:border-emerald-500 transition-all text-emerald-500 font-bold" 
+                className="w-full bg-page border border-success/30 p-4 rounded-xl outline-none focus:border-success transition-all text-success font-bold" 
               />
             </div>
           </div>
 
           <div className="space-y-3">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Calendar size={14} /> Dias Previstos de Frequência</label>
+            <label className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2"><Calendar size={14} /> Dias Previstos de Frequência</label>
             <div className="flex flex-wrap gap-2">
               {diasSemana.map(d => (
-                <button key={d.id} type="button" onClick={() => toggleDia(d.id)} className={`flex-1 min-w-27.5 p-3 rounded-xl border text-[10px] font-black transition-all ${diasSelecionados.includes(d.id) ? 'bg-blue-600 border-blue-500 shadow-lg shadow-blue-500/20' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>
+                <button key={d.id} type="button" onClick={() => toggleDia(d.id)} className={`flex-1 min-w-27.5 p-3 rounded-xl border text-[10px] font-black transition-all ${diasSelecionados.includes(d.id) ? 'bg-accent border-accent shadow-lg shadow-accent/20' : 'bg-page border-border text-muted'}`}>
                   {d.label}
                 </button>
               ))} 
@@ -331,56 +331,56 @@ export default function NovoAluno() {
           </div>
         </div>
 
-        <hr className="border-slate-800" />
+        <hr className="border-border" />
 
         {/* 3. PERMISSÕES E COMPLIANCE */}
         <div className="space-y-6">
-          <h2 className="text-[10px] font-black uppercase text-blue-500 tracking-[0.2em]">3. Permissões e Compliance</h2>
+          <h2 className="text-[10px] font-black uppercase text-accent tracking-[0.2em]">3. Permissões e Compliance</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between ${usaApp ? 'bg-slate-950 border-blue-500/30' : 'bg-slate-900/50 border-slate-800 opacity-70'}`}>
+            <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between ${usaApp ? 'bg-page border-accent/30' : 'bg-surface/50 border-border opacity-70'}`}>
               <div className="flex items-center gap-3">
-                <Smartphone size={20} className={usaApp ? 'text-blue-500' : 'text-slate-600'} />
+                <Smartphone size={20} className={usaApp ? 'text-accent' : 'text-muted'} />
                 <div>
                   <p className="font-bold text-sm">Usa Telemóvel?</p>
-                  <p className="text-[9px] text-slate-500 uppercase font-black">{usaApp ? 'Faz check-in pela app' : 'Check-in feito pelo Admin'}</p>
+                  <p className="text-[9px] text-muted uppercase font-black">{usaApp ? 'Faz check-in pela app' : 'Check-in feito pelo Admin'}</p>
                 </div>
               </div>
-              <button type="button" onClick={() => setUsaApp(!usaApp)} className={`transition-colors ${usaApp ? 'text-blue-500' : 'text-slate-700'}`}>
+              <button type="button" onClick={() => setUsaApp(!usaApp)} className={`transition-colors ${usaApp ? 'text-accent' : 'text-muted'}`}>
                 {usaApp ? <ToggleRight size={40} /> : <ToggleLeft size={40} />}
               </button>
             </div>
 
-            <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex items-center justify-between">
+            <div className="bg-page p-5 rounded-2xl border border-border flex items-center justify-between">
               <div>
                 <p className="font-bold text-sm">Saída Autorizada</p>
-                <p className="text-[9px] text-slate-500 uppercase font-black">Pode sair sem acompanhante</p>
+                <p className="text-[9px] text-muted uppercase font-black">Pode sair sem acompanhante</p>
               </div>
-              <button type="button" onClick={() => setSaidaAutorizada(!saidaAutorizada)} className={`transition-colors ${saidaAutorizada ? 'text-emerald-500' : 'text-slate-700'}`}>
+              <button type="button" onClick={() => setSaidaAutorizada(!saidaAutorizada)} className={`transition-colors ${saidaAutorizada ? 'text-success' : 'text-muted'}`}>
                 {saidaAutorizada ? <ToggleRight size={40} /> : <ToggleLeft size={40} />}
               </button>
             </div>
 
-            <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between ${!eMaiorDe13() ? 'bg-slate-900/50 border-slate-800 opacity-60' : 'bg-slate-950 border-orange-500/20 shadow-lg shadow-orange-500/5'}`}>
+            <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between ${!eMaiorDe13() ? 'bg-surface/50 border-border opacity-60' : 'bg-page border-orange-500/20 shadow-lg shadow-orange-500/5'}`}>
               <div className="flex items-center gap-3">
-                <BrainCircuit size={20} className={!eMaiorDe13() ? 'text-slate-700' : 'text-orange-500'} />
+                <BrainCircuit size={20} className={!eMaiorDe13() ? 'text-muted' : 'text-orange-500'} />
                 <div>
                   <p className="font-bold text-sm">Acesso LabAI</p>
-                  <p className="text-[9px] text-slate-500 uppercase font-black">{eMaiorDe13() ? 'Consentimento Parental' : 'Bloqueado < 13 anos'}</p>
+                  <p className="text-[9px] text-muted uppercase font-black">{eMaiorDe13() ? 'Consentimento Parental' : 'Bloqueado < 13 anos'}</p>
                 </div>
               </div>
               {eMaiorDe13() ? (
-                <button type="button" onClick={() => setConsentimentoIa(!consentimentoIa)} className={`transition-colors ${consentimentoIa ? 'text-orange-500' : 'text-slate-700'}`}>
+                <button type="button" onClick={() => setConsentimentoIa(!consentimentoIa)} className={`transition-colors ${consentimentoIa ? 'text-orange-500' : 'text-muted'}`}>
                   {consentimentoIa ? <ToggleRight size={40} /> : <ToggleLeft size={40} />}
                 </button>
               ) : (
-                <ShieldAlert size={24} className="text-slate-700" />
+                <ShieldAlert size={24} className="text-muted" />
               )}
             </div>
           </div>
           
           {!eMaiorDe13() && dataNascimento && (
-            <p className="text-[10px] text-red-400 font-bold bg-red-500/5 p-3 rounded-lg flex items-center gap-2">
+            <p className="text-[10px] text-danger font-bold bg-danger-bg p-3 rounded-lg flex items-center gap-2">
               <Baby size={14} /> Nota: Menores de 13 anos não podem aceder a ferramentas de IA.
             </p>
           )}
@@ -389,7 +389,7 @@ export default function NovoAluno() {
         <button 
           type="submit" 
           disabled={isSubmitting || uploading} 
-          className="w-full bg-blue-600 hover:bg-blue-500 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 shadow-xl shadow-blue-500/20"
+          className="w-full bg-accent hover:bg-accent-hover text-on-accent p-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 shadow-xl shadow-accent/20"
         >
           {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={20} />}
           {isSubmitting ? 'A CRIAR ACESSOS...' : 'FINALIZAR MATRÍCULA'}

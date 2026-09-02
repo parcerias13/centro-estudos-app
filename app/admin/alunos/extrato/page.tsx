@@ -86,73 +86,73 @@ function ExtratoDetalhadoContent() {
 
   useEffect(() => { carregarDados(); }, [carregarDados]);
 
-  if (loading) return <div className="min-h-screen bg-[#0f172a] flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" size={40} /></div>;
+  if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={40} /></div>;
 
   return (
-    <main className="min-h-screen bg-[#0f172a] p-4 md:p-8 text-white">
+    <main className="min-h-screen bg-page p-4 md:p-8 text-primary">
       <div className="max-w-4xl mx-auto">
         <header className="mb-8 flex justify-between items-center no-print">
-          <Link href="/admin/alunos" className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
+          <Link href="/admin/alunos" className="flex items-center gap-2 text-secondary hover:text-primary transition-colors">
             <ArrowLeft size={20} /> <span className="font-bold uppercase text-xs tracking-widest">Voltar</span>
           </Link>
           <div className="flex gap-4">
-            <select value={mes} onChange={e => setMes(Number(e.target.value))} className="bg-slate-900 border border-slate-800 p-2 rounded-xl text-xs font-bold outline-none focus:border-blue-500">
+            <select value={mes} onChange={e => setMes(Number(e.target.value))} className="bg-surface border border-border p-2 rounded-xl text-xs font-bold outline-none focus:border-accent">
               {Array.from({length: 12}, (_, i) => <option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('pt-PT', {month: 'long'})}</option>)}
             </select>
-            <button onClick={() => window.print()} className="bg-blue-600 p-3 rounded-xl hover:bg-blue-500 transition-all active:scale-95"><Printer size={20} /></button>
+            <button onClick={() => window.print()} className="bg-accent hover:bg-accent-hover text-on-accent p-3 rounded-xl transition-all active:scale-95"><Printer size={20} /></button>
           </div>
         </header>
 
         {/* CARTÃO DE RESUMO FINANCEIRO - MODELO FIXO */}
-        <section className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 mb-8 shadow-2xl relative overflow-hidden">
+        <section className="bg-surface border border-border rounded-[2.5rem] p-8 mb-8 shadow-2xl relative overflow-hidden">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative z-10">
             <div>
-              <p className="text-blue-500 font-black uppercase text-[10px] tracking-[0.3em] mb-1">Dossier de Faturação</p>
+              <p className="text-accent font-black uppercase text-[10px] tracking-[0.3em] mb-1">Dossier de Faturação</p>
               <h1 className="text-3xl font-black italic tracking-tighter">{student?.nome}</h1>
-              <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Regime de Mensalidade Acordada</p>
+              <p className="text-[10px] text-muted font-bold uppercase mt-1">Regime de Mensalidade Acordada</p>
             </div>
             <div className="text-right">
-              <p className="text-[10px] text-slate-500 font-black uppercase mb-1">Total do Mês</p>
-              <p className="text-5xl font-black text-white italic tracking-tighter">{resumo.totalGeral.toFixed(2)}€</p>
+              <p className="text-[10px] text-muted font-black uppercase mb-1">Total do Mês</p>
+              <p className="text-5xl font-black text-primary italic tracking-tighter">{resumo.totalGeral.toFixed(2)}€</p>
             </div>
           </div>
           
-          <div className="grid grid-cols-3 gap-4 mt-8 pt-8 border-t border-slate-800/50">
+          <div className="grid grid-cols-3 gap-4 mt-8 pt-8 border-t border-border/50">
             <div>
-              <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Mensalidade Base</p>
-              <p className="font-mono font-bold text-lg text-white">{resumo.mensalidadeFixa.toFixed(2)}€</p>
+              <p className="text-[9px] text-muted font-black uppercase mb-1">Mensalidade Base</p>
+              <p className="font-mono font-bold text-lg text-primary">{resumo.mensalidadeFixa.toFixed(2)}€</p>
             </div>
             <div>
-              <p className="text-[9px] text-amber-500 font-black uppercase mb-1">Total Extras</p>
-              <p className="font-mono font-bold text-lg text-amber-500">+{resumo.totalExtras.toFixed(2)}€</p>
+              <p className="text-[9px] text-warning font-black uppercase mb-1">Total Extras</p>
+              <p className="font-mono font-bold text-lg text-warning">+{resumo.totalExtras.toFixed(2)}€</p>
             </div>
             <div className="text-right">
-              <p className="text-[9px] text-slate-500 font-black uppercase mb-1">Assiduidade</p>
-              <p className="font-mono font-bold text-lg text-slate-300">{resumo.totalSessoes} Dias</p>
+              <p className="text-[9px] text-muted font-black uppercase mb-1">Assiduidade</p>
+              <p className="font-mono font-bold text-lg text-secondary">{resumo.totalSessoes} Dias</p>
             </div>
           </div>
         </section>
 
         {/* DETALHE DIÁRIO (AUDIT TRAIL) */}
         <section className="space-y-4">
-          <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-4">Histórico de Presenças e Consumos</h3>
+          <h3 className="text-[10px] font-black text-muted uppercase tracking-widest ml-4">Histórico de Presenças e Consumos</h3>
           {diasDetalhados.length > 0 ? diasDetalhados.map((dia) => (
-            <div key={dia.data} className="bg-slate-900/50 border border-slate-800 p-5 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4 transition-hover hover:border-slate-700">
+            <div key={dia.data} className="bg-surface/50 border border-border p-5 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4 transition-hover hover:border-border">
               <div className="flex items-center gap-4">
-                <div className="bg-slate-800 px-4 py-2 rounded-2xl text-center min-w-[60px]">
-                  <p className="text-[10px] font-black text-slate-500 uppercase">{new Date(dia.data).toLocaleString('pt-PT', { weekday: 'short' })}</p>
+                <div className="bg-raised px-4 py-2 rounded-2xl text-center min-w-[60px]">
+                  <p className="text-[10px] font-black text-muted uppercase">{new Date(dia.data).toLocaleString('pt-PT', { weekday: 'short' })}</p>
                   <p className="font-black text-lg">{new Date(dia.data).getDate()}</p>
                 </div>
                 <div>
                   {dia.presenca && (
-                    <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                    <div className="flex items-center gap-2 text-success font-bold text-sm">
                       <CheckCircle2 size={14} /> Aluno presente no centro
                     </div>
                   )}
                   {dia.extras.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-1">
                       {dia.extras.map((e: any, i: number) => (
-                        <span key={i} className="text-[9px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded-md font-bold uppercase">
+                        <span key={i} className="text-[9px] bg-warning-bg text-warning border border-warning/20 px-2 py-0.5 rounded-md font-bold uppercase">
                           {e.servicos?.nome || 'Extra'}: {e.preco_aplicado}€
                         </span>
                       ))}
@@ -160,13 +160,13 @@ function ExtratoDetalhadoContent() {
                   )}
                 </div>
               </div>
-              <div className="text-right font-mono font-bold text-amber-500">
+              <div className="text-right font-mono font-bold text-warning">
                 {dia.extras.length > 0 ? `+${dia.extras.reduce((a: any, c: any) => a + c.preco_aplicado, 0).toFixed(2)}€` : '—'}
               </div>
             </div>
           )) : (
-            <div className="text-center py-12 border-2 border-dashed border-slate-800 rounded-3xl">
-              <p className="text-slate-600 font-bold uppercase text-xs tracking-widest">Nenhum registo encontrado para este período</p>
+            <div className="text-center py-12 border-2 border-dashed border-border rounded-3xl">
+              <p className="text-muted font-bold uppercase text-xs tracking-widest">Nenhum registo encontrado para este período</p>
             </div>
           )}
         </section>
@@ -177,7 +177,7 @@ function ExtratoDetalhadoContent() {
 
 export default function ExtratoIndividualPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#0f172a] flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>}>
       <ExtratoDetalhadoContent />
     </Suspense>
   );

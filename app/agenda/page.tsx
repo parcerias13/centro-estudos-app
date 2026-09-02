@@ -69,15 +69,15 @@ export default function StudentAgenda() {
     setSending(false);
   };
 
-  if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
+  if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white p-6 max-w-md mx-auto space-y-8 pb-20">
-      <Link href="/" className="flex items-center gap-2 text-slate-500 hover:text-white transition-colors">
+    <main className="min-h-screen bg-page text-primary p-6 max-w-md mx-auto space-y-8 pb-20">
+      <Link href="/" className="flex items-center gap-2 text-muted hover:text-primary transition-colors">
         <ArrowLeft size={20} /> <span className="font-bold">Voltar ao Início</span>
       </Link>
 
-      <section className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+      <section className="bg-surface border border-border rounded-3xl p-6 shadow-xl">
         <h1 className="text-xl font-black mb-6 flex items-center gap-2">
             <Plus className="text-purple-500" /> Marcar Novo Teste
         </h1>
@@ -86,12 +86,12 @@ export default function StudentAgenda() {
           
           {/* SELETOR DE DISCIPLINAS (DROPDOWN) */}
           <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Disciplina</label>
+            <label className="text-[10px] font-black uppercase text-muted ml-1">Disciplina</label>
             <select 
               required 
               value={subject} 
               onChange={(e) => setSubject(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-purple-500 text-white cursor-pointer"
+              className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-purple-500 text-primary cursor-pointer"
             >
               <option value="">Selecionar Disciplina...</option>
               {subjects.length > 0 ? (
@@ -104,42 +104,42 @@ export default function StudentAgenda() {
 
           {/* CAMPO DE DATA (COM ÍCONE VISÍVEL) */}
           <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Data do Teste</label>
+            <label className="text-[10px] font-black uppercase text-muted ml-1">Data do Teste</label>
             <div className="relative">
                 <input 
                   type="date" 
                   required 
                   value={date} 
                   onChange={(e) => setDate(e.target.value)} 
-                  className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-purple-500 text-white block"
+                  className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-purple-500 text-primary block"
                   style={{ colorScheme: 'dark' }} 
                 />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Matéria / Tópicos</label>
+            <label className="text-[10px] font-black uppercase text-muted ml-1">Matéria / Tópicos</label>
             <textarea 
               placeholder="Ex: Capítulos 1 a 3" 
               value={topics} 
               onChange={(e) => setTopics(e.target.value)} 
-              className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl h-24 resize-none outline-none focus:border-purple-500" 
+              className="w-full bg-page border border-border p-4 rounded-xl h-24 resize-none outline-none focus:border-purple-500" 
             />
           </div>
           
           {formError && (
-            <p className="text-red-400 text-xs font-bold bg-red-500/10 border border-red-500/20 px-4 py-3 rounded-xl">
+            <p className="text-danger text-xs font-bold bg-danger-bg border border-danger/20 px-4 py-3 rounded-xl">
               {formError}
             </p>
           )}
           {formSuccess && (
-            <p className="text-emerald-400 text-xs font-bold bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 rounded-xl">
+            <p className="text-success text-xs font-bold bg-success-bg border border-success/20 px-4 py-3 rounded-xl">
               Teste agendado com sucesso!
             </p>
           )}
           <button
             disabled={sending}
-            className="w-full bg-purple-600 hover:bg-purple-500 text-white font-black py-4 rounded-2xl transition-all shadow-lg active:scale-95 disabled:opacity-50"
+            className="w-full bg-purple-600 hover:bg-purple-500 text-primary font-black py-4 rounded-2xl transition-all shadow-lg active:scale-95 disabled:opacity-50"
           >
             {sending ? 'A GUARDAR...' : 'AGENDAR AGORA'}
           </button>
@@ -148,15 +148,15 @@ export default function StudentAgenda() {
 
       {/* CALENDÁRIO VISUAL DE COMPROMISSOS */}
       <section className="space-y-4">
-        <h2 className="text-xs font-black uppercase text-slate-500 tracking-widest">A Tua Agenda</h2>
+        <h2 className="text-xs font-black uppercase text-muted tracking-widest">A Tua Agenda</h2>
         <div className="space-y-3">
           {exams.length === 0 ? (
-            <p className="text-slate-600 text-sm italic">Nenhum teste no horizonte.</p>
+            <p className="text-muted text-sm italic">Nenhum teste no horizonte.</p>
           ) : (
             exams.map((exam) => (
-              <div key={exam.id} className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between border-l-4 border-l-purple-500 shadow-md">
+              <div key={exam.id} className="bg-surface border border-border p-4 rounded-2xl flex items-center justify-between border-l-4 border-l-purple-500 shadow-md">
                 <div className="flex items-center gap-4">
-                  <div className="text-center bg-slate-800 px-3 py-1 rounded-lg min-w-16.25">
+                  <div className="text-center bg-raised px-3 py-1 rounded-lg min-w-16.25">
                     <p className="text-[10px] font-black text-purple-400 uppercase">
                         {new Date(exam.date).toLocaleDateString('pt-PT', { month: 'short' })}
                     </p>
@@ -165,13 +165,13 @@ export default function StudentAgenda() {
                     </p>
                   </div>
                   <div>
-                    <h4 className="font-bold text-slate-100">{exam.subject_name}</h4>
-                    <p className="text-[10px] text-slate-500 truncate max-w-37.5 italic">
+                    <h4 className="font-bold text-primary">{exam.subject_name}</h4>
+                    <p className="text-[10px] text-muted truncate max-w-37.5 italic">
                         {exam.topics || 'Ver matéria no caderno'}
                     </p>
                   </div>
                 </div>
-                <CheckCircle2 size={18} className="text-emerald-500 opacity-40" />
+                <CheckCircle2 size={18} className="text-success opacity-40" />
               </div>
             ))
           )}
