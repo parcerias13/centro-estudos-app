@@ -80,21 +80,21 @@ export default function HistoryPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white p-6 md:p-8 max-w-7xl mx-auto font-sans">
+    <main className="min-h-screen bg-page text-primary p-6 md:p-8 max-w-7xl mx-auto font-sans">
       
       {/* CABEÇALHO E FILTROS */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-10 gap-6">
         <div>
           <div className="flex items-center gap-4 mb-4">
-            <Link href="/admin" className="p-3 bg-slate-900 border border-slate-800 rounded-2xl hover:bg-slate-800 transition-colors group">
-              <ArrowLeft size={20} className="text-slate-400 group-hover:text-white" />
+            <Link href="/admin" className="p-3 bg-surface border border-border rounded-2xl hover:bg-raised transition-colors group">
+              <ArrowLeft size={20} className="text-secondary group-hover:text-primary" />
             </Link>
-            <div className="bg-blue-500/10 text-blue-400 p-3 rounded-2xl border border-blue-500/20">
+            <div className="bg-accent-soft text-accent p-3 rounded-2xl border border-accent/20">
               <FileText size={24} />
             </div>
           </div>
           <h1 className="text-4xl font-black italic tracking-tighter uppercase">Arquivo Diário</h1>
-          <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-2">
+          <p className="text-muted text-xs font-bold uppercase tracking-widest mt-2">
             Registo de Assiduidade e Faturação
           </p>
         </div>
@@ -108,36 +108,36 @@ export default function HistoryPage() {
               onChange={(e) => setDate(e.target.value)}
               disabled={search.trim().length > 0} // Desativa se estiver em modo auditoria
               style={{ colorScheme: "dark" }}
-              className={`bg-slate-900 border border-slate-800 text-white p-4 rounded-2xl outline-none focus:border-blue-500 w-full cursor-pointer font-bold transition-all shadow-lg ${search.trim().length > 0 ? 'opacity-30' : ''}`}
+              className={`bg-surface border border-border text-primary p-4 rounded-2xl outline-none focus:border-accent w-full cursor-pointer font-bold transition-all shadow-lg ${search.trim().length > 0 ? 'opacity-30' : ''}`}
             />
           </div>
 
           {/* Pesquisar */}
           <div className="relative w-full sm:w-72">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={20} />
             <input 
               type="text" 
               placeholder="Pesquisar aluno (Modo Auditoria)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="bg-slate-900 border border-slate-800 text-white pl-12 pr-4 py-4 rounded-2xl outline-none focus:border-blue-500 w-full transition-all shadow-lg placeholder:text-slate-600"
+              className="bg-surface border border-border text-primary pl-12 pr-4 py-4 rounded-2xl outline-none focus:border-accent w-full transition-all shadow-lg placeholder:text-muted"
             />
           </div>
         </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-4xl overflow-hidden shadow-2xl relative min-h-100">
+      <div className="bg-surface border border-border rounded-4xl overflow-hidden shadow-2xl relative min-h-100">
         
         {loading && (
-           <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-10">
-               <Loader2 className="animate-spin text-blue-500" size={32} />
+           <div className="absolute inset-0 bg-surface/80 backdrop-blur-sm flex items-center justify-center z-10">
+               <Loader2 className="animate-spin text-accent" size={32} />
            </div>
         )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-950/50 border-b border-slate-800 text-[10px] uppercase tracking-widest text-slate-500">
+              <tr className="bg-page/50 border-b border-border text-[10px] uppercase tracking-widest text-muted">
                 <th className="p-6 font-black">Aluno</th>
                 <th className="p-6 font-black">Disciplina</th>
                 <th className="p-6 font-black text-center">Entrada</th>
@@ -149,7 +149,7 @@ export default function HistoryPage() {
             <tbody className="divide-y divide-slate-800/50">
               {!loading && entries.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-16 text-center text-slate-600 font-medium italic">
+                  <td colSpan={6} className="p-16 text-center text-muted font-medium italic">
                     <FileText size={48} className="mx-auto mb-4 opacity-20" />
                     Nenhum registo encontrado para os filtros selecionados.
                   </td>
@@ -160,47 +160,47 @@ export default function HistoryPage() {
                   const isAtivo = !entry.saida;
 
                   return (
-                    <tr key={entry.id} className="hover:bg-slate-800/20 transition-colors group">
-                      <td className="p-6 font-black text-white whitespace-nowrap">
+                    <tr key={entry.id} className="hover:bg-raised/20 transition-colors group">
+                      <td className="p-6 font-black text-primary whitespace-nowrap">
                         <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${isAtivo ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-600/20 text-blue-400'}`}>
+                          <div className={`p-2 rounded-lg ${isAtivo ? 'bg-warning-bg text-warning' : 'bg-accent-soft text-accent'}`}>
                             <User size={16} />
                           </div>
                           <div>
                             <p>{alunoNome || 'Desconhecido'}</p>
                             {search.trim().length > 0 && (
-                              <p className="text-[9px] text-slate-500 font-bold uppercase">{new Date(entry.entrada).toLocaleDateString('pt-PT')}</p>
+                              <p className="text-[9px] text-muted font-bold uppercase">{new Date(entry.entrada).toLocaleDateString('pt-PT')}</p>
                             )}
                           </div>
                         </div>
                       </td>
 
-                      <td className="p-6 text-slate-400 font-medium whitespace-nowrap">
+                      <td className="p-6 text-secondary font-medium whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <BookOpen size={14} className="text-slate-600" />
+                          <BookOpen size={14} className="text-muted" />
                           {entry.subject_name || 'Sessão Livre'}
                         </div>
                       </td>
 
-                      <td className="p-6 text-center text-blue-400 font-mono font-bold whitespace-nowrap">
+                      <td className="p-6 text-center text-accent font-mono font-bold whitespace-nowrap">
                         {formatTime(entry.entrada)}
                       </td>
 
-                      <td className="p-6 text-center font-mono font-bold text-slate-400 whitespace-nowrap">
+                      <td className="p-6 text-center font-mono font-bold text-secondary whitespace-nowrap">
                         {isAtivo ? '---' : formatTime(entry.saida)}
                       </td>
 
-                      <td className="p-6 text-center font-mono font-black text-emerald-400 whitespace-nowrap">
+                      <td className="p-6 text-center font-mono font-black text-success whitespace-nowrap">
                         {calculateDuration(entry.entrada, entry.saida)}
                       </td>
 
                       <td className="p-6 text-right whitespace-nowrap">
                         {isAtivo ? (
-                          <span className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1 animate-pulse">
+                          <span className="bg-warning-bg text-warning border border-warning/20 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1 animate-pulse">
                             <Clock size={10} /> Em Estudo
                           </span>
                         ) : (
-                          <span className="bg-slate-800 text-slate-400 border border-slate-700 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1">
+                          <span className="bg-raised text-secondary border border-border px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-1">
                             <CheckCircle2 size={10} /> Concluída
                           </span>
                         )}
@@ -213,9 +213,9 @@ export default function HistoryPage() {
           </table>
         </div>
         
-        <div className="bg-slate-950/80 p-5 text-[10px] uppercase font-black tracking-widest text-slate-500 flex justify-between items-center border-t border-slate-800">
+        <div className="bg-page/80 p-5 text-[10px] uppercase font-black tracking-widest text-muted flex justify-between items-center border-t border-border">
           <span>Total: {entries.length} {entries.length === 1 ? 'Sessão' : 'Sessões'}</span>
-          <span className={search.trim().length > 0 ? 'text-amber-500 animate-pulse' : ''}>
+          <span className={search.trim().length > 0 ? 'text-warning animate-pulse' : ''}>
             {search.trim().length > 0 ? 'Visualização de Auditoria (60 dias)' : 'Visualização Diária'}
           </span>
         </div>

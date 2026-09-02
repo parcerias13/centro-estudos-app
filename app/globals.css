@@ -1,1 +1,43 @@
 @import "tailwindcss";
+
+/*
+ * Tokens de cor centralizados do tema CogniLab — paleta clara.
+ * Substituição direta dos valores do tema escuro anterior; sem alternância
+ * claro/escuro configurável.
+ */
+@theme {
+  /* fundos */
+  --color-bg-page: #F7F8FA;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-raised: #EEF3FE;
+
+  /* accent (ação principal) */
+  --color-accent: #2A5BD1;
+  --color-accent-soft: #EBF1FD;
+  --color-accent-hover: #244DB2;
+
+  /* estados semânticos */
+  --color-success: #047857;
+  --color-success-bg: #ECFDF5;
+  --color-success-hover: #036649;
+  --color-danger: #B91C1C;
+  --color-danger-bg: #FEF2F2;
+  --color-danger-hover: #991B1B;
+  --color-warning: #9A6B10;
+  --color-warning-bg: #FBF1DE;
+  --color-warning-hover: #835B0E;
+
+  /* texto sobre preenchimentos sólidos (accent/success/danger/warning) */
+  --color-on-accent: #FFFFFF;
+  --color-on-success: #FFFFFF;
+  --color-on-danger: #FFFFFF;
+  --color-on-warning: #FFFFFF;
+
+  /* texto */
+  --color-text-primary: #1A2233;
+  --color-text-secondary: #626C82;
+  --color-text-muted: #98A0B3;
+
+  /* borda */
+  --color-border: #E4E7EE;
+}

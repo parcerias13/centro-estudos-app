@@ -159,45 +159,45 @@ export default function ExportarFaturacaoModal({ alunos, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between p-6 border-b border-slate-800">
+      <div className="bg-surface border border-border rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-3">
-            <Receipt className="text-blue-500" size={22} />
-            <h2 className="text-lg font-black text-white uppercase tracking-tight">Exportar Faturação</h2>
+            <Receipt className="text-accent" size={22} />
+            <h2 className="text-lg font-black text-primary uppercase tracking-tight">Exportar Faturação</h2>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-muted hover:text-primary transition-colors">
             <X size={22} />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {erro && (
-            <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl text-red-500 text-sm font-bold">
+            <div className="bg-danger-bg border border-danger/30 p-4 rounded-xl text-danger text-sm font-bold">
               {erro}
             </div>
           )}
 
           <div>
-            <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-3">Alunos a Incluir</p>
+            <p className="text-[10px] font-black uppercase text-muted tracking-widest mb-3">Alunos a Incluir</p>
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => setModo('todos')}
-                className={`p-4 rounded-2xl border flex items-center gap-3 transition-all ${modo === 'todos' ? 'bg-blue-600/10 border-blue-500 text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}`}
+                className={`p-4 rounded-2xl border flex items-center gap-3 transition-all ${modo === 'todos' ? 'bg-accent-soft border-accent text-primary' : 'bg-page border-border text-secondary'}`}
               >
                 <Users size={20} />
                 <div className="text-left">
                   <p className="font-bold text-sm">Todos os Alunos</p>
-                  <p className="text-[10px] uppercase font-black text-slate-500">{alunosOrdenados.length} no total</p>
+                  <p className="text-[10px] uppercase font-black text-muted">{alunosOrdenados.length} no total</p>
                 </div>
               </button>
               <button
                 onClick={() => setModo('selecionar')}
-                className={`p-4 rounded-2xl border flex items-center gap-3 transition-all ${modo === 'selecionar' ? 'bg-blue-600/10 border-blue-500 text-white' : 'bg-slate-950 border-slate-800 text-slate-400'}`}
+                className={`p-4 rounded-2xl border flex items-center gap-3 transition-all ${modo === 'selecionar' ? 'bg-accent-soft border-accent text-primary' : 'bg-page border-border text-secondary'}`}
               >
                 <UserCheck size={20} />
                 <div className="text-left">
                   <p className="font-bold text-sm">Selecionar Alunos</p>
-                  <p className="text-[10px] uppercase font-black text-slate-500">{selecionados.size} selecionado(s)</p>
+                  <p className="text-[10px] uppercase font-black text-muted">{selecionados.size} selecionado(s)</p>
                 </div>
               </button>
             </div>
@@ -206,22 +206,22 @@ export default function ExportarFaturacaoModal({ alunos, onClose }: Props) {
           {modo === 'selecionar' && (
             <div>
               <div className="flex justify-between items-center mb-2">
-                <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Lista de Alunos</p>
+                <p className="text-[10px] font-black uppercase text-muted tracking-widest">Lista de Alunos</p>
                 <div className="flex gap-3">
-                  <button onClick={selecionarTodos} className="text-[10px] font-black uppercase text-blue-500 hover:text-blue-400">Selecionar Todos</button>
-                  <button onClick={limparSelecao} className="text-[10px] font-black uppercase text-slate-500 hover:text-slate-400">Limpar</button>
+                  <button onClick={selecionarTodos} className="text-[10px] font-black uppercase text-accent hover:text-accent">Selecionar Todos</button>
+                  <button onClick={limparSelecao} className="text-[10px] font-black uppercase text-muted hover:text-secondary">Limpar</button>
                 </div>
               </div>
-              <div className="bg-slate-950 border border-slate-800 rounded-xl max-h-56 overflow-y-auto p-2 space-y-1">
+              <div className="bg-page border border-border rounded-xl max-h-56 overflow-y-auto p-2 space-y-1">
                 {alunosOrdenados.map((a) => (
-                  <label key={a.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-900 cursor-pointer">
+                  <label key={a.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface cursor-pointer">
                     <input
                       type="checkbox"
                       checked={selecionados.has(a.id)}
                       onChange={() => toggleSelecionado(a.id)}
                       className="accent-blue-600"
                     />
-                    <span className="text-sm text-slate-300">{a.nome}</span>
+                    <span className="text-sm text-secondary">{a.nome}</span>
                   </label>
                 ))}
               </div>
@@ -229,12 +229,12 @@ export default function ExportarFaturacaoModal({ alunos, onClose }: Props) {
           )}
 
           <div>
-            <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-3">Mês de Referência</p>
+            <p className="text-[10px] font-black uppercase text-muted tracking-widest mb-3">Mês de Referência</p>
             <div className="grid grid-cols-2 gap-3">
               <select
                 value={mes}
                 onChange={(e) => setMes(parseInt(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all text-white appearance-none cursor-pointer"
+                className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all text-primary appearance-none cursor-pointer"
               >
                 {NOMES_MESES.map((nome, i) => (
                   <option key={i + 1} value={i + 1}>{nome}</option>
@@ -244,20 +244,20 @@ export default function ExportarFaturacaoModal({ alunos, onClose }: Props) {
                 type="number"
                 value={ano}
                 onChange={(e) => setAno(parseInt(e.target.value) || ano)}
-                className="w-full bg-slate-950 border border-slate-800 p-4 rounded-xl outline-none focus:border-blue-500 transition-all text-white"
+                className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all text-primary"
               />
             </div>
           </div>
         </div>
 
-        <div className="p-6 border-t border-slate-800 flex justify-end gap-3">
-          <button onClick={onClose} className="px-6 py-3 rounded-xl font-black text-slate-400 hover:text-white transition-colors">
+        <div className="p-6 border-t border-border flex justify-end gap-3">
+          <button onClick={onClose} className="px-6 py-3 rounded-xl font-black text-secondary hover:text-primary transition-colors">
             Cancelar
           </button>
           <button
             onClick={handleGerarExcel}
             disabled={!podeGerar}
-            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 transition-all active:scale-95"
+            className="bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-on-accent px-6 py-3 rounded-2xl font-black flex items-center gap-2 transition-all active:scale-95"
           >
             {gerando ? <Loader2 className="animate-spin" size={18} /> : <Receipt size={18} />}
             {gerando ? 'A GERAR...' : 'GERAR EXCEL'}

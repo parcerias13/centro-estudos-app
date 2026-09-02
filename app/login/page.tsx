@@ -48,47 +48,47 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6 relative overflow-hidden">
+    <main className="min-h-screen bg-page text-primary flex items-center justify-center p-6 relative overflow-hidden">
       
       {/* Fundo Decorativo */}
       <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-blue-600 via-purple-600 to-pink-600"></div>
       <div suppressHydrationWarning={true}></div>
-      <div className="absolute -top-20 -left-20 w-64 h-64 bg-blue-600/20 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute -top-20 -left-20 w-64 h-64 bg-accent-soft rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-purple-600/20 rounded-full blur-3xl pointer-events-none"></div>
 
-      <div className="w-full max-w-sm bg-slate-900/50 backdrop-blur-md border border-slate-800 p-8 rounded-3xl shadow-2xl relative">
+      <div className="w-full max-w-sm bg-surface/50 backdrop-blur-md border border-border p-8 rounded-3xl shadow-2xl relative">
         
         {/* ÍCONE */}
         <div className="flex justify-center mb-8">
-          <div className="bg-slate-800 p-4 rounded-2xl shadow-lg border border-slate-700">
-            <Lock size={32} className="text-blue-500" />
+          <div className="bg-raised p-4 rounded-2xl shadow-lg border border-border">
+            <Lock size={32} className="text-accent" />
           </div>
         </div>
 
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-black text-white mb-2">Acesso Reservado</h1>
-          <p className="text-slate-400 text-sm">Insere as tuas credenciais para entrar.</p>
+          <h1 className="text-2xl font-black text-primary mb-2">Acesso Reservado</h1>
+          <p className="text-secondary text-sm">Insere as tuas credenciais para entrar.</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-500 uppercase ml-1">Email</label>
+            <label className="text-xs font-bold text-muted uppercase ml-1">Email</label>
             <div className="relative">
-              <Mail className="absolute left-4 top-3.5 text-slate-500" size={18} />
+              <Mail className="absolute left-4 top-3.5 text-muted" size={18} />
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="exemplo@centro.pt"
-                className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 text-white pl-12 pr-4 py-3 rounded-xl outline-none transition-all"
+                className="w-full bg-page border border-border focus:border-accent text-primary pl-12 pr-4 py-3 rounded-xl outline-none transition-all"
               />
             </div>
           </div>
 
           <div className="space-y-2">
             <div className="flex justify-between items-center px-1">
-                <label className="text-xs font-bold text-slate-500 uppercase">Password</label>
+                <label className="text-xs font-bold text-muted uppercase">Password</label>
                 
                 {/* SOLUÇÃO BULLETPROOF: Botão em vez de Link para evitar conflitos com o Form */}
                 <button 
@@ -97,7 +97,7 @@ export default function LoginPage() {
                     e.preventDefault();
                     router.push('/recuperar');
                   }}
-                  className="text-xs font-bold text-blue-500 hover:text-blue-400 hover:underline transition-colors cursor-pointer bg-transparent border-none p-0"
+                  className="text-xs font-bold text-accent hover:text-accent hover:underline transition-colors cursor-pointer bg-transparent border-none p-0"
                 >
                     Esqueci-me da password
                 </button>
@@ -108,25 +108,25 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 text-white px-4 py-3 rounded-xl outline-none transition-all font-mono"
+              className="w-full bg-page border border-border focus:border-accent text-primary px-4 py-3 rounded-xl outline-none transition-all font-mono"
             />
           </div>
 
           {loginError && (
-            <p className="text-red-400 text-xs font-bold bg-red-500/10 border border-red-500/20 px-4 py-3 rounded-xl">
+            <p className="text-danger text-xs font-bold bg-danger-bg border border-danger/20 px-4 py-3 rounded-xl">
               {loginError}
             </p>
           )}
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 mt-6 transition-all active:scale-95 shadow-lg shadow-blue-900/20"
+            className="w-full bg-accent hover:bg-accent-hover text-on-accent font-bold py-4 rounded-xl flex items-center justify-center gap-2 mt-6 transition-all active:scale-95 shadow-lg shadow-accent/20"
           >
             {loading ? <Loader2 className="animate-spin" /> : <>Entrar <ArrowRight size={18} /></>}
           </button>
         </form>
 
-        <p className="text-center mt-8 text-xs text-slate-600">
+        <p className="text-center mt-8 text-xs text-muted">
           Problemas no acesso? Contacta a Secretaria.
         </p>
       </div>

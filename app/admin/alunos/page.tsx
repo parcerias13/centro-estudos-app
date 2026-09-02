@@ -133,35 +133,35 @@ export default function ListaAlunos() {
     return matchesNome && matchesAno;
   });
 
-  if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
+  if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
 
   return (
-    <div className="min-h-screen bg-[#0f172a] p-6 text-white font-sans">
+    <div className="min-h-screen bg-page p-6 text-primary font-sans">
       
       <header className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/admin" className="bg-slate-900 p-3 rounded-xl hover:bg-slate-800 transition-colors border border-slate-800">
-            <ArrowLeft size={20} className="text-slate-400" />
+          <Link href="/admin" className="bg-surface p-3 rounded-xl hover:bg-raised transition-colors border border-border">
+            <ArrowLeft size={20} className="text-secondary" />
           </Link>
           <div>
             <h1 className="text-3xl font-black tracking-tight flex items-center gap-2 italic uppercase">
-                <Users className="text-blue-500" size={28} /> Gerir Alunos
+                <Users className="text-accent" size={28} /> Gerir Alunos
             </h1>
-            <p className="text-slate-500 text-xs font-black uppercase tracking-widest">{alunos.length} Matrículas Ativas</p>
+            <p className="text-muted text-xs font-black uppercase tracking-widest">{alunos.length} Matrículas Ativas</p>
           </div>
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={handleDownloadTemplate}
-            className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-slate-800 transition-all active:scale-95"
+            className="bg-surface hover:bg-raised text-secondary px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-border transition-all active:scale-95"
           >
             <FileSpreadsheet size={18} /> TEMPLATE
           </button>
 
           <button
             onClick={() => inputImportacaoRef.current?.click()}
-            className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-slate-800 transition-all active:scale-95"
+            className="bg-surface hover:bg-raised text-secondary px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-border transition-all active:scale-95"
           >
             <UploadCloud size={18} /> IMPORTAR EXCEL
           </button>
@@ -175,12 +175,12 @@ export default function ListaAlunos() {
 
           <button
             onClick={() => setMostrarExportarFaturacao(true)}
-            className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-slate-800 transition-all active:scale-95"
+            className="bg-surface hover:bg-raised text-secondary px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-border transition-all active:scale-95"
           >
             <Receipt size={18} /> EXPORTAR FATURAÇÃO
           </button>
 
-          <Link href="/admin/alunos/novo" className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-blue-900/20 transition-all active:scale-95">
+          <Link href="/admin/alunos/novo" className="bg-accent hover:bg-accent-hover text-on-accent px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-accent/20 transition-all active:scale-95">
             <UserPlus size={20} /> NOVA MATRÍCULA
           </Link>
         </div>
@@ -203,22 +203,22 @@ export default function ListaAlunos() {
 
       <div className="flex flex-col md:flex-row gap-4 mb-8">
         <div className="relative flex-1">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={20} />
           <input 
             type="text" 
             placeholder="Pesquisar por nome do aluno..." 
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            className="w-full bg-slate-900/50 border border-slate-800 p-5 pl-14 rounded-2xl outline-none focus:border-blue-500 transition-all text-lg font-medium placeholder:text-slate-600"
+            className="w-full bg-surface/50 border border-border p-5 pl-14 rounded-2xl outline-none focus:border-accent transition-all text-lg font-medium placeholder:text-muted"
           />
         </div>
 
         <div className="relative w-full md:w-64">
-          <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+          <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={20} />
           <select 
             value={filtroAno}
             onChange={(e) => setFiltroAno(e.target.value)}
-            className="w-full bg-slate-900/50 border border-slate-800 p-5 pl-14 rounded-2xl outline-none focus:border-blue-500 transition-all text-lg font-medium appearance-none cursor-pointer text-slate-300"
+            className="w-full bg-surface/50 border border-border p-5 pl-14 rounded-2xl outline-none focus:border-accent transition-all text-lg font-medium appearance-none cursor-pointer text-secondary"
           >
             <option value="">Todos os Anos</option>
             {[...Array(12)].map((_, i) => (
@@ -230,18 +230,18 @@ export default function ListaAlunos() {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {alunosFiltrados.length === 0 ? (
-          <div className="col-span-full text-center py-20 bg-slate-900/20 border-2 border-dashed border-slate-800 rounded-3xl">
-            <p className="text-slate-500 font-medium italic">Nenhum aluno encontrado.</p>
+          <div className="col-span-full text-center py-20 bg-surface/20 border-2 border-dashed border-border rounded-3xl">
+            <p className="text-muted font-medium italic">Nenhum aluno encontrado.</p>
           </div>
         ) : (
           alunosFiltrados.map((aluno) => (
-            <div key={aluno.id} className={`bg-slate-900/40 border p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center sm:justify-between group transition-all shadow-sm ${
+            <div key={aluno.id} className={`bg-surface/40 border p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center sm:justify-between group transition-all shadow-sm ${
               (aluno.consumo_semanal >= aluno.limite_semanal && aluno.limite_semanal !== 99)
-              ? 'border-red-500/30 bg-red-500/5'
-              : 'border-slate-800/60 hover:border-slate-700'
+              ? 'border-danger/30 bg-danger-bg'
+              : 'border-border/60 hover:border-border'
             }`}>
               <div className="flex items-center gap-5 flex-1 min-w-0">
-                <div className="w-14 h-14 shrink-0 bg-slate-800 rounded-2xl flex items-center justify-center text-xl font-black text-slate-500 group-hover:bg-blue-600 group-hover:text-white transition-all overflow-hidden border border-slate-700/50 shadow-inner">
+                <div className="w-14 h-14 shrink-0 bg-raised rounded-2xl flex items-center justify-center text-xl font-black text-muted group-hover:bg-accent group-hover:text-on-accent transition-all overflow-hidden border border-border/50 shadow-inner">
                   {aluno.avatar_url ? (
                     <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover" />
                   ) : (
@@ -250,12 +250,12 @@ export default function ListaAlunos() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-lg font-bold text-white leading-tight truncate uppercase italic">{aluno.nome}</h3>
+                  <h3 className="text-lg font-bold text-primary leading-tight truncate uppercase italic">{aluno.nome}</h3>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
-                    <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-slate-800 text-slate-400 rounded-md border border-slate-700">
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-raised text-secondary rounded-md border border-border">
                       {aluno.ano_escolar}º ANO
                     </span>
-                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md flex items-center gap-1 ${aluno.saida_autorizada ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}>
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md flex items-center gap-1 ${aluno.saida_autorizada ? 'bg-success-bg text-success border border-success/20' : 'bg-danger-bg text-danger border border-danger/20'}`}>
                       {aluno.saida_autorizada ? <ShieldCheck size={10} /> : <ShieldAlert size={10} />}
                       {aluno.saida_autorizada ? 'Autónomo' : 'Restrito'}
                     </span>
@@ -263,15 +263,15 @@ export default function ListaAlunos() {
 
                   <div className="mt-4 hidden md:block max-w-50">
                     <div className="flex justify-between items-center mb-1">
-                      <span className="text-[9px] font-black text-slate-600 uppercase tracking-tighter">Consumo Semanal</span>
-                      <span className={`text-[10px] font-bold ${aluno.consumo_semanal >= aluno.limite_semanal && aluno.limite_semanal !== 99 ? 'text-red-500' : 'text-slate-400'}`}>
+                      <span className="text-[9px] font-black text-muted uppercase tracking-tighter">Consumo Semanal</span>
+                      <span className={`text-[10px] font-bold ${aluno.consumo_semanal >= aluno.limite_semanal && aluno.limite_semanal !== 99 ? 'text-danger' : 'text-secondary'}`}>
                         {aluno.consumo_semanal || 0} / {aluno.limite_semanal === 99 ? '∞' : aluno.limite_semanal}
                       </span>
                     </div>
-                    <div className="w-full bg-slate-800 rounded-full h-1.5 border border-slate-700/30 overflow-hidden">
+                    <div className="w-full bg-raised rounded-full h-1.5 border border-border/30 overflow-hidden">
                       <div 
                         className={`h-full transition-all duration-1000 ${
-                          (aluno.consumo_semanal / aluno.limite_semanal) >= 1 && aluno.limite_semanal !== 99 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'bg-blue-500'
+                          (aluno.consumo_semanal / aluno.limite_semanal) >= 1 && aluno.limite_semanal !== 99 ? 'bg-danger shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'bg-accent'
                         }`}
                         style={{ width: `${Math.min(((aluno.consumo_semanal || 0) / (aluno.limite_semanal || 1)) * 100, 100)}%` }}
                       ></div>
@@ -284,7 +284,7 @@ export default function ListaAlunos() {
                 {/* BOTÃO DO EXTRATO INDIVIDUAL (DOSSIER) */}
                 <Link 
                   href={`/admin/alunos/extrato?id=${aluno.id}`} 
-                  className="p-3 bg-slate-800 text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all border border-slate-700 hover:border-blue-600 shadow-xl"
+                  className="p-3 bg-raised text-accent hover:bg-accent hover:text-on-accent rounded-xl transition-all border border-border hover:border-accent shadow-xl"
                   title="Extrato Detalhado por Dia"
                 >
                   <FileText size={20} />
@@ -292,7 +292,7 @@ export default function ListaAlunos() {
 
                 <Link 
                   href={`/admin/relatorio?id=${aluno.id}`} 
-                  className="p-3 bg-slate-800 text-slate-400 hover:bg-white hover:text-black rounded-xl transition-all border border-slate-700 hover:border-white shadow-xl"
+                  className="p-3 bg-raised text-secondary hover:bg-surface hover:text-primary rounded-xl transition-all border border-border hover:border-border shadow-xl"
                   title="Ver Relatório de Performance"
                 >
                   <FileBarChart size={20} />
@@ -300,7 +300,7 @@ export default function ListaAlunos() {
 
                 <Link 
                   href={`/admin/alunos/editar?id=${aluno.id}`} 
-                  className="p-3 bg-slate-800 text-slate-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all border border-slate-700 hover:border-blue-600 shadow-xl"
+                  className="p-3 bg-raised text-secondary hover:bg-accent hover:text-on-accent rounded-xl transition-all border border-border hover:border-accent shadow-xl"
                   title="Editar Aluno"
                 >
                   <Edit size={20} />
@@ -308,7 +308,7 @@ export default function ListaAlunos() {
 
                 <button 
                   onClick={() => handleDelete(aluno.id)}
-                  className="p-3 bg-slate-800 text-slate-400 hover:bg-red-600 hover:text-white rounded-xl transition-all border border-slate-700 hover:border-red-600 shadow-xl"
+                  className="p-3 bg-raised text-secondary hover:bg-danger hover:text-on-danger rounded-xl transition-all border border-border hover:border-danger shadow-xl"
                   title="Remover Matrícula"
                 >
                   <Trash2 size={20} />

@@ -121,27 +121,27 @@ function RelatorioContent() {
     }
   };
 
-  if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" size={32} /></div>;
-  if (!student) return <div className="p-8 text-white">Aluno não encontrado.</div>;
+  if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={32} /></div>;
+  if (!student) return <div className="p-8 text-primary">Aluno não encontrado.</div>;
 
   const nomeMes = new Date().toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' });
 
   return (
-    <main className="min-h-screen bg-slate-950 p-6">
+    <main className="min-h-screen bg-page p-6">
       <div className="max-w-4xl mx-auto bg-white rounded-3xl overflow-hidden shadow-2xl">
         {/* HEADER */}
-        <div className="bg-slate-800 p-8 text-white flex justify-between items-start">
+        <div className="bg-raised p-8 text-primary flex justify-between items-start">
             <div>
                 <h1 className="text-3xl font-black uppercase tracking-wider mb-2 flex items-center gap-3">
-                    <FileText size={28} className="text-blue-400" />
+                    <FileText size={28} className="text-accent" />
                     Performance
                 </h1>
                 <p className="opacity-80 capitalize">Resumo de {nomeMes}</p>
             </div>
              <div className="text-right">
                 <p className="font-bold text-xl">{student.nome}</p>
-                <div className="mt-2 inline-flex items-center gap-2 bg-slate-700 px-3 py-1 rounded-full text-xs font-bold">
-                    <ShieldAlert size={14} className={student.saida_autorizada ? "text-emerald-400" : "text-red-400"} />
+                <div className="mt-2 inline-flex items-center gap-2 bg-border px-3 py-1 rounded-full text-xs font-bold">
+                    <ShieldAlert size={14} className={student.saida_autorizada ? "text-success" : "text-danger"} />
                     {student.saida_autorizada ? "Saída Autorizada" : "Requer Acompanhante"}
                 </div>
             </div>
@@ -151,11 +151,11 @@ function RelatorioContent() {
             {/* STATS CARDS */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
-                    <div className="flex items-center gap-2 text-blue-600 mb-2">
+                    <div className="flex items-center gap-2 text-accent mb-2">
                         <Clock size={20} />
                         <h3 className="font-bold uppercase text-[10px] tracking-widest">Horas Acumuladas</h3>
                     </div>
-                    <p className="text-4xl font-black">{stats.totalHours}<span className="text-sm text-slate-500 font-normal ml-1">h</span></p>
+                    <p className="text-4xl font-black">{stats.totalHours}<span className="text-sm text-muted font-normal ml-1">h</span></p>
                 </div>
                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
                      <div className="flex items-center gap-2 text-purple-600 mb-2">
@@ -163,7 +163,7 @@ function RelatorioContent() {
                         <h3 className="font-bold uppercase text-[10px] tracking-widest">Frequência</h3>
                     </div>
                     <p className="text-4xl font-black">{stats.totalVisits}</p>
-                    <p className="text-[10px] text-slate-400 mt-1 font-bold uppercase">Sessões Concluídas</p>
+                    <p className="text-[10px] text-secondary mt-1 font-bold uppercase">Sessões Concluídas</p>
                 </div>
                  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
                      <div className="flex items-center gap-2 text-orange-600 mb-2">
@@ -175,10 +175,10 @@ function RelatorioContent() {
             </div>
 
             {/* HISTORY TABLE */}
-            <h2 className="font-bold text-xl mb-4 text-slate-400">Linha do Tempo</h2>
+            <h2 className="font-bold text-xl mb-4 text-secondary">Linha do Tempo</h2>
             <div className="border border-slate-100 rounded-2xl overflow-hidden overflow-x-auto">
                 <table className="w-full text-left">
-                    <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-black tracking-widest">
+                    <thead className="bg-slate-50 text-secondary text-[10px] uppercase font-black tracking-widest">
                         <tr>
                             <th className="p-4">Data</th>
                             <th className="p-4">Disciplina</th>
@@ -188,18 +188,18 @@ function RelatorioContent() {
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                         {history.length === 0 ? (
-                            <tr><td colSpan={4} className="p-10 text-center text-slate-300 font-medium">Sem atividade registada este mês.</td></tr>
+                            <tr><td colSpan={4} className="p-10 text-center text-secondary font-medium">Sem atividade registada este mês.</td></tr>
                         ) : (
                             history.map(entry => (
                                 <tr key={entry.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="p-4 font-bold text-slate-700">{new Date(entry.entrada).toLocaleDateString('pt-PT')}</td>
+                                    <td className="p-4 font-bold text-muted">{new Date(entry.entrada).toLocaleDateString('pt-PT')}</td>
                                     <td className="p-4 text-sm font-medium">{entry.subject_name || 'Estudo Geral'}</td>
-                                    <td className="p-4 font-mono text-xs text-slate-400">
+                                    <td className="p-4 font-mono text-xs text-secondary">
                                         {new Date(entry.entrada).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})} 
                                         {entry.saida ? ` → ${new Date(entry.saida).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})}` : ' (Em curso...)'}
                                     </td>
                                     <td className="p-4 text-center">
-                                        <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${entry.saida ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700 animate-pulse'}`}>
+                                        <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${entry.saida ? 'bg-emerald-100 text-success' : 'bg-blue-100 text-accent animate-pulse'}`}>
                                             {entry.saida ? 'Concluído' : 'Estudar'}
                                         </span>
                                     </td>
@@ -212,21 +212,21 @@ function RelatorioContent() {
 
             {/* ACTIONS */}
             <div className="mt-10 pt-8 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center gap-6 no-print">
-                <Link href="/admin/alunos" className="flex items-center gap-2 text-slate-400 hover:text-slate-900 font-bold transition-colors text-sm">
+                <Link href="/admin/alunos" className="flex items-center gap-2 text-secondary hover:text-slate-900 font-bold transition-colors text-sm">
                     <ArrowLeft size={16} /> Painel de Gestão
                 </Link>
                 <div className="flex flex-col items-end gap-2">
                     <div className="flex gap-4">
-                    <button onClick={handleSendEmail} disabled={isSending} className={`flex items-center gap-3 px-8 py-4 rounded-2xl font-black transition-all ${sentStatus ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>
+                    <button onClick={handleSendEmail} disabled={isSending} className={`flex items-center gap-3 px-8 py-4 rounded-2xl font-black transition-all ${sentStatus ? 'bg-success text-on-success' : 'bg-surface text-primary hover:bg-raised'}`}>
                         {isSending ? <Loader2 className="animate-spin" size={20} /> : sentStatus ? <CheckCircle2 size={20} /> : <Mail size={20} />}
                         {isSending ? 'A ENVIAR...' : sentStatus ? 'RELATÓRIO ENVIADO' : 'ENVIAR EMAIL'}
                     </button>
-                    <button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-lg shadow-blue-500/20">
+                    <button onClick={() => window.print()} className="bg-accent hover:bg-accent-hover text-on-accent px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-lg shadow-accent/20">
                         <Download size={20} /> PDF
                     </button>
                     </div>
                     {sendError && (
-                      <p className="text-red-400 text-xs font-bold">{sendError}</p>
+                      <p className="text-danger text-xs font-bold">{sendError}</p>
                     )}
                 </div>
             </div>
@@ -238,7 +238,7 @@ function RelatorioContent() {
 
 export default function RelatorioPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>}>
       <RelatorioContent />
     </Suspense>
   );

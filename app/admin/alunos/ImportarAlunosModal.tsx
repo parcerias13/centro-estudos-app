@@ -140,14 +140,14 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between p-6 border-b border-slate-800">
+      <div className="bg-surface border border-border rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between p-6 border-b border-border">
           <div className="flex items-center gap-3">
-            <UploadCloud className="text-blue-500" size={22} />
-            <h2 className="text-lg font-black text-white uppercase tracking-tight">Importar Alunos</h2>
+            <UploadCloud className="text-accent" size={22} />
+            <h2 className="text-lg font-black text-primary uppercase tracking-tight">Importar Alunos</h2>
           </div>
           {estado !== 'a_importar' && (
-            <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
+            <button onClick={onClose} className="text-muted hover:text-primary transition-colors">
               <X size={22} />
             </button>
           )}
@@ -155,14 +155,14 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
 
         <div className="flex-1 overflow-y-auto p-6">
           {estado === 'a_ler' && (
-            <div className="flex flex-col items-center justify-center gap-4 py-16 text-slate-400">
-              <Loader2 className="animate-spin text-blue-500" size={32} />
+            <div className="flex flex-col items-center justify-center gap-4 py-16 text-secondary">
+              <Loader2 className="animate-spin text-accent" size={32} />
               <p className="font-bold text-sm">A ler o ficheiro...</p>
             </div>
           )}
 
           {erroLeitura && (
-            <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl flex items-start gap-3 text-red-500">
+            <div className="bg-danger-bg border border-danger/30 p-4 rounded-xl flex items-start gap-3 text-danger">
               <AlertTriangle className="shrink-0" size={20} />
               <p className="text-sm font-bold">{erroLeitura}</p>
             </div>
@@ -171,12 +171,12 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
           {estado === 'preview' && (
             <>
               <div className="flex gap-4 mb-4 text-sm font-black">
-                <span className="text-emerald-500">{linhasValidas.length} válidas</span>
-                <span className="text-red-500">{linhasComErro.length} com erro</span>
+                <span className="text-success">{linhasValidas.length} válidas</span>
+                <span className="text-danger">{linhasComErro.length} com erro</span>
               </div>
-              <div className="overflow-x-auto rounded-xl border border-slate-800">
+              <div className="overflow-x-auto rounded-xl border border-border">
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-950 text-slate-500 uppercase text-[10px] font-black tracking-widest">
+                  <thead className="bg-page text-muted uppercase text-[10px] font-black tracking-widest">
                     <tr>
                       <th className="p-3 text-left">Linha</th>
                       <th className="p-3 text-left">Nome</th>
@@ -191,7 +191,7 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
                     {linhas.map((l) => (
                       <tr
                         key={l.linhaExcel}
-                        className={`border-t border-slate-800 ${l.erros.length > 0 ? 'bg-red-500/10 text-red-400' : 'text-slate-300'}`}
+                        className={`border-t border-border ${l.erros.length > 0 ? 'bg-danger-bg text-danger' : 'text-secondary'}`}
                       >
                         <td className="p-3 font-mono">{l.linhaExcel}</td>
                         <td className="p-3 font-bold">{l.dados.nome || '—'}</td>
@@ -209,27 +209,27 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
           )}
 
           {estado === 'a_importar' && (
-            <div className="flex flex-col items-center justify-center gap-4 py-16 text-slate-400">
-              <Loader2 className="animate-spin text-blue-500" size={32} />
+            <div className="flex flex-col items-center justify-center gap-4 py-16 text-secondary">
+              <Loader2 className="animate-spin text-accent" size={32} />
               <p className="font-bold text-sm">A importar {progresso} / {linhasValidas.length}...</p>
             </div>
           )}
 
           {estado === 'relatorio' && (
             <div className="space-y-6">
-              <div className="bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-xl flex items-center gap-3 text-emerald-500">
+              <div className="bg-success-bg border border-success/30 p-4 rounded-xl flex items-center gap-3 text-success">
                 <CheckCircle2 size={22} />
                 <p className="font-black">{criados} aluno(s) criado(s) com sucesso.</p>
               </div>
 
               {ignoradas.length > 0 && (
                 <div>
-                  <p className="text-red-500 font-black text-sm mb-3">{ignoradas.length} linha(s) ignorada(s):</p>
+                  <p className="text-danger font-black text-sm mb-3">{ignoradas.length} linha(s) ignorada(s):</p>
                   <div className="space-y-2">
                     {ignoradas.map((r) => (
-                      <div key={r.linhaExcel} className="bg-red-500/5 border border-red-500/20 p-3 rounded-lg text-sm">
-                        <span className="font-bold text-red-400">Linha {r.linhaExcel} ({r.nome}):</span>{' '}
-                        <span className="text-slate-400">{r.motivo}</span>
+                      <div key={r.linhaExcel} className="bg-danger-bg border border-danger/20 p-3 rounded-lg text-sm">
+                        <span className="font-bold text-danger">Linha {r.linhaExcel} ({r.nome}):</span>{' '}
+                        <span className="text-secondary">{r.motivo}</span>
                       </div>
                     ))}
                   </div>
@@ -239,16 +239,16 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
           )}
         </div>
 
-        <div className="p-6 border-t border-slate-800 flex justify-end gap-3">
+        <div className="p-6 border-t border-border flex justify-end gap-3">
           {estado === 'preview' && (
             <>
-              <button onClick={onClose} className="px-6 py-3 rounded-xl font-black text-slate-400 hover:text-white transition-colors">
+              <button onClick={onClose} className="px-6 py-3 rounded-xl font-black text-secondary hover:text-primary transition-colors">
                 Cancelar
               </button>
               <button
                 onClick={handleConfirmarImportacao}
                 disabled={linhasValidas.length === 0}
-                className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-3 rounded-2xl font-black transition-all active:scale-95"
+                className="bg-accent hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed text-on-accent px-6 py-3 rounded-2xl font-black transition-all active:scale-95"
               >
                 Confirmar Importação
               </button>
@@ -257,7 +257,7 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
           {estado === 'relatorio' && (
             <button
               onClick={handleConcluir}
-              className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-2xl font-black transition-all active:scale-95"
+              className="bg-accent hover:bg-accent-hover text-on-accent px-6 py-3 rounded-2xl font-black transition-all active:scale-95"
             >
               Concluir
             </button>
