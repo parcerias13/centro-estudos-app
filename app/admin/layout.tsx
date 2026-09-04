@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { LayoutDashboard, Users, Calendar, Utensils, History, BookOpen, BarChart3, Shield, Settings, X, Menu, LogOut } from 'lucide-react'
@@ -17,6 +18,7 @@ export default function AdminLayout({
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [role, setRole] = useState<string | null>(null)
+  const pathname = usePathname()
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -57,35 +59,40 @@ export default function AdminLayout({
 
       {/* Sidebar */}
       <aside className={`
-        ${isMenuOpen ? 'flex' : 'hidden'} 
-        md:flex w-64 bg-raised border-r border-border flex-col fixed h-full shadow-2xl z-50 transition-all duration-300
+        ${isMenuOpen ? 'flex' : 'hidden'}
+        md:flex w-64 bg-sidebar-bg border-r border-white/10 flex-col fixed h-full shadow-2xl z-50 transition-all duration-300
       `}>
-        <div className="p-6 border-b border-border/50 flex justify-between items-center">
+        <div className="p-6 border-b border-white/10 flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-black text-primary tracking-tighter italic">
-              Cogni<span className="text-accent">Lab</span>
+            <h2 className="text-xl font-black text-sidebar-text tracking-tighter italic">
+              Cogni<span className="text-sidebar-accent">Lab</span>
             </h2>
-            <p className="text-[10px] text-muted font-bold uppercase tracking-widest mt-1">Gestão de Performance</p>
+            <p className="text-[10px] text-sidebar-text-secondary font-bold uppercase tracking-widest mt-1">Gestão de Performance</p>
           </div>
-          <button onClick={() => setIsMenuOpen(false)} className="md:hidden text-primary"><X size={24} /></button>
+          <button onClick={() => setIsMenuOpen(false)} className="md:hidden text-sidebar-text"><X size={24} /></button>
         </div>
 
         <nav className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
-          {visibleMenuItems.map((item) => (
-            <Link 
-              key={item.href}
-              href={item.href} 
-              onClick={() => setIsMenuOpen(false)}
-              className="flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group text-secondary hover:text-primary hover:bg-raised"
-            >
-              <item.icon size={18} className="shrink-0 group-hover:scale-110 transition-transform" />
-              <span className="text-sm font-medium">{item.name}</span>
-            </Link>
-          ))}
+          {visibleMenuItems.map((item) => {
+            const isActive = pathname === item.href || (item.href !== '/admin' && pathname?.startsWith(item.href + '/'))
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setIsMenuOpen(false)}
+                className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group ${
+                  isActive ? 'bg-white/10 text-sidebar-text' : 'text-sidebar-text-secondary hover:text-sidebar-text hover:bg-white/5'
+                }`}
+              >
+                <item.icon size={18} className="shrink-0 group-hover:scale-110 transition-transform" />
+                <span className="text-sm font-medium">{item.name}</span>
+              </Link>
+            )
+          })}
         </nav>
 
-        <div className="p-4 border-t border-border bg-raised/50">
-          <Link href="/login" className="flex items-center gap-2 text-xs text-muted hover:text-danger transition font-bold uppercase tracking-tighter">
+        <div className="p-4 border-t border-white/10">
+          <Link href="/login" className="flex items-center gap-2 text-xs text-sidebar-text-secondary hover:text-danger transition font-bold uppercase tracking-tighter">
             <LogOut size={14} /> Terminar Sessão
           </Link>
         </div>

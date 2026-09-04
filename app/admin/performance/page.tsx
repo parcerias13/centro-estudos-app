@@ -139,12 +139,12 @@ export default function AdminStats() {
 
       {/* KPI GRID - FINANCEIRO E ESTUDO */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-        <div className="bg-surface border border-border p-8 rounded-4xl shadow-2xl border-l-4 border-l-emerald-500">
+        <div className="bg-surface border border-border p-8 rounded-4xl shadow-2xl border-l-4 border-l-success">
           <p className="text-success text-[10px] font-black uppercase tracking-widest mb-4">Receita Real (Mês)</p>
           <p className="text-4xl font-black italic tracking-tighter">{stats.accumulatedRevenue.toFixed(2)}€</p>
           <p className="text-[10px] text-muted font-bold mt-2 uppercase">Base Fixa + Extras Consumidos</p>
         </div>
-        <div className="bg-surface border border-border p-8 rounded-4xl shadow-2xl border-l-4 border-l-blue-500">
+        <div className="bg-surface border border-border p-8 rounded-4xl shadow-2xl border-l-4 border-l-accent">
           <p className="text-accent text-[10px] font-black uppercase tracking-widest mb-4">Projeção (Forecast)</p>
           <p className="text-4xl font-black italic tracking-tighter">{stats.projectedRevenue.toFixed(0)}€</p>
           <p className="text-[10px] text-muted font-bold mt-2 uppercase">Base + Tendência de Extras</p>

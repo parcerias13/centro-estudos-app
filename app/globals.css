@@ -7,19 +7,19 @@
  */
 @theme {
   /* fundos */
-  --color-bg-page: #F7F8FA;
-  --color-bg-surface: #FFFFFF;
-  --color-bg-raised: #EEF3FE;
+  --color-bg-page: #FFFFFF;
+  --color-bg-surface: #F6F2EA;
+  --color-bg-raised: #FFFFFF;
 
   /* accent (ação principal) */
-  --color-accent: #2A5BD1;
-  --color-accent-soft: #EBF1FD;
-  --color-accent-hover: #244DB2;
+  --color-accent: #14532D;
+  --color-accent-soft: #E3EDE6;
+  --color-accent-hover: #0F3F20;
 
   /* estados semânticos */
-  --color-success: #047857;
-  --color-success-bg: #ECFDF5;
-  --color-success-hover: #036649;
+  --color-success: #0F9D58;
+  --color-success-bg: #E7F7EE;
+  --color-success-hover: #0D854B;
   --color-danger: #B91C1C;
   --color-danger-bg: #FEF2F2;
   --color-danger-hover: #991B1B;
@@ -34,10 +34,16 @@
   --color-on-warning: #FFFFFF;
 
   /* texto */
-  --color-text-primary: #1A2233;
-  --color-text-secondary: #626C82;
-  --color-text-muted: #98A0B3;
+  --color-text-primary: #241F18;
+  --color-text-secondary: #6B6154;
+  --color-text-muted: #9C9284;
 
   /* borda */
-  --color-border: #E4E7EE;
+  --color-border: #E8E2D6;
+
+  /* sidebar (paleta própria — não substitui os tokens globais acima) */
+  --color-sidebar-bg: #114726;
+  --color-sidebar-text: #EDF1EC;
+  --color-sidebar-text-secondary: #9BB0A0;
+  --color-sidebar-accent: #6FE3A6;
 }

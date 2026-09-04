@@ -199,7 +199,7 @@ function RelatorioContent() {
                                         {entry.saida ? ` → ${new Date(entry.saida).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})}` : ' (Em curso...)'}
                                     </td>
                                     <td className="p-4 text-center">
-                                        <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${entry.saida ? 'bg-emerald-100 text-success' : 'bg-blue-100 text-accent animate-pulse'}`}>
+                                        <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${entry.saida ? 'bg-success-bg text-success' : 'bg-accent-soft text-accent animate-pulse'}`}>
                                             {entry.saida ? 'Concluído' : 'Estudar'}
                                         </span>
                                     </td>
