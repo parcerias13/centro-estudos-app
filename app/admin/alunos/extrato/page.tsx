@@ -137,7 +137,7 @@ function ExtratoDetalhadoContent() {
         <section className="space-y-4">
           <h3 className="text-[10px] font-black text-muted uppercase tracking-widest ml-4">Histórico de Presenças e Consumos</h3>
           {diasDetalhados.length > 0 ? diasDetalhados.map((dia) => (
-            <div key={dia.data} className="bg-surface/50 border border-border p-5 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4 transition-hover hover:border-border">
+            <div key={dia.data} className="bg-surface border border-border p-5 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4 transition-hover hover:border-border">
               <div className="flex items-center gap-4">
                 <div className="bg-raised px-4 py-2 rounded-2xl text-center min-w-[60px]">
                   <p className="text-[10px] font-black text-muted uppercase">{new Date(dia.data).toLocaleString('pt-PT', { weekday: 'short' })}</p>
@@ -165,7 +165,7 @@ function ExtratoDetalhadoContent() {
               </div>
             </div>
           )) : (
-            <div className="text-center py-12 border-2 border-dashed border-border rounded-3xl">
+            <div className="text-center py-12 bg-surface/70 border-2 border-dashed border-border rounded-3xl">
               <p className="text-muted font-bold uppercase text-xs tracking-widest">Nenhum registo encontrado para este período</p>
             </div>
           )}

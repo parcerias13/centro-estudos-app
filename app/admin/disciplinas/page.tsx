@@ -215,7 +215,7 @@ export default function DisciplinasEMateriais() {
         {/* LISTA DE DISCIPLINAS */}
         <div className="space-y-3">
           {subjects.length === 0 ? (
-            <div className="bg-surface/40 border-2 border-dashed border-border p-12 rounded-3xl text-center">
+            <div className="bg-surface/70 border-2 border-dashed border-border p-12 rounded-3xl text-center">
               <AlertCircle size={32} className="mx-auto mb-3 text-muted" />
               <p className="text-muted font-bold italic">Nenhuma disciplina registada.</p>
             </div>

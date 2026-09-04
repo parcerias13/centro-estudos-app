@@ -35,7 +35,7 @@ export default function RecoverPage() {
       <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-blue-600 via-purple-600 to-pink-600"></div>
       <div className="absolute -top-20 -left-20 w-64 h-64 bg-accent-soft rounded-full blur-3xl pointer-events-none"></div>
 
-      <div className="w-full max-w-sm bg-surface/50 backdrop-blur-md border border-border p-8 rounded-3xl shadow-2xl relative z-10">
+      <div className="w-full max-w-sm bg-surface backdrop-blur-md border border-border p-8 rounded-3xl shadow-2xl relative z-10">
         
         <Link href="/login" className="text-muted hover:text-primary flex items-center gap-2 mb-6 text-sm font-bold transition-colors w-fit">
           <ArrowLeft size={16} /> Voltar ao Login

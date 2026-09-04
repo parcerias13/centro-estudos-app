@@ -141,7 +141,7 @@ export default function StudentLibrary() {
 
             <div className="grid md:grid-cols-2 gap-4">
                 {filteredResources.length === 0 ? (
-                    <div className="col-span-full text-center py-16 bg-surface/40 rounded-[2.5rem] border border-border border-dashed">
+                    <div className="col-span-full text-center py-16 bg-surface/70 rounded-[2.5rem] border border-border border-dashed">
                         <BookOpen size={48} className="mx-auto mb-4 text-muted" />
                         <p className="text-muted font-bold text-sm">Nenhum material encontrado.</p>
                         <p className="text-muted text-xs mt-1">O teu professor ainda não publicou recursos para o teu ano.</p>

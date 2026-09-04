@@ -156,7 +156,7 @@ export default function RefeitorioPage() {
         </div>
 
         {alunosPresentes.length === 0 ? (
-          <div className="bg-surface/40 border-2 border-dashed border-border p-20 rounded-4xl text-center italic opacity-50">
+          <div className="bg-surface/70 border-2 border-dashed border-border p-20 rounded-4xl text-center italic opacity-50">
             Nenhum aluno com check-in hoje...
           </div>
         ) : (

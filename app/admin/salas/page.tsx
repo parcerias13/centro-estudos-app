@@ -147,7 +147,7 @@ export default function GestaoSalas() {
           <section className="space-y-3">
              <h2 className="text-xs font-black uppercase text-muted tracking-widest mb-4 ml-2">Salas Ativas</h2>
              {salas.length === 0 ? (
-               <div className="text-center p-8 border-2 border-dashed border-border rounded-3xl text-muted text-xs font-bold uppercase tracking-widest">Nenhuma sala registada.</div>
+               <div className="text-center p-8 bg-surface/70 border-2 border-dashed border-border rounded-3xl text-muted text-xs font-bold uppercase tracking-widest">Nenhuma sala registada.</div>
              ) : (
                salas.map(sala => (
                  <div key={sala.id} className="bg-surface border border-border p-5 rounded-2xl flex items-center justify-between shadow-lg group">
@@ -216,7 +216,7 @@ export default function GestaoSalas() {
             </div>
             
             {disciplinas.length === 0 && (
-              <div className="text-center p-12 border-2 border-dashed border-border rounded-3xl text-muted text-sm font-bold">
+              <div className="text-center p-12 bg-surface/70 border-2 border-dashed border-border rounded-3xl text-muted text-sm font-bold">
                 Ainda não tens disciplinas. Cria-as primeiro na Gestão de Disciplinas.
               </div>
             )}

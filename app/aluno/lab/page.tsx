@@ -228,7 +228,7 @@ export default function LabAI() {
                 <div className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center mt-1 shadow-sm ${isAI ? 'bg-raised border border-border text-primary' : 'bg-accent text-on-accent'}`}>
                   {isAI ? <Aperture size={16} /> : <User size={16} />}
                 </div>
-                <div className={`p-5 rounded-2xl text-[15px] shadow-sm max-w-[85%] ${isAI ? 'bg-surface/80 border border-border/60 rounded-tl-none text-secondary leading-relaxed font-medium tracking-wide [&>p]:mb-4 last:[&>p]:mb-0 [&_code]:bg-raised [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded overflow-x-auto' : 'bg-accent text-on-accent rounded-tr-none leading-snug whitespace-pre-wrap'}`}>
+                <div className={`p-5 rounded-2xl text-[15px] shadow-sm max-w-[85%] ${isAI ? 'bg-surface border border-border/60 rounded-tl-none text-secondary leading-relaxed font-medium tracking-wide [&>p]:mb-4 last:[&>p]:mb-0 [&_code]:bg-raised [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded overflow-x-auto' : 'bg-accent text-on-accent rounded-tr-none leading-snug whitespace-pre-wrap'}`}>
                   {isAI ? <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{formatMath(msg.parts[0].text)}</ReactMarkdown> : msg.parts[0].text}
                 </div>
               </div>
@@ -241,7 +241,7 @@ export default function LabAI() {
             <div className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center mt-1 bg-raised border border-border text-primary animate-pulse">
               <Aperture size={16} />
             </div>
-            <div className="p-4 rounded-2xl bg-surface/50 border border-border rounded-tl-none flex items-center gap-3">
+            <div className="p-4 rounded-2xl bg-surface border border-border rounded-tl-none flex items-center gap-3">
               <Loader2 size={16} className="animate-spin text-muted" />
             </div>
           </div>

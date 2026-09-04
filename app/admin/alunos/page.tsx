@@ -230,12 +230,12 @@ export default function ListaAlunos() {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {alunosFiltrados.length === 0 ? (
-          <div className="col-span-full text-center py-20 bg-surface/20 border-2 border-dashed border-border rounded-3xl">
+          <div className="col-span-full text-center py-20 bg-surface/70 border-2 border-dashed border-border rounded-3xl">
             <p className="text-muted font-medium italic">Nenhum aluno encontrado.</p>
           </div>
         ) : (
           alunosFiltrados.map((aluno) => (
-            <div key={aluno.id} className={`bg-surface/40 border p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center sm:justify-between group transition-all shadow-sm ${
+            <div key={aluno.id} className={`bg-surface border p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center sm:justify-between group transition-all shadow-sm ${
               (aluno.consumo_semanal >= aluno.limite_semanal && aluno.limite_semanal !== 99)
               ? 'border-danger/30 bg-danger-bg'
               : 'border-border/60 hover:border-border'

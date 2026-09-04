@@ -152,7 +152,7 @@ export default function AdminAgendaReadonly() {
 
       <div className="max-w-4xl mx-auto">
         {Object.keys(groupedExams).length === 0 ? (
-          <div className="bg-surface/40 border-2 border-dashed border-border p-16 rounded-[3rem] text-center flex flex-col items-center">
+          <div className="bg-surface/70 border-2 border-dashed border-border p-16 rounded-[3rem] text-center flex flex-col items-center">
             <Calendar size={48} className="mb-6 text-muted" />
             <p className="text-muted font-bold text-lg">Sem testes para este período.</p>
             <button onClick={() => {setWeekOffset(0); setFiltroAluno(''); setFiltroAno(''); setFiltroDisciplina('');}} className="mt-4 text-accent text-sm font-bold hover:underline">Voltar à semana atual</button>

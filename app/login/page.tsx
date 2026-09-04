@@ -56,7 +56,7 @@ export default function LoginPage() {
       <div className="absolute -top-20 -left-20 w-64 h-64 bg-accent-soft rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-purple-600/20 rounded-full blur-3xl pointer-events-none"></div>
 
-      <div className="w-full max-w-sm bg-surface/50 backdrop-blur-md border border-border p-8 rounded-3xl shadow-2xl relative">
+      <div className="w-full max-w-sm bg-surface backdrop-blur-md border border-border p-8 rounded-3xl shadow-2xl relative">
         
         {/* ÍCONE */}
         <div className="flex justify-center mb-8">

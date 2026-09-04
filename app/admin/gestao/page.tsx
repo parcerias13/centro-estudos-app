@@ -151,7 +151,7 @@ export default function GestaoTotalPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
         
         {/* BLOCO 1: INSTITUIÇÃO */}
-        <section className="bg-surface/40 border border-border/60 p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm">
+        <section className="bg-surface border border-border/60 p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm">
           <div className="flex items-center gap-3 mb-8">
             <div className="p-3 bg-accent-soft rounded-2xl text-accent">
               <Building2 size={24} />
@@ -209,7 +209,7 @@ export default function GestaoTotalPage() {
         </section>
 
         {/* BLOCO 2: SERVIÇOS EXTRA */}
-        <section className="bg-surface/40 border border-border/60 p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm">
+        <section className="bg-surface border border-border/60 p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm">
           <div className="flex justify-between items-center mb-8">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-success-bg rounded-2xl text-success">
