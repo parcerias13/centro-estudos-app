@@ -194,7 +194,7 @@ export default function DisciplinasEMateriais() {
         {/* CABEÇALHO */}
         <header className="mb-10 flex items-start justify-between gap-4">
           <div>
-            <div className="bg-orange-500/10 text-orange-400 p-3 rounded-2xl border border-orange-500/20 inline-flex mb-4">
+            <div className="bg-accent-soft text-accent p-3 rounded-2xl border border-accent/20 inline-flex mb-4">
               <Library size={24} />
             </div>
             <h1 className="text-4xl font-black italic tracking-tighter uppercase text-primary">
@@ -206,7 +206,7 @@ export default function DisciplinasEMateriais() {
           </div>
           <button
             onClick={() => { setShowAddSubject(true); setNewSubjectName(''); setSubjectError(null); }}
-            className="flex items-center gap-2 bg-orange-600 hover:bg-orange-500 text-primary font-black py-3 px-5 rounded-2xl transition-all active:scale-95 shadow-lg shadow-orange-900/20 text-sm shrink-0 mt-2"
+            className="flex items-center gap-2 bg-accent hover:bg-accent-hover text-on-accent font-black py-3 px-5 rounded-2xl transition-all active:scale-95 shadow-lg shadow-accent/20 text-sm shrink-0 mt-2"
           >
             <Plus size={18} /> Adicionar Disciplina
           </button>
@@ -234,8 +234,8 @@ export default function DisciplinasEMateriais() {
                     onClick={() => setExpandedId(isExpanded ? null : subj.id)}
                   >
                     <div className="flex items-center gap-4">
-                      <div className="bg-page p-2.5 rounded-xl border border-border group-hover:border-orange-500/30 transition-colors">
-                        <BookOpen size={18} className="text-secondary group-hover:text-orange-500 transition-colors" />
+                      <div className="bg-page p-2.5 rounded-xl border border-border group-hover:border-accent/30 transition-colors">
+                        <BookOpen size={18} className="text-secondary group-hover:text-accent transition-colors" />
                       </div>
                       <div>
                         <span className="font-black text-lg text-primary">{subj.name}</span>
@@ -348,7 +348,7 @@ export default function DisciplinasEMateriais() {
                                 value={matTitle}
                                 onChange={(e) => setMatTitle(e.target.value)}
                                 placeholder="Ex: Resumo Cap. 1"
-                                className="w-full bg-surface border border-border p-3 rounded-xl outline-none focus:border-orange-500 text-primary text-sm font-bold mt-1 placeholder:text-muted"
+                                className="w-full bg-surface border border-border p-3 rounded-xl outline-none focus:border-accent text-primary text-sm font-bold mt-1 placeholder:text-muted"
                               />
                             </div>
                             <div>
@@ -358,7 +358,7 @@ export default function DisciplinasEMateriais() {
                               <select
                                 value={matAno}
                                 onChange={(e) => setMatAno(e.target.value)}
-                                className="w-full bg-surface border border-border text-primary p-3 rounded-xl outline-none focus:border-orange-500 font-bold mt-1 text-sm appearance-none"
+                                className="w-full bg-surface border border-border text-primary p-3 rounded-xl outline-none focus:border-accent font-bold mt-1 text-sm appearance-none"
                               >
                                 {Array.from({ length: 12 }, (_, i) => i + 1).map((ano) => (
                                   <option key={ano} value={ano}>{ano}º Ano</option>
@@ -379,7 +379,7 @@ export default function DisciplinasEMateriais() {
                                   onClick={() => { setMatType(t); setMatFile(null); setMatUrl(''); }}
                                   className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase border transition-all ${
                                     matType === t
-                                      ? 'bg-orange-600 border-orange-500 text-primary'
+                                      ? 'bg-accent border-accent text-on-accent'
                                       : 'bg-surface border-border text-muted hover:border-border'
                                   }`}
                                 >
@@ -422,7 +422,7 @@ export default function DisciplinasEMateriais() {
                           <button
                             type="submit"
                             disabled={uploadingMat}
-                            className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-primary font-black py-3 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 text-sm"
+                            className="w-full bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent font-black py-3 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 text-sm"
                           >
                             {uploadingMat
                               ? <><Loader2 className="animate-spin" size={16} /> A publicar...</>
@@ -433,7 +433,7 @@ export default function DisciplinasEMateriais() {
                       ) : (
                         <button
                           onClick={() => openAddMaterial(subj.id)}
-                          className="flex items-center gap-2 text-sm font-black text-muted hover:text-orange-400 transition-colors py-2 mt-1"
+                          className="flex items-center gap-2 text-sm font-black text-muted hover:text-accent transition-colors py-2 mt-1"
                         >
                           <Plus size={16} /> Adicionar material
                         </button>
@@ -472,7 +472,7 @@ export default function DisciplinasEMateriais() {
                   value={newSubjectName}
                   onChange={(e) => setNewSubjectName(e.target.value)}
                   placeholder="Ex: Biologia"
-                  className="w-full bg-page border border-border p-4 rounded-2xl outline-none focus:border-orange-500 text-primary font-bold mt-2 placeholder:text-muted"
+                  className="w-full bg-page border border-border p-4 rounded-2xl outline-none focus:border-accent text-primary font-bold mt-2 placeholder:text-muted"
                 />
               </div>
               {subjectError && (
@@ -480,7 +480,7 @@ export default function DisciplinasEMateriais() {
               )}
               <button
                 disabled={creatingSubject || !newSubjectName.trim()}
-                className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-primary font-black py-4 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                className="w-full bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent font-black py-4 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2"
               >
                 {creatingSubject
                   ? <><Loader2 className="animate-spin" size={18} /> A criar...</>

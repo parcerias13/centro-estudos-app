@@ -292,7 +292,7 @@ export default function ListaAlunos() {
 
                 <Link 
                   href={`/admin/relatorio?id=${aluno.id}`} 
-                  className="p-3 bg-raised text-secondary hover:bg-surface hover:text-primary rounded-xl transition-all border border-border hover:border-border shadow-xl"
+                  className="p-3 bg-raised text-secondary hover:bg-accent hover:text-on-accent rounded-xl transition-all border border-border hover:border-accent shadow-xl"
                   title="Ver Relatório de Performance"
                 >
                   <FileBarChart size={20} />
