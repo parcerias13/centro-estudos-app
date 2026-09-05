@@ -352,7 +352,7 @@ export default function DashboardAdmin() {
                         {!diaContratado && <span className="bg-danger text-on-danger text-[8px] px-2 py-0.5 rounded-full font-black uppercase">Fora de Horário</span>}
                       </div>
                       <p className="text-xs text-muted font-medium">
-                        {p.subject_name || 'Sessão Livre'} • <span className="text-white/70">{nomeSala}</span>
+                        {p.subject_name || 'Sessão Livre'} • {nomeSala}
                       </p>
                     </div>
                   </div>
@@ -373,7 +373,7 @@ export default function DashboardAdmin() {
                           <span className="text-[8px] font-black block mt-1 uppercase">{p.msg_in_enviada ? 'Enviada' : 'Msg In'}</span>
                           {p.msg_in_enviada && <CheckCircle2 size={10} className="absolute top-1 right-1" />}
                         </button>
-                        <button disabled={isSubmitting} onClick={() => safeAction(() => handleWhatsApp(p.id, aluno?.telefone_encarregado, aluno?.nome, 'saida'))} className={`${p.msg_out_enviada ? 'bg-purple-600 text-primary shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'bg-purple-500/10 text-purple-500'} p-2.5 rounded-xl transition-all min-w-14 relative disabled:opacity-50`}>
+                        <button disabled={isSubmitting} onClick={() => safeAction(() => handleWhatsApp(p.id, aluno?.telefone_encarregado, aluno?.nome, 'saida'))} className={`${p.msg_out_enviada ? 'bg-purple-600 text-on-accent shadow-[0_0_10px_rgba(147,51,234,0.3)]' : 'bg-purple-500/10 text-purple-500'} p-2.5 rounded-xl transition-all min-w-14 relative disabled:opacity-50`}>
                           <MessageCircle size={16} className="mx-auto" />
                           <span className="text-[8px] font-black block mt-1 uppercase">{p.msg_out_enviada ? 'Enviada' : 'Msg Out'}</span>
                           {p.msg_out_enviada && <CheckCircle2 size={10} className="absolute top-1 right-1" />}
@@ -392,7 +392,7 @@ export default function DashboardAdmin() {
         <div className="space-y-6">
           <div className="bg-accent p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
             <Users size={80} className="absolute top-0 right-0 p-4 opacity-10" />
-            <p className="text-blue-100 font-bold uppercase text-[10px] tracking-widest relative z-10">Total no Centro</p>
+            <p className="text-on-accent font-bold uppercase text-[10px] tracking-widest relative z-10">Total no Centro</p>
             <h4 className="text-7xl font-black mt-2 relative z-10 text-on-accent">{presencas.length}</h4>
           </div>
           
