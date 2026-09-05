@@ -7,9 +7,9 @@
  */
 @theme {
   /* fundos */
-  --color-bg-page: #FFFFFF;
-  --color-bg-surface: #F6F2EA;
-  --color-bg-raised: #FFFFFF;
+  --color-page: #FFFFFF;
+  --color-surface: #F6F2EA;
+  --color-raised: #FFFFFF;
 
   /* accent (ação principal) */
   --color-accent: #14532D;
@@ -34,9 +34,9 @@
   --color-on-warning: #FFFFFF;
 
   /* texto */
-  --color-text-primary: #241F18;
-  --color-text-secondary: #6B6154;
-  --color-text-muted: #9C9284;
+  --color-primary: #241F18;
+  --color-secondary: #6B6154;
+  --color-muted: #9C9284;
 
   /* borda */
   --color-border: #E8E2D6;
