@@ -304,18 +304,18 @@ export default function DashboardAdmin() {
         </div>
         
         <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
-          <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-4 py-3 bg-success-bg text-success border border-success/20 rounded-xl hover:bg-success hover:text-on-success transition-all text-[10px] font-black uppercase tracking-widest shadow-lg">
-            <UserPlus size={16} /> Entrada Manual
+          <button onClick={() => setIsModalOpen(true)} className="bg-accent hover:bg-accent-hover text-on-accent px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-accent/20 transition-all active:scale-95">
+            <UserPlus size={20} /> ENTRADA MANUAL
           </button>
 
           {presencas.length > 0 && (
-            <button disabled={isSubmitting} onClick={() => safeAction(handleMassCheckout)} className="flex items-center gap-2 px-4 py-3 bg-danger-bg text-danger border border-danger/20 rounded-xl hover:bg-danger hover:text-on-danger transition-all text-[10px] font-black uppercase tracking-widest shadow-lg shadow-danger/10 disabled:opacity-50">
-              <LogOut size={16} /> Checkout Total
+            <button disabled={isSubmitting} onClick={() => safeAction(handleMassCheckout)} className="bg-danger-bg hover:bg-danger text-danger hover:text-on-danger px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-danger/30 transition-all active:scale-95 disabled:opacity-50">
+              <LogOut size={18} /> CHECKOUT TOTAL
             </button>
           )}
 
-          <Link href="/admin/salas" className="flex items-center gap-2 px-4 py-3 bg-accent-soft text-accent border border-accent/20 rounded-xl hover:bg-accent hover:text-on-accent transition-all text-[10px] font-black uppercase tracking-widest shadow-lg">
-            <MapPin size={16} /> Gestão de Salas
+          <Link href="/admin/salas" className="bg-surface hover:bg-raised text-secondary px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-border transition-all active:scale-95">
+            <MapPin size={18} /> GESTÃO DE SALAS
           </Link>
 
           <button onClick={fetchDados} className="p-3 bg-surface rounded-xl border border-border hover:text-accent transition-all">
