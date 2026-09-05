@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { 
+import { useStatusToast, StatusToast } from '@/lib/statusToast';
+import {
   Search, UserPlus, RefreshCw, X, Loader2, CheckCircle2, Clock, Utensils, Apple
 } from 'lucide-react';
 
@@ -34,7 +35,7 @@ export default function RefeitorioPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-
+  const { toast, showError } = useStatusToast();
 
   // Validador de URL (Preservado do teu código)
   const getSafeAvatar = (url: string | null | undefined) => {
@@ -80,6 +81,7 @@ export default function RefeitorioPage() {
     const { data: { user } } = await supabase.auth.getUser();
     const centro_id = user?.app_metadata?.centro_id;
     if (!centro_id) {
+      showError('Não foi possível identificar o centro. Recarrega a página e tenta novamente.');
       setIsSubmitting(false);
       return;
     }
@@ -90,30 +92,43 @@ export default function RefeitorioPage() {
     try {
       if (jaConsumiu) {
         // Remover consumo (Lógica original preservada)
-        await supabase.from('consumos_diarios').delete()
+        const { error } = await supabase.from('consumos_diarios').delete()
           .eq('aluno_id', alunoId)
           .eq('servico_id', servico.id)
           .eq('data_consumo', hoje);
+        if (error) {
+          showError('Erro ao remover consumo: ' + error.message);
+          return;
+        }
       } else {
         // 1. Garantir entrada física (Auto Check-in se o aluno não passou o QR)
         const { data: entrada } = await supabase.from('diario_bordo')
           .select('id').eq('aluno_id', alunoId).is('saida', null).gte('entrada', hoje).maybeSingle();
 
         if (!entrada) {
-          await supabase.from('diario_bordo').insert({
+          const { error: erroCheckin } = await supabase.from('diario_bordo').insert({
             aluno_id: alunoId, entrada: new Date().toISOString(),
             status: 'validado', subject_name: `Serviço: ${servico.nome}`,
             centro_id,
           });
+          if (erroCheckin) {
+            showError('Erro ao registar entrada: ' + erroCheckin.message);
+            return;
+          }
         }
 
         // 2. Registar consumo com SNAPSHOT DE PREÇO (Automação Financeira)
-        await supabase.from('consumos_diarios').insert({
+        const { error: erroConsumo } = await supabase.from('consumos_diarios').insert({
           aluno_id: alunoId,
           servico_id: servico.id,
           data_consumo: hoje,
-          preco_aplicado: servico.preco // Protege o passado de mudanças de preço
+          preco_aplicado: servico.preco, // Protege o passado de mudanças de preço
+          centro_id,
         });
+        if (erroConsumo) {
+          showError('Erro ao registar consumo: ' + erroConsumo.message);
+          return;
+        }
       }
       await fetchDados();
     } finally {
@@ -251,6 +266,8 @@ export default function RefeitorioPage() {
           </div>
         </div>
       )}
+
+      <StatusToast toast={toast} />
     </main>
   );
 }

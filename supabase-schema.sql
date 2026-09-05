@@ -598,5 +598,11 @@
     "column_name": "date",
     "data_type": "date",
     "is_nullable": "NO"
+  },
+  {
+    "table_name": "exams",
+    "column_name": "centro_id",
+    "data_type": "uuid",
+    "is_nullable": "NO"
   }
 ]

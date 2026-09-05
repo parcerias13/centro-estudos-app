@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { 
-  Building2, Mail, Save, Loader2, DollarSign, 
+import { useStatusToast, StatusToast } from '@/lib/statusToast';
+import {
+  Building2, Mail, Save, Loader2, DollarSign,
   Plus, Trash2, RefreshCw, ShieldAlert, Key
 } from 'lucide-react';
 
 export default function GestaoTotalPage() {
+  const { toast, showError } = useStatusToast();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -108,7 +110,11 @@ export default function GestaoTotalPage() {
   const updatePrecoServico = async (id: string, preco: string) => {
     const valor = parseFloat(preco);
     if (isNaN(valor)) return;
-    await supabase.from('servicos').update({ preco: valor }).eq('id', id);
+    const { error } = await supabase.from('servicos').update({ preco: valor }).eq('id', id);
+    if (error) {
+      showError('Erro ao atualizar preço: ' + error.message);
+      return;
+    }
     setServicos(prev => prev.map(s => s.id === id ? {...s, preco: valor} : s));
   };
 
@@ -309,6 +315,8 @@ export default function GestaoTotalPage() {
         </section>
 
       </div>
+
+      <StatusToast toast={toast} />
     </main>
   );
 }

@@ -3,10 +3,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, MapPin, CheckCircle2, XCircle, UserPlus, Search, X, Plus, Calendar, ChevronDown, ChevronUp, Undo2 } from 'lucide-react';
 
 
 export default function DashboardAdmin() {
+  const { toast, showError } = useStatusToast();
   const [presencas, setPresencas] = useState<any[]>([]);
   const [proximosTestes, setProximosTestes] = useState<any[]>([]);
   const [salas, setSalas] = useState<any[]>([]);
@@ -47,7 +49,15 @@ export default function DashboardAdmin() {
   const [examSubject, setExamSubject] = useState('');
 
   // 1. FUNÇÃO DE BUSCA
+  const isFetchingRef = useRef(false);
+  const fetchPendingRef = useRef(false);
+
   const fetchDados = useCallback(async () => {
+    if (isFetchingRef.current) {
+      fetchPendingRef.current = true;
+      return;
+    }
+    isFetchingRef.current = true;
     try {
       const { data: presentes, error: errP } = await supabase
         .from('diario_bordo')
@@ -91,6 +101,11 @@ export default function DashboardAdmin() {
       setErrorMsg("Falha na sincronização: " + err.message);
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
+      if (fetchPendingRef.current) {
+        fetchPendingRef.current = false;
+        fetchDados();
+      }
     }
   }, [supabase]);
 
@@ -115,32 +130,36 @@ export default function DashboardAdmin() {
 
   const handleValidarEntrada = async (presencaId: string) => {
     const { error } = await supabase.from('diario_bordo').update({ status: 'validado' }).eq('id', presencaId);
-    if (!error) fetchDados(); 
+    if (!error) fetchDados();
+    else showError('Erro ao validar entrada: ' + error.message);
   };
 
   const handleRejeitarEntrada = async (presencaId: string) => {
     if (!confirm("O aluno não está no centro?")) return;
     const { error } = await supabase.from('diario_bordo').delete().eq('id', presencaId);
-    if (!error) fetchDados(); 
+    if (!error) fetchDados();
+    else showError('Erro ao rejeitar entrada: ' + error.message);
   };
 
   const handleWhatsApp = async (presencaId: string, telefone: string, nome: string, tipo: 'entrada' | 'saida') => {
     if (!telefone) return alert("Este aluno não tem telefone registado.");
     const numApenasNumeros = telefone.replace(/\D/g, '');
     const numFinal = numApenasNumeros.startsWith('351') ? numApenasNumeros : `351${numApenasNumeros}`;
-    const msg = tipo === 'entrada' 
+    const msg = tipo === 'entrada'
       ? `Olá! Informamos que o(a) aluno(a) ${nome} deu entrada no Centro de Estudos! 📚`
       : `Olá! Informamos que o(a) aluno(a) ${nome} concluiu a sua sessão de estudo!`;
     window.open(`https://wa.me/${numFinal}?text=${encodeURIComponent(msg)}`, '_blank');
     const updateData = tipo === 'entrada' ? { msg_in_enviada: true } : { msg_out_enviada: true };
     const { error } = await supabase.from('diario_bordo').update(updateData).eq('id', presencaId);
-    if (!error) fetchDados(); 
+    if (!error) fetchDados();
+    else showError('Erro ao registar envio de mensagem: ' + error.message);
   };
 
   const handleDarSaida = async (presencaId: string) => {
     if(!confirm("Confirmar saída física?")) return;
     const { error } = await supabase.from('diario_bordo').update({ saida: new Date().toISOString() }).eq('id', presencaId);
-    if (!error) fetchDados(); 
+    if (!error) fetchDados();
+    else showError('Erro ao registar saída: ' + error.message);
   };
 
   const handleManualCheckIn = async (aluno: any) => {
@@ -200,12 +219,19 @@ export default function DashboardAdmin() {
 
   const handleCreateExam = async () => {
     if (!selectedExamStudent || !examSubject || !examDate) return alert("Preenche tudo!");
+    const { data: { user } } = await supabase.auth.getUser();
+    const centro_id = user?.app_metadata?.centro_id;
+    if (!centro_id) {
+      showError('Não foi possível identificar o centro. Recarrega a página e tenta novamente.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const { error } = await supabase.from('exams').insert({
         aluno_id: selectedExamStudent.id,
         subject_name: examSubject,
-        date: examDate
+        date: examDate,
+        centro_id,
       });
       if (!error) {
         setIsExamModalOpen(false);
@@ -496,6 +522,8 @@ export default function DashboardAdmin() {
           </div>
         </div>
       )}
+
+      <StatusToast toast={toast} offset />
     </main>
       );
 }

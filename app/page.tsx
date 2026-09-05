@@ -3,9 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw } from 'lucide-react';
 
 export default function StudentHome() {
+  const { toast, showError } = useStatusToast();
   const [subjects, setSubjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -134,6 +136,13 @@ export default function StudentHome() {
   const handleSwitchSubject = async (newSubjectId: number, newSubjectName: string, newSalaId: string | null) => {
     if (!currentSession) return;
 
+    const { data: { user } } = await supabase.auth.getUser();
+    const centro_id = user?.app_metadata?.centro_id;
+    if (!centro_id) {
+      showError('Não foi possível identificar o centro. Recarrega a página e tenta novamente.');
+      return;
+    }
+
     await supabase.from('atividades_estudo')
       .update({ fim: new Date().toISOString() })
       .eq('sessao_id', currentSession.id)
@@ -141,17 +150,23 @@ export default function StudentHome() {
 
     await supabase.from('atividades_estudo').insert({
       sessao_id: currentSession.id,
-      subject_id: newSubjectId
+      subject_id: newSubjectId,
+      centro_id,
     });
 
     // ATUALIZAÇÃO DA SALA NO DIARIO_BORDO
-    await supabase.from('diario_bordo')
+    const { error } = await supabase.from('diario_bordo')
       .update({ 
         subject_id: newSubjectId, 
         subject_name: newSubjectName,
         sala_id: newSalaId 
       })
       .eq('id', currentSession.id);
+
+    if (error) {
+      showError('Erro ao trocar de disciplina: ' + error.message);
+      return;
+    }
 
     setShowSwitchList(false);
   };
@@ -165,9 +180,13 @@ export default function StudentHome() {
       .eq('sessao_id', currentSession.id)
       .is('fim', null);
 
-    await supabase.from('diario_bordo')
+    const { error } = await supabase.from('diario_bordo')
       .update({ saida: new Date().toISOString() })
       .eq('id', currentSession.id);
+
+    if (error) {
+      showError('Erro ao terminar sessão: ' + error.message);
+    }
   };
 
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
@@ -329,6 +348,8 @@ export default function StudentHome() {
           </div>
         )}
       </div>
+
+      <StatusToast toast={toast} />
     </main>
   );
 }

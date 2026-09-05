@@ -4,12 +4,14 @@ import { useState, useEffect, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign, KeyRound, Eye, EyeOff, RefreshCw, FileText, MapPin } from 'lucide-react';
 
 function EditarAlunoContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const studentId = searchParams.get('id');
+  const { toast, showError } = useStatusToast();
 
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -165,6 +167,12 @@ function EditarAlunoContent() {
 
   const handleUpdate = async () => {
     setErro('');
+    const { data: { user } } = await supabase.auth.getUser();
+    const centro_id = user?.app_metadata?.centro_id;
+    if (!centro_id) {
+      showError('Não foi possível identificar o centro. Recarrega a página e tenta novamente.');
+      return;
+    }
     try {
       const { error: errUpdate } = await supabase
         .from('alunos')
@@ -188,9 +196,17 @@ function EditarAlunoContent() {
 
       if (errUpdate) throw errUpdate;
 
-      await supabase.from('aluno_horarios').delete().eq('aluno_id', studentId);
-      const novosHorarios = diasSelecionados.map(dia => ({ aluno_id: studentId, dia_semana: dia }));
-      await supabase.from('aluno_horarios').insert(novosHorarios);
+      const { error: erroDeleteHorarios } = await supabase.from('aluno_horarios').delete().eq('aluno_id', studentId);
+      if (erroDeleteHorarios) {
+        showError('Erro ao atualizar horário: ' + erroDeleteHorarios.message);
+        return;
+      }
+      const novosHorarios = diasSelecionados.map(dia => ({ aluno_id: studentId, dia_semana: dia, centro_id }));
+      const { error: erroInsertHorarios } = await supabase.from('aluno_horarios').insert(novosHorarios);
+      if (erroInsertHorarios) {
+        showError('Erro ao gravar novo horário: ' + erroInsertHorarios.message);
+        return;
+      }
 
       router.push('/admin/alunos');
       router.refresh();
@@ -488,6 +504,8 @@ function EditarAlunoContent() {
           {isSubmitting ? 'A ATUALIZAR...' : 'GRAVAR ALTERAÇÕES'}
         </button>
       </form>
+
+      <StatusToast toast={toast} />
     </main>
   );
 }

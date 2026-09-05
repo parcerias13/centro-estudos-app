@@ -50,12 +50,19 @@ export default function StudentAgenda() {
     setFormSuccess(false);
 
     const { data: { user } } = await supabase.auth.getUser();
-    
+    const centro_id = user?.app_metadata?.centro_id;
+    if (!centro_id) {
+      setFormError('Não foi possível identificar o centro. Recarrega a página e tenta novamente.');
+      setSending(false);
+      return;
+    }
+
     const { error } = await supabase.from('exams').insert({
       aluno_id: user?.id,
       subject_name: subject,
       date: date,
-      topics: topics
+      topics: topics,
+      centro_id,
     });
 
     if (error) {
