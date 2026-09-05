@@ -105,7 +105,9 @@ export default function StudentHome() {
   };
 
   const handleCheckIn = async (subjectId: number, subjectName: string, salaId: string | null) => {
-    if (isLimitReached || currentSession) return;
+    // Bloqueio de limite semanal desativado até `limite_semanal` estar configurado corretamente:
+    // if (isLimitReached || currentSession) return;
+    if (currentSession) return;
     await supabase.auth.refreshSession();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -287,7 +289,9 @@ export default function StudentHome() {
               </div>
             )}
 
-            {isLimitReached ? (
+            {/* Ecrã "Limite Semanal Atingido" desativado até `limite_semanal` estar configurado
+                corretamente. Reativar: trocar `false` de volta por `isLimitReached`. */}
+            {false ? (
               <div className="bg-danger-bg border border-danger/50 p-8 rounded-4xl text-center space-y-6 py-20">
                 <div className="bg-danger-bg text-danger p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto"><ShieldAlert size={40} /></div>
                 <h2 className="text-2xl font-black text-primary italic uppercase">Limite Semanal Atingido</h2>
@@ -319,9 +323,6 @@ export default function StudentHome() {
 
                 <div className="flex justify-between items-center mb-4 px-1">
                     <h3 className="font-black text-secondary text-xs uppercase tracking-widest">Escolhe a tua Disciplina</h3>
-                    <span className="text-[10px] text-secondary bg-surface border border-border px-3 py-1 rounded-full font-black">
-                      Sessões: <span className="text-accent">{limitData.visits}</span> / {limitData.limit > 0 ? limitData.limit : 'Livre'}
-                    </span>
                 </div>
                 <div className="grid grid-cols-2 gap-3 pb-10">
                   {subjects.map((subject) => (

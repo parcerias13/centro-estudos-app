@@ -235,11 +235,7 @@ export default function ListaAlunos() {
           </div>
         ) : (
           alunosFiltrados.map((aluno) => (
-            <div key={aluno.id} className={`bg-surface border p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center sm:justify-between group transition-all shadow-sm ${
-              (aluno.consumo_semanal >= aluno.limite_semanal && aluno.limite_semanal !== 99)
-              ? 'border-danger/30 bg-danger-bg'
-              : 'border-border/60 hover:border-border'
-            }`}>
+            <div key={aluno.id} className="bg-surface border border-border/60 hover:border-border p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center sm:justify-between group transition-all shadow-sm">
               <div className="flex items-center gap-5 flex-1 min-w-0">
                 <div className="w-14 h-14 shrink-0 bg-raised rounded-2xl flex items-center justify-center text-xl font-black text-muted group-hover:bg-accent group-hover:text-on-accent transition-all overflow-hidden border border-border/50 shadow-inner">
                   {aluno.avatar_url ? (
@@ -259,23 +255,6 @@ export default function ListaAlunos() {
                       {aluno.saida_autorizada ? <ShieldCheck size={10} /> : <ShieldAlert size={10} />}
                       {aluno.saida_autorizada ? 'Autónomo' : 'Restrito'}
                     </span>
-                  </div>
-
-                  <div className="mt-4 hidden md:block max-w-50">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[9px] font-black text-muted uppercase tracking-tighter">Consumo Semanal</span>
-                      <span className={`text-[10px] font-bold ${aluno.consumo_semanal >= aluno.limite_semanal && aluno.limite_semanal !== 99 ? 'text-danger' : 'text-secondary'}`}>
-                        {aluno.consumo_semanal || 0} / {aluno.limite_semanal === 99 ? '∞' : aluno.limite_semanal}
-                      </span>
-                    </div>
-                    <div className="w-full bg-raised rounded-full h-1.5 border border-border/30 overflow-hidden">
-                      <div 
-                        className={`h-full transition-all duration-1000 ${
-                          (aluno.consumo_semanal / aluno.limite_semanal) >= 1 && aluno.limite_semanal !== 99 ? 'bg-danger shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'bg-accent'
-                        }`}
-                        style={{ width: `${Math.min(((aluno.consumo_semanal || 0) / (aluno.limite_semanal || 1)) * 100, 100)}%` }}
-                      ></div>
-                    </div>
                   </div>
                 </div>
               </div>

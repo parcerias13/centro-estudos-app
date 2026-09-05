@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, User, Lock, Save, Loader2, Mail, KeyRound, Activity, Clock, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, User, Lock, Save, Loader2, Mail, KeyRound, Clock, ShieldCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function StudentProfile() {
@@ -152,25 +152,13 @@ export default function StudentProfile() {
         </div>
 
         {/* ESTATÍSTICAS PESSOAIS */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
             <div className="bg-surface border border-border p-6 rounded-4xl shadow-xl text-center">
                 <div className="bg-success-bg text-success w-10 h-10 rounded-xl flex items-center justify-center mx-auto mb-3">
                     <Clock size={20} />
                 </div>
                 <p className="text-3xl font-black text-primary">{stats.totalHours}<span className="text-sm font-bold text-muted ml-1">h</span></p>
                 <p className="text-[10px] font-black uppercase tracking-widest text-muted mt-1">Tempo de Estudo</p>
-            </div>
-            <div className="bg-surface border border-border p-6 rounded-4xl shadow-xl text-center">
-                <div className="bg-purple-500/10 text-purple-400 w-10 h-10 rounded-xl flex items-center justify-center mx-auto mb-3">
-                    <Activity size={20} />
-                </div>
-                <p className="text-3xl font-black text-primary">
-                    {stats.weekVisits}
-                    <span className="text-sm font-bold text-muted ml-1">
-                        / {studentData?.limite_semanal > 0 ? studentData.limite_semanal : '∞'}
-                    </span>
-                </p>
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted mt-1">Sessões na Semana</p>
             </div>
         </div>
 

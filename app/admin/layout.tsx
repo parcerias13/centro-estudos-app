@@ -67,7 +67,6 @@ export default function AdminLayout({
             <h2 className="text-xl font-black text-sidebar-text tracking-tighter italic">
               Cogni<span className="text-sidebar-accent">Lab</span>
             </h2>
-            <p className="text-[10px] text-sidebar-text-secondary font-bold uppercase tracking-widest mt-1">Gestão de Performance</p>
           </div>
           <button onClick={() => setIsMenuOpen(false)} className="md:hidden text-sidebar-text"><X size={24} /></button>
         </div>
