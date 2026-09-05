@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
   BookOpen, Plus, Trash2, Loader2, Library, ChevronDown, ChevronRight,
   FileText, Youtube, Link as LinkIcon, Download, Upload, X, AlertCircle,
@@ -22,9 +23,119 @@ type Subject = {
   id: string;
   name: string;
   centro_id: string;
+  anos_aplicaveis?: number[] | null;
 };
 
+const ANOS = Array.from({ length: 12 }, (_, i) => i + 1);
+
+// Editor inline (no painel expandido) para restringir uma disciplina a anos
+// escolares específicos. Nenhum ano marcado = aparece para todos os anos.
+function AnosAplicaveisEditor({
+  subject,
+  onSaved,
+  showError,
+}: {
+  subject: Subject;
+  onSaved: () => void;
+  showError: (m: string) => void;
+}) {
+  const [sel, setSel] = useState<number[]>(subject.anos_aplicaveis || []);
+  const [saving, setSaving] = useState(false);
+  const [editando, setEditando] = useState(false);
+
+  const norm = (arr: number[]) => [...arr].sort((a, b) => a - b);
+  const dirty = JSON.stringify(norm(sel)) !== JSON.stringify(norm(subject.anos_aplicaveis || []));
+
+  const toggle = (ano: number) =>
+    setSel((prev) => (prev.includes(ano) ? prev.filter((a) => a !== ano) : [...prev, ano]));
+
+  const cancelar = () => {
+    setSel(subject.anos_aplicaveis || []);
+    setEditando(false);
+  };
+
+  const guardar = async () => {
+    setSaving(true);
+    const { error } = await supabase
+      .from('subjects')
+      .update({ anos_aplicaveis: sel.length ? norm(sel) : null })
+      .eq('id', subject.id);
+    setSaving(false);
+    if (error) {
+      showError('Erro ao guardar anos: ' + error.message);
+      return;
+    }
+    setEditando(false);
+    onSaved();
+  };
+
+  const resumo =
+    subject.anos_aplicaveis && subject.anos_aplicaveis.length > 0
+      ? norm(subject.anos_aplicaveis).map((a) => `${a}º`).join(', ')
+      : 'Todos';
+
+  return (
+    <div className="bg-page border border-border p-4 rounded-xl mb-4">
+      {!editando ? (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] font-bold text-secondary">
+            <span className="text-[9px] font-black uppercase text-muted tracking-widest">Anos aplicáveis:</span>{' '}
+            {resumo}
+          </p>
+          <button
+            type="button"
+            onClick={() => setEditando(true)}
+            className="text-[11px] font-black text-accent hover:text-accent-hover transition-colors shrink-0"
+          >
+            Editar
+          </button>
+        </div>
+      ) : (
+        <>
+          <p className="text-[9px] font-black uppercase text-muted tracking-widest">Anos aplicáveis</p>
+          <p className="text-[10px] text-muted mb-2">Nenhum ano marcado = aparece para todos os anos.</p>
+          <div className="flex flex-wrap gap-1.5">
+            {ANOS.map((ano) => (
+              <button
+                key={ano}
+                type="button"
+                onClick={() => toggle(ano)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all ${
+                  sel.includes(ano)
+                    ? 'bg-accent border-accent text-on-accent'
+                    : 'bg-surface border-border text-muted hover:border-accent/40'
+                }`}
+              >
+                {ano}º
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-4 mt-3">
+            <button
+              type="button"
+              onClick={guardar}
+              disabled={saving || !dirty}
+              className="flex items-center gap-2 text-xs font-black text-accent hover:text-accent-hover transition-colors disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />} Guardar
+            </button>
+            <button
+              type="button"
+              onClick={cancelar}
+              disabled={saving}
+              className="text-xs font-black text-muted hover:text-secondary transition-colors disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function DisciplinasEMateriais() {
+  const { toast, showError } = useStatusToast();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +144,7 @@ export default function DisciplinasEMateriais() {
   // Modal "Adicionar Disciplina"
   const [showAddSubject, setShowAddSubject] = useState(false);
   const [newSubjectName, setNewSubjectName] = useState('');
+  const [newSubjectYears, setNewSubjectYears] = useState<number[]>([]);
   const [creatingSubject, setCreatingSubject] = useState(false);
   const [subjectError, setSubjectError] = useState<string | null>(null);
 
@@ -85,11 +197,13 @@ export default function DisciplinasEMateriais() {
       return;
     }
 
-    const { error } = await supabase.from('subjects').insert({ name, centro_id });
+    const anos_aplicaveis = newSubjectYears.length ? [...newSubjectYears].sort((a, b) => a - b) : null;
+    const { error } = await supabase.from('subjects').insert({ name, centro_id, anos_aplicaveis });
     if (error) {
       setSubjectError(error.message);
     } else {
       setNewSubjectName('');
+      setNewSubjectYears([]);
       setShowAddSubject(false);
       fetchAll();
     }
@@ -271,6 +385,9 @@ export default function DisciplinasEMateriais() {
                   {/* PAINEL EXPANDIDO */}
                   {isExpanded && (
                     <div className="border-t border-border px-5 pb-5 pt-4">
+
+                      {/* RESTRIÇÃO DE ANOS */}
+                      <AnosAplicaveisEditor subject={subj} onSaved={fetchAll} showError={showError} />
 
                       {/* LISTA DE MATERIAIS */}
                       {subjResources.length === 0 ? (
@@ -454,7 +571,7 @@ export default function DisciplinasEMateriais() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-black text-primary">Nova Disciplina</h2>
               <button
-                onClick={() => { setShowAddSubject(false); setNewSubjectName(''); setSubjectError(null); }}
+                onClick={() => { setShowAddSubject(false); setNewSubjectName(''); setNewSubjectYears([]); setSubjectError(null); }}
                 className="text-muted hover:text-primary transition-colors"
               >
                 <X size={22} />
@@ -475,6 +592,28 @@ export default function DisciplinasEMateriais() {
                   className="w-full bg-page border border-border p-4 rounded-2xl outline-none focus:border-accent text-primary font-bold mt-2 placeholder:text-muted"
                 />
               </div>
+              <div>
+                <label className="text-[10px] font-black uppercase text-muted tracking-widest">
+                  Anos aplicáveis
+                </label>
+                <p className="text-[10px] text-muted mt-1">Nenhum marcado = aparece para todos os anos.</p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {ANOS.map((ano) => (
+                    <button
+                      key={ano}
+                      type="button"
+                      onClick={() => setNewSubjectYears((prev) => prev.includes(ano) ? prev.filter((a) => a !== ano) : [...prev, ano])}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all ${
+                        newSubjectYears.includes(ano)
+                          ? 'bg-accent border-accent text-on-accent'
+                          : 'bg-page border-border text-muted hover:border-accent/40'
+                      }`}
+                    >
+                      {ano}º
+                    </button>
+                  ))}
+                </div>
+              </div>
               {subjectError && (
                 <p className="text-danger text-[11px] font-bold">{subjectError}</p>
               )}
@@ -491,6 +630,8 @@ export default function DisciplinasEMateriais() {
           </div>
         </div>
       )}
+
+      <StatusToast toast={toast} />
     </main>
   );
 }

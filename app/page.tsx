@@ -37,7 +37,7 @@ export default function StudentHome() {
 
     const { data: student } = await supabase
       .from('alunos')
-      .select('nome, limite_semanal, consentimento_ia')
+      .select('nome, limite_semanal, consentimento_ia, ano_escolar')
       .eq('id', user.id)
       .maybeSingle();
     
@@ -72,7 +72,16 @@ export default function StudentHome() {
       .from('subjects')
       .select('*, salas(nome)')
       .order('name');
-    if (subjs) setSubjects(subjs);
+    // Restrição por ano: mostra a disciplina se não tiver anos definidos
+    // (aplica-se a todos) OU se incluir o ano do aluno. Aluno sem ano
+    // definido só vê as disciplinas sem restrição.
+    const anoAluno = student?.ano_escolar ?? null;
+    const visiveis = (subjs || []).filter((s: any) =>
+      !s.anos_aplicaveis ||
+      s.anos_aplicaveis.length === 0 ||
+      (anoAluno != null && s.anos_aplicaveis.includes(anoAluno))
+    );
+    setSubjects(visiveis);
 
     const hojeStr = new Date().toISOString().split('T')[0];
     const { data: teste } = await supabase

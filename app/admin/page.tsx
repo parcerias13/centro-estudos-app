@@ -249,7 +249,13 @@ export default function DashboardAdmin() {
 
   const diaSemanaAtual = new Date().getDay();
   const checkinsAtivosIds = new Set(presencas.filter(p => p.status === 'validado').map(p => p.aluno_id));
-  const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(searchQuery.toLowerCase()));
+  // Restrição por ano: se a disciplina escolhida tiver anos definidos, esconde
+  // os alunos cujo ano_escolar não está na lista (incluindo alunos sem ano).
+  const anoPermitido = (ano?: number | null) => {
+    const aa = selectedSubject?.anos_aplicaveis;
+    return !aa || aa.length === 0 || (ano != null && aa.includes(ano));
+  };
+  const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(searchQuery.toLowerCase()) && anoPermitido(a.ano_escolar));
   const alunosDoDia = alunosFiltrados.filter(a => a.aluno_horarios?.some((h: any) => h.dia_semana === diaSemanaAtual));
   const outrosAlunos = alunosFiltrados.filter(a => !a.aluno_horarios?.some((h: any) => h.dia_semana === diaSemanaAtual));
   const alunosFiltradosExame = alunos.filter(a => a.nome.toLowerCase().includes(examSearchQuery.toLowerCase()));
