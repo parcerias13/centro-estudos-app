@@ -352,7 +352,7 @@ export default function DashboardAdmin() {
                         {!diaContratado && <span className="bg-danger text-on-danger text-[8px] px-2 py-0.5 rounded-full font-black uppercase">Fora de Horário</span>}
                       </div>
                       <p className="text-xs text-muted font-medium">
-                        {p.subject_name || 'Sessão Livre'} • {nomeSala}
+                        {p.subject_name || 'Sessão Livre'} • <span className="capitalize">{nomeSala}</span>
                       </p>
                     </div>
                   </div>
@@ -404,7 +404,7 @@ export default function DashboardAdmin() {
               {salasStatus.map(sala => (
                 <div key={sala.id} className="space-y-2">
                   <div className="flex justify-between items-center text-xs font-bold">
-                    <span>{sala.nome}</span>
+                    <span className="capitalize">{sala.nome}</span>
                     <span className="text-secondary">{sala.count} / {sala.capacidade}</span>
                   </div>
                   <div className="w-full bg-page rounded-full h-1.5 overflow-hidden">

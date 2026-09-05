@@ -47,8 +47,13 @@ export default function GestaoSalas() {
       return;
     }
 
+    // Normaliza na origem: 1ª letra maiúscula ("sala 2" -> "Sala 2").
+    // Deixa os dados corretos para consumidores fora do controlo visual
+    // (dropdowns nativos, exports) e torna o ORDER BY nome consistente.
+    const nomeNormalizado = novaSalaNome.trim().charAt(0).toUpperCase() + novaSalaNome.trim().slice(1);
+
     const { error } = await supabase.from('salas').insert({
-      nome: novaSalaNome,
+      nome: nomeNormalizado,
       capacidade: parseInt(novaSalaCapacidade),
       centro_id
     });
@@ -152,7 +157,7 @@ export default function GestaoSalas() {
                salas.map(sala => (
                  <div key={sala.id} className="bg-surface border border-border p-5 rounded-2xl flex items-center justify-between shadow-lg group">
                    <div>
-                     <p className="font-black text-primary text-lg">{sala.nome}</p>
+                     <p className="font-black text-primary text-lg capitalize">{sala.nome}</p>
                      <p className="text-[10px] text-muted uppercase font-black tracking-widest mt-1 flex items-center gap-1">
                        <Users size={12} /> Máx: {sala.capacidade}
                      </p>

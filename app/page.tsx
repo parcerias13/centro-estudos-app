@@ -214,7 +214,7 @@ export default function StudentHome() {
                     <MapPin size={24} className="text-success animate-bounce" />
                     <div className="text-left">
                       <p className="text-[10px] text-success uppercase font-black tracking-widest">A tua sala hoje:</p>
-                      <p className="text-lg font-black text-primary">{currentSession.salas.nome}</p>
+                      <p className="text-lg font-black text-primary capitalize">{currentSession.salas.nome}</p>
                     </div>
                   </div>
                 )}
