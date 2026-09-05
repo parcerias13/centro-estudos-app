@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { ArrowLeft, Search, FileText, Loader2, Clock, CheckCircle2, User, BookOpen } from 'lucide-react';
 
 export default function HistoryPage() {
+  const { toast, showError } = useStatusToast();
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -41,6 +43,7 @@ export default function HistoryPage() {
 
     if (error) {
        console.error("Erro ao puxar histórico:", error);
+       showError('Erro ao carregar o histórico: ' + error.message);
     }
 
     if (data) {
@@ -95,7 +98,7 @@ export default function HistoryPage() {
           </div>
           <h1 className="text-4xl font-black italic tracking-tighter uppercase">Arquivo Diário</h1>
           <p className="text-muted text-xs font-bold uppercase tracking-widest mt-2">
-            Registo de Assiduidade e Faturação
+            Registo de Assiduidade
           </p>
         </div>
 
@@ -107,7 +110,6 @@ export default function HistoryPage() {
               value={date}
               onChange={(e) => setDate(e.target.value)}
               disabled={search.trim().length > 0} // Desativa se estiver em modo auditoria
-              style={{ colorScheme: "dark" }}
               className={`bg-surface border border-border text-primary p-4 rounded-2xl outline-none focus:border-accent w-full cursor-pointer font-bold transition-all shadow-lg ${search.trim().length > 0 ? 'opacity-30' : ''}`}
             />
           </div>
@@ -146,7 +148,7 @@ export default function HistoryPage() {
                 <th className="p-6 font-black text-right">Status Operacional</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/50">
+            <tbody className="divide-y divide-border">
               {!loading && entries.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-16 text-center text-muted font-medium italic">
@@ -220,6 +222,8 @@ export default function HistoryPage() {
           </span>
         </div>
       </div>
+
+      <StatusToast toast={toast} />
     </main>
   );
 }

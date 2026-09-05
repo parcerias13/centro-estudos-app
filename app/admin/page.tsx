@@ -352,7 +352,7 @@ export default function DashboardAdmin() {
                         {!diaContratado && <span className="bg-danger text-on-danger text-[8px] px-2 py-0.5 rounded-full font-black uppercase">Fora de Horário</span>}
                       </div>
                       <p className="text-xs text-muted font-medium">
-                        {aluno?.pacotes?.nome || 'Sem Pacote'} • {p.subject_name || 'Sessão Livre'} • <span className="text-white/70">{nomeSala}</span>
+                        {p.subject_name || 'Sessão Livre'} • <span className="text-white/70">{nomeSala}</span>
                       </p>
                     </div>
                   </div>
