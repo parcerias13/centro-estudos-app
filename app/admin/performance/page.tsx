@@ -3,23 +3,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { 
-  ArrowLeft, Activity, RefreshCw, Layout, PieChart, Loader2, DollarSign, Clock, Award, BarChart3
-} from 'lucide-react';
+import { ArrowLeft, Activity, RefreshCw, Loader2 } from 'lucide-react';
 
 export default function AdminStats() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>({
-    monthlyHours: 0,
     accumulatedRevenue: 0,
     projectedRevenue: 0,
-    topStudent: { name: '-', hours: 0 },
-    subjectDistribution: [],
-    daysDistribution: [], 
-    topStudentsList: [],
-    roomOccupancy: []
+    totalDespesasMes: 0,
+    lucroLiquido: 0,
+    margemPct: 0,
+    despesasFixas: 0,
+    despesasVariaveis: 0,
   });
-
 
   const processStats = useCallback(async () => {
     setLoading(true);
@@ -29,84 +25,45 @@ export default function AdminStats() {
       const totalDiasMes = new Date(agora.getFullYear(), agora.getMonth() + 1, 0).getDate();
       const diaAtual = agora.getDate();
 
+      // Janela de despesas: mesmas strings YYYY-MM-DD usadas na página de Gestão
+      const inicioMesStr = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-01`;
+      const fimMesStr = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(totalDiasMes).padStart(2, '0')}`;
+
       const [
-        { data: entries },
-        { data: activeSessions },
         { data: extras },
-        { data: alunos }, // NOVO: Para as mensalidades fixas
-        { data: salas }
+        { data: alunos },
+        { data: despesas },
       ] = await Promise.all([
-        supabase.from('diario_bordo').select('*, alunos!aluno_id(nome)').gte('entrada', primeiroDiaMes),
-        supabase.from('diario_bordo').select('sala_id').is('saida', null),
         supabase.from('consumos_diarios').select('preco_aplicado').gte('data_consumo', primeiroDiaMes.split('T')[0]),
         supabase.from('alunos').select('mensalidade_base'),
-        supabase.from('salas').select('*')
+        supabase.from('despesas').select('valor, tipo').gte('data', inicioMesStr).lte('data', fimMesStr),
       ]);
 
-      // --- 1. LÓGICA PEDAGÓGICA (MANTÉM TUDO O QUE TINHAS) ---
-      let totalMs = 0;
-      const studentMap: Record<string, { name: string, ms: number }> = {};
-      const subjectMap: Record<string, number> = {};
-      const dayMap: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-
-      entries?.forEach(entry => {
-        const studentName = entry.alunos?.nome;
-        if (!studentName) return;
-
-        const start = new Date(entry.entrada).getTime();
-        const end = entry.saida ? new Date(entry.saida).getTime() : agora.getTime();
-        const duration = end - start;
-        if (duration > 0) totalMs += duration;
-
-        const idAl = entry.aluno_id;
-        if (!studentMap[idAl]) studentMap[idAl] = { name: studentName, ms: 0 };
-        studentMap[idAl].ms += duration;
-
-        subjectMap[entry.subject_name || 'Estudo Autónomo'] = (subjectMap[entry.subject_name || 'Estudo Autónomo'] || 0) + 1;
-        const dayOfWeek = new Date(entry.entrada).getDay();
-        if (dayMap.hasOwnProperty(dayOfWeek)) dayMap[dayOfWeek] += 1;
-      });
-
-      // --- 2. NOVA LÓGICA FINANCEIRA (SIMPLIFICADA) ---
+      // --- RECEITA (lógica intocada) ---
       const totalMensalidadesBase = alunos?.reduce((acc, curr) => acc + (Number(curr.mensalidade_base) || 0), 0) || 0;
       const totalExtrasMes = extras?.reduce((acc, curr) => acc + (Number(curr.preco_aplicado) || 0), 0) || 0;
-      
       const accumulatedRevenue = totalMensalidadesBase + totalExtrasMes;
-      
-      // Projeção: Mensalidades (Fixas) + Média de Extras projetada para o fim do mês
       const mediaExtrasDiaria = totalExtrasMes / diaAtual;
       const projectedRevenue = totalMensalidadesBase + (mediaExtrasDiaria * totalDiasMes);
 
-      // --- 3. OCUPAÇÃO E RANKINGS (MANTÉM TUDO) ---
-      const roomStats = salas?.map(sala => {
-        const presentes = activeSessions?.filter(s => String(s.sala_id) === String(sala.id)).length || 0;
-        return {
-          nome: sala.nome,
-          presentes,
-          percentagem: (presentes / (sala.capacidade || 10)) * 100
-        };
-      }) || [];
+      // --- DESPESAS DO MÊS ---
+      const totalDespesasMes = despesas?.reduce((acc, d) => acc + (Number(d.valor) || 0), 0) || 0;
+      const despesasFixas = despesas?.filter(d => d.tipo === 'fixa').reduce((acc, d) => acc + (Number(d.valor) || 0), 0) || 0;
+      const despesasVariaveis = despesas?.filter(d => d.tipo === 'variavel').reduce((acc, d) => acc + (Number(d.valor) || 0), 0) || 0;
 
-      const sortedStudents = Object.values(studentMap).sort((a, b) => b.ms - a.ms);
+      // --- LUCRO ---
+      const lucroLiquido = accumulatedRevenue - totalDespesasMes;
+      const margemPct = accumulatedRevenue > 0 ? (lucroLiquido / accumulatedRevenue) * 100 : 0;
 
       setStats({
-        monthlyHours: Math.round(totalMs / (1000 * 60 * 60)),
         accumulatedRevenue,
         projectedRevenue,
-        topStudent: { 
-          name: sortedStudents[0]?.name || '-', 
-          hours: Math.round((sortedStudents[0]?.ms || 0) / (1000 * 60 * 60)) 
-        },
-        subjectDistribution: Object.entries(subjectMap).sort((a, b) => b[1] - a[1]).slice(0, 5),
-        daysDistribution: [1, 2, 3, 4, 5].map(d => ({
-          day: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'][d - 1],
-          value: dayMap[d],
-          percent: (dayMap[d] / Math.max(...Object.values(dayMap), 1)) * 100
-        })),
-        topStudentsList: sortedStudents.slice(0, 5),
-        roomOccupancy: roomStats
+        totalDespesasMes,
+        lucroLiquido,
+        margemPct,
+        despesasFixas,
+        despesasVariaveis,
       });
-
     } catch (err) {
       console.error("Erro BI:", err);
     } finally {
@@ -117,6 +74,12 @@ export default function AdminStats() {
   useEffect(() => { processStats(); }, [processStats]);
 
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={32} /></div>;
+
+  const lucroPositivo = stats.lucroLiquido >= 0;
+  const integridadeOk = Math.abs((stats.despesasFixas + stats.despesasVariaveis) - stats.totalDespesasMes) < 0.005;
+  // Só para a barra (visual): parte de despesas vs. parte de lucro
+  const baseBarra = stats.totalDespesasMes + Math.max(stats.lucroLiquido, 0);
+  const despesasBarraPct = baseBarra > 0 ? (stats.totalDespesasMes / baseBarra) * 100 : 0;
 
   return (
     <main className="min-h-screen bg-page text-primary p-6 md:p-8 max-w-7xl mx-auto font-sans">
@@ -129,7 +92,7 @@ export default function AdminStats() {
             <h1 className="text-4xl font-black italic uppercase tracking-tighter flex items-center gap-3">
                <Activity size={32} className="text-accent" /> Performance BI
             </h1>
-            <p className="text-muted text-[10px] font-black uppercase tracking-widest mt-1">Analytics: Estudo & Financeiro Fixo</p>
+            <p className="text-muted text-[10px] font-black uppercase tracking-widest mt-1">Analytics: Financeiro do Mês</p>
           </div>
         </div>
         <button onClick={processStats} className="p-4 bg-surface rounded-2xl border border-border text-accent hover:scale-105 transition-all">
@@ -137,71 +100,52 @@ export default function AdminStats() {
         </button>
       </header>
 
-      {/* KPI GRID - FINANCEIRO E ESTUDO */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-        <div className="bg-surface border border-border p-8 rounded-4xl shadow-2xl border-l-4 border-l-success">
-          <p className="text-success text-[10px] font-black uppercase tracking-widest mb-4">Receita Real (Mês)</p>
-          <p className="text-4xl font-black italic tracking-tighter">{stats.accumulatedRevenue.toFixed(2)}€</p>
-          <p className="text-[10px] text-muted font-bold mt-2 uppercase">Base Fixa + Extras Consumidos</p>
-        </div>
-        <div className="bg-surface border border-border p-8 rounded-4xl shadow-2xl border-l-4 border-l-accent">
-          <p className="text-accent text-[10px] font-black uppercase tracking-widest mb-4">Projeção (Forecast)</p>
-          <p className="text-4xl font-black italic tracking-tighter">{stats.projectedRevenue.toFixed(0)}€</p>
-          <p className="text-[10px] text-muted font-bold mt-2 uppercase">Base + Tendência de Extras</p>
-        </div>
-        <div className="bg-surface border border-border p-8 rounded-4xl shadow-2xl">
-          <p className="text-purple-500 text-[10px] font-black uppercase tracking-widest mb-4">Horas de Estudo</p>
-          <p className="text-4xl font-black italic tracking-tighter">{stats.monthlyHours}H</p>
-          <p className="text-[10px] text-muted font-bold mt-2 uppercase">Total Acumulado</p>
-        </div>
-        <div className="bg-surface border border-border p-8 rounded-4xl shadow-2xl">
-          <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest mb-4">Melhor do Mês</p>
-          <p className="text-xl font-black truncate italic uppercase">{stats.topStudent.name}</p>
-          <p className="text-[10px] text-muted font-bold mt-2 uppercase">{stats.topStudent.hours}H Focadas</p>
-        </div>
-      </div>
+      {/* PAINEL FINANCEIRO DO MÊS */}
+      <div className={`bg-surface border border-border rounded-3xl border-l-[3px] p-12 ${lucroPositivo ? 'border-l-success' : 'border-l-danger'}`}>
 
-      <div className="grid lg:grid-cols-3 gap-8">
-        {/* GRÁFICO DE SALAS - MANTIDO */}
-        <div className="lg:col-span-2 bg-surface border border-border p-8 rounded-4xl shadow-2xl">
-          <h3 className="font-black text-xs uppercase text-secondary tracking-widest mb-12 flex items-center gap-2">
-              <Layout size={18} className="text-accent" /> Ocupação por Sala (LIVE)
-          </h3>
-          <div className="h-80 flex items-end justify-between gap-10 px-4 border-b border-border/50 pb-6 overflow-x-auto">
-            {stats.roomOccupancy.map((sala: any) => (
-              <div key={sala.nome} className="flex flex-col items-center justify-end h-full min-w-20 group relative">
-                <div className="absolute -top-10 bg-accent text-on-accent text-[10px] font-black px-3 py-1 rounded shadow-xl">
-                    {sala.presentes} Alunos
-                </div>
-                <div className="relative w-14 h-full flex items-end bg-raised/30 rounded-t-2xl overflow-hidden border border-white/5">
-                  <div 
-                    className={`w-full transition-all duration-700 ${sala.percentagem > 90 ? 'bg-danger' : 'bg-accent'}`}
-                    style={{ height: `${Math.max(sala.percentagem, 3)}%` }}
-                  ></div>
-                </div>
-                <p className="text-[10px] text-muted mt-6 font-black uppercase tracking-tighter text-center">{sala.nome}</p>
-              </div>
-            ))}
+        {/* 1. FILA DO TOPO */}
+        <div className="flex justify-between items-start gap-8">
+          <div>
+            <p className="text-sm font-black uppercase tracking-widest text-secondary">Lucro Líquido do Mês</p>
+            <p className={`text-5xl font-black tabular-nums tracking-tighter mt-2 ${lucroPositivo ? 'text-success' : 'text-danger'}`}>{stats.lucroLiquido.toFixed(2)}€</p>
+            <p className="text-secondary mt-2">
+              Margem de <span className={`font-bold ${lucroPositivo ? 'text-success' : 'text-danger'}`}>{stats.margemPct.toFixed(1)}%</span>
+            </p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted">Projeção (Forecast)</p>
+            <p className="text-xl font-black text-primary mt-1">{stats.projectedRevenue.toFixed(0)}€</p>
           </div>
         </div>
 
-        {/* TOP DISCIPLINAS E DISTRIBUIÇÃO - MANTIDO */}
-        <div className="bg-surface border border-border p-8 rounded-4xl shadow-2xl">
-          <h3 className="font-black text-xs uppercase text-secondary tracking-widest mb-8 flex items-center gap-2">
-            <PieChart size={18} className="text-orange-500" /> Foco por Disciplina
-          </h3>
-          <div className="space-y-6">
-            {stats.subjectDistribution.map(([name, count]: any, index: number) => (
-              <div key={index} className="space-y-2">
-                <div className="flex justify-between text-[10px] font-black uppercase">
-                    <span className="text-secondary">{name}</span>
-                    <span className="text-muted">{count} sessões</span>
-                </div>
-                <div className="w-full h-1.5 bg-page rounded-full overflow-hidden">
-                    <div className="h-full bg-orange-500" style={{ width: `${(count / (stats.subjectDistribution[0][1] || 1)) * 100}%` }}></div>
-                </div>
-              </div>
-            ))}
+        {/* 2. FILA FINA SOBRE A BARRA */}
+        <div className="flex justify-between text-sm text-secondary mt-10">
+          <span>Despesas <span className="font-bold">{stats.totalDespesasMes.toFixed(2)}€</span></span>
+          <span>Lucro <span className="font-bold">{stats.lucroLiquido.toFixed(2)}€</span></span>
+        </div>
+
+        {/* 3. BARRA FINA */}
+        <div className="w-full h-2.5 rounded-full overflow-hidden bg-page mt-2 flex">
+          <div className="h-full bg-warning" style={{ width: `${despesasBarraPct}%` }} />
+          <div className="h-full bg-success" style={{ width: `${100 - despesasBarraPct}%` }} />
+        </div>
+
+        {/* 4. LEGENDA SOB A BARRA */}
+        <p className="text-[11px] text-muted uppercase mt-2">Receita Real — {stats.accumulatedRevenue.toFixed(2)}€</p>
+
+        {/* 5. DIVISÓRIA + 2 BLOCOS */}
+        <div className="border-t border-border mt-10 pt-7 grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Receita Real</p>
+            <p className="text-2xl font-black text-primary tracking-tighter">{stats.accumulatedRevenue.toFixed(2)}€</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Despesas Totais</p>
+            <p className="text-2xl font-black text-primary tracking-tighter">{stats.totalDespesasMes.toFixed(2)}€</p>
+            <p className="text-sm font-bold text-muted mt-2">Fixas: {stats.despesasFixas.toFixed(2)}€ · Variáveis: {stats.despesasVariaveis.toFixed(2)}€</p>
+            {!integridadeOk && (
+              <p className="text-xs text-danger font-bold uppercase mt-1">Soma não bate com o total</p>
+            )}
           </div>
         </div>
       </div>
