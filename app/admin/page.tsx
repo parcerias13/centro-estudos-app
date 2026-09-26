@@ -8,7 +8,7 @@ import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCi
 
 
 export default function DashboardAdmin() {
-  const { toast, showError } = useStatusToast();
+  const { toast, showError, showSuccess } = useStatusToast();
   const [presencas, setPresencas] = useState<any[]>([]);
   const [proximosTestes, setProximosTestes] = useState<any[]>([]);
   const [salas, setSalas] = useState<any[]>([]);
@@ -44,9 +44,15 @@ export default function DashboardAdmin() {
   // --- ESTADOS PARA AGENDAMENTO DE TESTES ---
   const [isExamModalOpen, setIsExamModalOpen] = useState(false);
   const [examSearchQuery, setExamSearchQuery] = useState('');
-  const [selectedExamStudent, setSelectedExamStudent] = useState<any>(null);
+  const [selectedExamStudents, setSelectedExamStudents] = useState<any[]>([]);
+  const [examAnoInteiro, setExamAnoInteiro] = useState('');
+  // null = ainda não verificado (não filtra, para não esconder tudo por engano
+  // se a verificação falhar); depois de carregado, contém só os aluno_ids que
+  // têm conta de Auth (só esses podem ser referenciados em exams.aluno_id).
+  const [examAlunosComConta, setExamAlunosComConta] = useState<Set<string> | null>(null);
   const [examDate, setExamDate] = useState('');
   const [examSubject, setExamSubject] = useState('');
+  const [examTopics, setExamTopics] = useState('');
 
   // 1. FUNÇÃO DE BUSCA
   const isFetchingRef = useRef(false);
@@ -123,6 +129,45 @@ export default function DashboardAdmin() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [supabase, fetchDados]);
+
+  // Verifica, ao abrir o modal de Agendar Teste, quais alunos ativos têm conta
+  // de Auth associada — só esses podem ser selecionados (exams.aluno_id exige).
+  useEffect(() => {
+    if (!isExamModalOpen) return;
+    (async () => {
+      const ids = alunos.filter((a) => a.ativo !== false).map((a) => a.id);
+      if (ids.length === 0) {
+        setExamAlunosComConta(new Set());
+        return;
+      }
+      try {
+        const res = await fetch('/api/admin/verificar-alunos-auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alunoIds: ids }),
+        });
+        const body = await res.json();
+        if (res.ok) {
+          setExamAlunosComConta(new Set(body.comConta));
+        } else {
+          showError('Não foi possível verificar contas de acesso: ' + (body.error || 'erro desconhecido'));
+        }
+      } catch (err: any) {
+        showError('Erro ao verificar contas de acesso: ' + err.message);
+      }
+    })();
+  }, [isExamModalOpen, alunos]);
+
+  // Rede de segurança: enquanto a verificação acima ainda não respondeu,
+  // examAlunosComConta fica a null e a lista/atalho não filtram nada (falha
+  // aberta, de propósito, para um erro de rede não esconder tudo). Um clique
+  // nessa janela pode ter selecionado alguém sem conta antes do filtro chegar
+  // — assim que a resposta real chega, remove da seleção quem não pertencer
+  // ao conjunto confirmado, independentemente de como lá entrou.
+  useEffect(() => {
+    if (examAlunosComConta === null) return;
+    setSelectedExamStudents((prev) => prev.filter((a) => examAlunosComConta.has(a.id)));
+  }, [examAlunosComConta]);
 
   // 3. HANDLERS
   const handleMassCheckout = async () => {
@@ -221,8 +266,45 @@ export default function DashboardAdmin() {
     fetchDados();
   };
 
+  const toggleExamStudent = (aluno: any) => {
+    setSelectedExamStudents((prev) =>
+      prev.some((s) => s.id === aluno.id) ? prev.filter((s) => s.id !== aluno.id) : [...prev, aluno]
+    );
+  };
+
+  const handleAdicionarAnoInteiro = () => {
+    // Verificação ainda a decorrer: não deixa adicionar ninguém às cegas
+    // (o botão já fica desativado na UI, isto é defesa a mais).
+    if (!examAnoInteiro || examAlunosComConta === null) return;
+    const anoNum = parseInt(examAnoInteiro);
+    const doAno = alunos.filter((a) =>
+      a.ano_escolar === anoNum &&
+      a.ativo !== false &&
+      examAlunosComConta.has(a.id)
+    );
+    setSelectedExamStudents((prev) => {
+      const idsExistentes = new Set(prev.map((s) => s.id));
+      const novos = doAno.filter((a) => !idsExistentes.has(a.id));
+      return [...prev, ...novos];
+    });
+  };
+
+  const fecharModalExame = () => {
+    setIsExamModalOpen(false);
+    setSelectedExamStudents([]);
+    setExamSearchQuery('');
+    setExamAnoInteiro('');
+    setExamSubject('');
+    setExamTopics('');
+    setExamDate('');
+    setExamAlunosComConta(null);
+  };
+
   const handleCreateExam = async () => {
-    if (!selectedExamStudent || !examSubject || !examDate) return alert("Preenche tudo!");
+    if (selectedExamStudents.length === 0 || !examSubject || !examDate) {
+      showError('Escolhe pelo menos um aluno, a disciplina e a data.');
+      return;
+    }
     const { data: { user } } = await supabase.auth.getUser();
     const centro_id = user?.app_metadata?.centro_id;
     if (!centro_id) {
@@ -231,21 +313,79 @@ export default function DashboardAdmin() {
     }
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.from('exams').insert({
-        aluno_id: selectedExamStudent.id,
-        subject_name: examSubject,
-        date: examDate,
-        centro_id,
-      });
-      if (!error) {
-        setIsExamModalOpen(false);
-        setSelectedExamStudent(null);
-        setExamSubject('');
-        setExamDate('');
-        fetchDados();
-      } else {
-        alert("Erro: " + error.message);
+      const idsSelecionados = selectedExamStudents.map((a) => a.id);
+      const topicsFinal = examTopics.trim() || null;
+
+      // Testes já existentes para os mesmos alunos, disciplina e data: atualiza
+      // em vez de duplicar. Matéria conta como valor a substituir, não como
+      // parte da chave — só disciplina + dia decidem se é "o mesmo teste".
+      const { data: existentes, error: errExistentes } = await supabase
+        .from('exams')
+        .select('id, aluno_id')
+        .eq('centro_id', centro_id)
+        .eq('subject_name', examSubject)
+        .eq('date', examDate)
+        .in('aluno_id', idsSelecionados);
+
+      if (errExistentes) {
+        showError('Erro ao verificar testes existentes: ' + errExistentes.message);
+        return;
       }
+
+      const existenteIdPorAluno = new Map((existentes || []).map((e) => [e.aluno_id, e.id]));
+
+      // Cada aluno é uma operação independente (insert ou update). Isto é
+      // deliberado: um aluno sem conta de Auth (exams.aluno_id exige uma —
+      // ver verificar-alunos-auth) nunca deve derrubar o lote inteiro, só a
+      // linha dele falha. O picker (Fase 2) já os esconde, mas isto continua
+      // a proteger contra qualquer falha individual imprevista.
+      const resultados = await Promise.allSettled(
+        selectedExamStudents.map(async (aluno) => {
+          const existenteId = existenteIdPorAluno.get(aluno.id);
+          if (existenteId) {
+            const { error } = await supabase
+              .from('exams')
+              .update({ subject_name: examSubject, topics: topicsFinal, date: examDate })
+              .eq('id', existenteId);
+            if (error) throw new Error(error.message);
+            return 'atualizado' as const;
+          }
+          const { error } = await supabase.from('exams').insert({
+            aluno_id: aluno.id,
+            subject_name: examSubject,
+            topics: topicsFinal,
+            date: examDate,
+            centro_id,
+          });
+          if (error) throw new Error(error.message);
+          return 'criado' as const;
+        })
+      );
+
+      let criados = 0;
+      let atualizados = 0;
+      const falhas: string[] = [];
+      resultados.forEach((resultado, i) => {
+        if (resultado.status === 'fulfilled') {
+          if (resultado.value === 'criado') criados++;
+          else atualizados++;
+        } else {
+          falhas.push(selectedExamStudents[i].nome);
+        }
+      });
+
+      const partesSucesso: string[] = [];
+      if (criados > 0) partesSucesso.push(`${criados} novo(s)`);
+      if (atualizados > 0) partesSucesso.push(`${atualizados} atualizado(s)`);
+
+      if (falhas.length === 0) {
+        showSuccess(`Teste agendado: ${partesSucesso.join(', ')}.`);
+        fecharModalExame();
+      } else {
+        const prefixo = partesSucesso.length > 0 ? `${partesSucesso.join(', ')}; ` : '';
+        showError(`${prefixo}${falhas.length} falharam (${falhas.join(', ')}) — provavelmente sem conta de acesso associada.`);
+      }
+      fetchDados();
     } finally {
       setIsSubmitting(false);
     }
@@ -262,7 +402,11 @@ export default function DashboardAdmin() {
   const alunosFiltrados = alunos.filter(a => a.nome.toLowerCase().includes(searchQuery.toLowerCase()) && anoPermitido(a.ano_escolar));
   const alunosDoDia = alunosFiltrados.filter(a => a.aluno_horarios?.some((h: any) => h.dia_semana === diaSemanaAtual));
   const outrosAlunos = alunosFiltrados.filter(a => !a.aluno_horarios?.some((h: any) => h.dia_semana === diaSemanaAtual));
-  const alunosFiltradosExame = alunos.filter(a => a.nome.toLowerCase().includes(examSearchQuery.toLowerCase()));
+  const alunosFiltradosExame = alunos.filter(a =>
+    a.ativo !== false &&
+    a.nome.toLowerCase().includes(examSearchQuery.toLowerCase()) &&
+    (examAlunosComConta === null || examAlunosComConta.has(a.id))
+  );
 
   const renderAlunoCheckinRow = (aluno: any) => {
     const isValidUrl = aluno.avatar_url && (aluno.avatar_url.startsWith('http://') || aluno.avatar_url.startsWith('https://'));
@@ -498,37 +642,87 @@ export default function DashboardAdmin() {
 
       {isExamModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-page/80 backdrop-blur-sm">
-          <div className="bg-surface border border-border w-full max-w-lg rounded-[2.5rem] shadow-3xl p-6 animate-in zoom-in duration-200">
-            <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-black uppercase italic">Agendar Teste</h3><button onClick={() => { setIsExamModalOpen(false); setSelectedExamStudent(null); }}><X size={20}/></button></div>
-            {!selectedExamStudent ? (
-                <>
-                  <div className="relative mb-4"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={20} /><input autoFocus placeholder="Qual o aluno?" value={examSearchQuery} onChange={(e) => setExamSearchQuery(e.target.value)} className="w-full bg-page border border-border p-4 pl-12 rounded-2xl outline-none focus:border-warning font-bold" /></div>
-                  <div className="max-h-60 overflow-y-auto space-y-2">{alunosFiltradosExame.map(aluno => (<button key={aluno.id} onClick={() => setSelectedExamStudent(aluno)} className="w-full p-4 bg-page/50 border border-border rounded-2xl flex items-center gap-3 hover:border-warning transition-all group"><div className="w-10 h-10 rounded-xl bg-raised flex items-center justify-center font-black text-warning">{(aluno.avatar_url && (aluno.avatar_url.startsWith('http://') || aluno.avatar_url.startsWith('https://'))) ? <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover rounded-xl" /> : aluno.nome.charAt(0)}</div><p className="font-bold text-sm">{aluno.nome}</p></button>))}</div>
-                </>
-            ) : (
-                <div className="space-y-6">
-                  <div className="flex items-center gap-4 bg-warning-bg p-4 rounded-2xl border border-warning/20">
-                    <div><p className="text-lg font-black">{selectedExamStudent.nome}</p></div>
-                    <button onClick={() => setSelectedExamStudent(null)} className="ml-auto text-xs font-black text-muted uppercase">Trocar</button>
-                  </div>
-                  <div className="space-y-4">
-                    <select value={examSubject} onChange={(e) => setExamSubject(e.target.value)} className="w-full bg-page border border-border p-4 rounded-2xl outline-none font-bold text-primary">
-                      <option value="">Disciplina...</option>
-                      {subjects.map(sub => (<option key={sub.id} value={sub.name}>{sub.name}</option>))}
-                    </select>
-                    <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={18} />
-                      <input 
-                        type="date" 
-                        value={examDate} 
-                        onChange={(e) => setExamDate(e.target.value)} 
-                        className="w-full bg-page border border-border p-4 pl-12 rounded-2xl outline-none font-bold text-primary" 
-                      />
-                    </div>
-                  </div>
-                  <button onClick={handleCreateExam} disabled={isSubmitting || !examDate || !examSubject} className="w-full bg-accent hover:bg-accent-hover text-on-accent p-5 rounded-2xl font-black">CONFIRMAR AGENDAMENTO</button>
-                </div>
-            )}
+          <div className="bg-surface border border-border w-full max-w-lg rounded-[2.5rem] shadow-3xl p-6 animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-black uppercase italic">Agendar Teste</h3><button onClick={fecharModalExame}><X size={20}/></button></div>
+
+            <div className="space-y-4">
+              {/* ATALHO: ADICIONAR ANO ESCOLAR INTEIRO */}
+              <div className="flex items-center gap-2">
+                <select value={examAnoInteiro} onChange={(e) => setExamAnoInteiro(e.target.value)} className="flex-1 bg-page border border-border p-3 rounded-xl text-sm font-bold outline-none text-primary">
+                  <option value="">Ano escolar...</option>
+                  {[...Array(12)].map((_, i) => <option key={i + 1} value={i + 1}>{i + 1}º Ano</option>)}
+                </select>
+                <button type="button" onClick={handleAdicionarAnoInteiro} disabled={!examAnoInteiro || examAlunosComConta === null} className="px-4 py-3 bg-warning-bg text-warning font-black text-[11px] uppercase tracking-widest rounded-xl disabled:opacity-40 whitespace-nowrap">
+                  Adicionar ano inteiro
+                </button>
+              </div>
+
+              {/* PESQUISA + CHECKLIST DE ALUNOS */}
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={20} />
+                <input autoFocus placeholder="Pesquisar aluno..." value={examSearchQuery} onChange={(e) => setExamSearchQuery(e.target.value)} className="w-full bg-page border border-border p-4 pl-12 rounded-2xl outline-none focus:border-warning font-bold" />
+              </div>
+              <div className="max-h-48 overflow-y-auto space-y-2 border border-border rounded-2xl p-2">
+                {examAlunosComConta === null ? (
+                  <p className="text-xs text-muted italic text-center py-4">A verificar contas de acesso...</p>
+                ) : alunosFiltradosExame.length === 0 ? (
+                  <p className="text-xs text-muted italic text-center py-4">Nenhum aluno encontrado.</p>
+                ) : (
+                  alunosFiltradosExame.map((aluno) => {
+                    const selecionado = selectedExamStudents.some((s) => s.id === aluno.id);
+                    return (
+                      <button
+                        key={aluno.id}
+                        type="button"
+                        onClick={() => toggleExamStudent(aluno)}
+                        className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all ${selecionado ? 'bg-warning-bg border border-warning/40' : 'bg-page/50 border border-transparent hover:border-warning/30'}`}
+                      >
+                        <div className="w-9 h-9 rounded-xl bg-raised flex items-center justify-center font-black text-warning text-sm shrink-0">
+                          {(aluno.avatar_url && (aluno.avatar_url.startsWith('http://') || aluno.avatar_url.startsWith('https://'))) ? <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover rounded-xl" /> : aluno.nome.charAt(0)}
+                        </div>
+                        <p className="font-bold text-sm text-left flex-1">{aluno.nome}</p>
+                        <span className="text-[10px] font-black text-muted shrink-0">{aluno.ano_escolar}º</span>
+                        {selecionado && <CheckCircle2 size={16} className="text-warning shrink-0" />}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              {selectedExamStudents.length > 0 && (
+                <p className="text-xs font-black text-warning uppercase">{selectedExamStudents.length} aluno(s) selecionado(s)</p>
+              )}
+
+              <select value={examSubject} onChange={(e) => setExamSubject(e.target.value)} className="w-full bg-page border border-border p-4 rounded-2xl outline-none font-bold text-primary">
+                <option value="">Disciplina...</option>
+                {subjects.map(sub => (<option key={sub.id} value={sub.name}>{sub.name}</option>))}
+              </select>
+
+              <textarea
+                value={examTopics}
+                onChange={(e) => setExamTopics(e.target.value)}
+                placeholder="Matéria (opcional)"
+                rows={2}
+                className="w-full bg-page border border-border p-4 rounded-2xl outline-none font-bold text-primary resize-none"
+              />
+
+              <div className="relative">
+                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={18} />
+                <input
+                  type="date"
+                  value={examDate}
+                  onChange={(e) => setExamDate(e.target.value)}
+                  className="w-full bg-page border border-border p-4 pl-12 rounded-2xl outline-none font-bold text-primary"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleCreateExam}
+              disabled={isSubmitting || selectedExamStudents.length === 0 || !examDate || !examSubject}
+              className="w-full mt-6 bg-accent hover:bg-accent-hover text-on-accent p-5 rounded-2xl font-black disabled:opacity-50"
+            >
+              CONFIRMAR AGENDAMENTO{selectedExamStudents.length > 1 ? ` (${selectedExamStudents.length} alunos)` : ''}
+            </button>
           </div>
         </div>
       )}
