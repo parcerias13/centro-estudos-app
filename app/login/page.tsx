@@ -3,9 +3,17 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
 
+// Mesmos três roles que o middleware reconhece (middleware.ts). Se o
+// app_metadata.role da conta não for nenhum destes, o middleware devolve
+// qualquer /admin/* para /login em silêncio — validamos aqui antes de
+// tentar navegar, para não deixar o botão preso a girar sem explicação.
+const ROLES_RECONHECIDOS = ['admin', 'professor', 'secretaria'];
+
 export default function LoginPage() {
+  const { toast, showError } = useStatusToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,14 +45,21 @@ export default function LoginPage() {
       .maybeSingle();
 
     if (staffMember) {
+      const role = user?.app_metadata?.role?.toLowerCase();
+      if (!role || !ROLES_RECONHECIDOS.includes(role)) {
+        showError('Esta conta não tem permissões configuradas corretamente. Contacta o administrador.');
+        setLoading(false);
+        return;
+      }
       // Se encontrou na tabela staff -> Redireciona para o Backoffice
       router.push('/admin');
     } else {
       // Se não encontrou -> Assume que é Aluno
       router.push('/');
     }
-    
+
     router.refresh();
+    setLoading(false);
   };
 
   return (
@@ -130,6 +145,8 @@ export default function LoginPage() {
           Problemas no acesso? Contacta a Secretaria.
         </p>
       </div>
+
+      <StatusToast toast={toast} />
     </main>
   );
 }
