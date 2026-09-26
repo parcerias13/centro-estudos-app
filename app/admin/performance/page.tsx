@@ -1,13 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { garantirMesGerado } from '@/lib/mensalidades';
-import { ArrowLeft, Activity, RefreshCw, Loader2 } from 'lucide-react';
+import { ArrowLeft, Activity, RefreshCw, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { startOfMonth, addMonths, format } from 'date-fns';
+import { pt } from 'date-fns/locale';
 
 export default function AdminStats() {
   const [loading, setLoading] = useState(true);
+  const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
   const [stats, setStats] = useState<any>({
     accumulatedRevenue: 0,
     projectedRevenue: 0,
@@ -17,21 +20,37 @@ export default function AdminStats() {
     despesasFixas: 0,
     despesasVariaveis: 0,
     totalExplicacoesMes: 0,
+    mensalidadesRegistadas: true,
   });
 
+  const ano = currentMonth.getFullYear();
+  const mes = currentMonth.getMonth() + 1;
+
+  const hoje = new Date();
+  const anoRealAtual = hoje.getFullYear();
+  const mesRealAtual = hoje.getMonth() + 1;
+  const isMesAtual = ano === anoRealAtual && mes === mesRealAtual;
+
+  // Guarda contra chamadas sobrepostas (mesmo padrão de isFetchingRef/fetchPendingRef
+  // já usado em Pagamentos/Explicações): esta página passou a ter navegação por mês,
+  // e cliques rápidos nas setas disparariam processStats várias vezes em simultâneo.
+  const isFetchingRef = useRef(false);
+  const fetchPendingRef = useRef(false);
+
   const processStats = useCallback(async () => {
+    if (isFetchingRef.current) {
+      fetchPendingRef.current = true;
+      return;
+    }
+    isFetchingRef.current = true;
     setLoading(true);
     try {
-      const agora = new Date();
-      const anoAtual = agora.getFullYear();
-      const mesAtual = agora.getMonth() + 1;
-      const primeiroDiaMes = new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString();
-      const totalDiasMes = new Date(agora.getFullYear(), agora.getMonth() + 1, 0).getDate();
-      const diaAtual = agora.getDate();
+      const diaAtual = hoje.getDate();
+      const totalDiasMes = new Date(ano, mes, 0).getDate();
 
       // Janela de despesas: mesmas strings YYYY-MM-DD usadas na página de Gestão
-      const inicioMesStr = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-01`;
-      const fimMesStr = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(totalDiasMes).padStart(2, '0')}`;
+      const inicioMesStr = `${ano}-${String(mes).padStart(2, '0')}-01`;
+      const fimMesStr = `${ano}-${String(mes).padStart(2, '0')}-${String(totalDiasMes).padStart(2, '0')}`;
 
       const { data: { user } } = await supabase.auth.getUser();
       const centro_id = user?.app_metadata?.centro_id;
@@ -43,11 +62,14 @@ export default function AdminStats() {
         { data: despesas },
         { data: explicacoesMes },
       ] = await Promise.all([
-        supabase.from('consumos_diarios').select('preco_aplicado').gte('data_consumo', primeiroDiaMes.split('T')[0]),
-        // Garante as linhas do mês corrente antes de somar — mesma função partilhada
-        // usada em /admin/pagamentos, para nunca mostrar 0€ só por ninguém ter aberto
-        // essa página ainda este mês.
-        garantirMesGerado(centro_id, anoAtual, mesAtual),
+        supabase.from('consumos_diarios').select('preco_aplicado').gte('data_consumo', inicioMesStr).lte('data_consumo', fimMesStr),
+        // Só gera linhas em falta para o mês corrente real (mesma função partilhada
+        // usada em /admin/pagamentos). Para qualquer outro mês, gerar seria fabricar
+        // um "histórico" com a mensalidade_base de HOJE, que nunca existiu de facto —
+        // faz-se só leitura direta, sem escrever nada.
+        isMesAtual
+          ? garantirMesGerado(centro_id, ano, mes)
+          : supabase.from('mensalidades').select('valor_esperado, valor_pago, pago').eq('ano', ano).eq('mes', mes).then((r) => r.data || []),
         supabase.from('despesas').select('valor, tipo').gte('data', inicioMesStr).lte('data', fimMesStr),
         // Explicações: só existem quando alguém as cria — ao contrário das mensalidades,
         // não há estado vazio a proteger, por isso soma-se direto, sem garantirMesGerado.
@@ -57,12 +79,17 @@ export default function AdminStats() {
       // --- RECEITA ---
       // Mensalidades: passou a vir da tabela `mensalidades` (estado real de pagamento por aluno/mês)
       // em vez de assumir que a mensalidade_base de todos os alunos entra sempre.
+      const mensalidadesRegistadas = (mensalidadesMes?.length || 0) > 0;
       const totalEsperadoMensalidades = mensalidadesMes?.reduce((acc, m) => acc + (Number(m.valor_esperado) || 0), 0) || 0;
       const totalPagoMensalidades = mensalidadesMes?.reduce((acc, m) => acc + (m.pago ? (Number(m.valor_pago) || 0) : 0), 0) || 0;
       const totalExtrasMes = extras?.reduce((acc, curr) => acc + (Number(curr.preco_aplicado) || 0), 0) || 0;
       const accumulatedRevenue = totalPagoMensalidades + totalExtrasMes;
+      // Mês já terminado: nada a extrapolar, a Projeção iguala a Receita Real.
+      // Só o mês corrente continua a projetar a partir da média diária de extras.
       const mediaExtrasDiaria = totalExtrasMes / diaAtual;
-      const projectedRevenue = totalEsperadoMensalidades + (mediaExtrasDiaria * totalDiasMes);
+      const projectedRevenue = isMesAtual
+        ? totalEsperadoMensalidades + (mediaExtrasDiaria * totalDiasMes)
+        : accumulatedRevenue;
 
       // --- DESPESAS DO MÊS ---
       // Explicações pagas a professores entram no total de despesas (dinheiro real a
@@ -87,19 +114,27 @@ export default function AdminStats() {
         despesasFixas,
         despesasVariaveis,
         totalExplicacoesMes,
+        mensalidadesRegistadas,
       });
     } catch (err) {
       console.error("Erro BI:", err);
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
+      if (fetchPendingRef.current) {
+        fetchPendingRef.current = false;
+        processStats();
+      }
     }
-  }, [supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ano, mes, isMesAtual]);
 
   useEffect(() => { processStats(); }, [processStats]);
 
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={32} /></div>;
 
   const lucroPositivo = stats.lucroLiquido >= 0;
+  const semDadosMensalidades = !isMesAtual && !stats.mensalidadesRegistadas;
   const integridadeOk = Math.abs((stats.despesasFixas + stats.despesasVariaveis + stats.totalExplicacoesMes) - stats.totalDespesasMes) < 0.005;
   // Só para a barra (visual): parte de despesas vs. parte de lucro
   const baseBarra = stats.totalDespesasMes + Math.max(stats.lucroLiquido, 0);
@@ -119,9 +154,29 @@ export default function AdminStats() {
             <p className="text-muted text-[10px] font-black uppercase tracking-widest mt-1">Analytics: Financeiro do Mês</p>
           </div>
         </div>
-        <button onClick={processStats} className="p-4 bg-surface rounded-2xl border border-border text-accent hover:scale-105 transition-all">
-            <RefreshCw size={20} />
-        </button>
+        <div className="flex items-center gap-3">
+          {/* SELETOR DE MÊS */}
+          <div className="flex items-center bg-surface border border-border rounded-2xl overflow-hidden p-1 shadow-xl">
+            <button onClick={() => setCurrentMonth((prev) => addMonths(prev, -1))} className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all">
+              <ChevronLeft size={20} />
+            </button>
+            <div className="px-4 py-1 text-center min-w-40">
+              <p className="text-sm font-black text-primary capitalize">
+                {format(currentMonth, 'MMMM yyyy', { locale: pt })}
+              </p>
+            </div>
+            <button
+              onClick={() => setCurrentMonth((prev) => addMonths(prev, 1))}
+              disabled={isMesAtual}
+              className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+          <button onClick={processStats} className="p-4 bg-surface rounded-2xl border border-border text-accent hover:scale-105 transition-all">
+              <RefreshCw size={20} />
+          </button>
+        </div>
       </header>
 
       {/* PAINEL FINANCEIRO DO MÊS */}
@@ -137,8 +192,13 @@ export default function AdminStats() {
             </p>
           </div>
           <div className="text-right shrink-0">
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted">Projeção (Forecast)</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted">
+              {isMesAtual ? 'Projeção (Forecast)' : 'Total do Mês'}
+            </p>
             <p className="text-xl font-black text-primary mt-1">{stats.projectedRevenue.toFixed(0)}€</p>
+            {semDadosMensalidades && (
+              <p className="text-[9px] text-warning font-bold uppercase mt-1">Sem mensalidades registadas</p>
+            )}
           </div>
         </div>
 
@@ -162,6 +222,9 @@ export default function AdminStats() {
           <div>
             <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Receita Real</p>
             <p className="text-2xl font-black text-primary tracking-tighter">{stats.accumulatedRevenue.toFixed(2)}€</p>
+            {semDadosMensalidades && (
+              <p className="text-xs text-warning font-bold uppercase mt-1">Sem mensalidades registadas para este mês</p>
+            )}
           </div>
           <div>
             <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Despesas Totais</p>
