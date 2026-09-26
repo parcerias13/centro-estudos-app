@@ -36,6 +36,9 @@ export default function AdminAgendaReadonly() {
   // POPOVER (um fixo de cada vez) E MODAL DE LISTA COMPLETA DO DIA
   const [pinnedExamId, setPinnedExamId] = useState<string | null>(null);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+  // Quando não-nulo, o modal do dia mostra só estes exams (um grupo específico)
+  // em vez do dia inteiro.
+  const [grupoSelecionadoIds, setGrupoSelecionadoIds] = useState<string[] | null>(null);
 
   const fetchExams = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -109,6 +112,21 @@ export default function AdminAgendaReadonly() {
     if (count >= 4) return 'bg-danger-bg text-danger';
     if (count >= 2) return 'bg-warning-bg text-warning';
     return 'bg-accent-soft text-accent';
+  };
+
+  // Agrupa os exams de um dia por (subject_name, topics). Matéria vazia/nula
+  // nunca agrupa por coincidência — cada teste sem matéria fica sozinho no seu
+  // próprio grupo de 1 (chave única pelo próprio id), só agrupa quando a
+  // matéria tem texto preenchido e é idêntica.
+  const agruparExamsDoDia = (exams: any[]) => {
+    const grupos: Record<string, any[]> = {};
+    exams.forEach((exam) => {
+      const materia = (exam.topics || '').trim();
+      const chave = materia ? `${exam.subject_name}||${materia}` : `sem-materia-${exam.id}`;
+      if (!grupos[chave]) grupos[chave] = [];
+      grupos[chave].push(exam);
+    });
+    return Object.values(grupos);
   };
 
   const irParaHoje = () => {
@@ -186,10 +204,13 @@ export default function AdminAgendaReadonly() {
             {monthDays.map((day) => {
               const dayKey = format(day, 'yyyy-MM-dd');
               const examsDoDia = groupedExams[dayKey] || [];
+              const gruposDoDia = agruparExamsDoDia(examsDoDia);
               const foraDoMes = !isSameMonth(day, currentMonth);
               const hoje = isToday(day);
-              const visiveis = examsDoDia.slice(0, 3);
-              const excedente = examsDoDia.length - visiveis.length;
+              const visiveis = gruposDoDia.slice(0, 3);
+              const excedente = gruposDoDia.length - visiveis.length;
+              // Intensidade continua a refletir o nº real de testes do dia, não
+              // o nº de grupos — 15 alunos num só teste continua a ser dia cheio.
               const intensidade = getIntensityClasses(examsDoDia.length);
 
               return (
@@ -201,7 +222,31 @@ export default function AdminAgendaReadonly() {
                     {format(day, 'd')}
                   </span>
 
-                  {visiveis.map((exam) => {
+                  {visiveis.map((grupo) => {
+                    const primeiro = grupo[0];
+                    const isGrupo = grupo.length > 1;
+
+                    // GRUPO (>1 aluno): clica e abre logo a lista do dia, filtrada
+                    // a este grupo — sem popover intermédio.
+                    if (isGrupo) {
+                      return (
+                        <button
+                          key={primeiro.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPinnedExamId(null);
+                            setGrupoSelecionadoIds(grupo.map((g: any) => g.id));
+                            setSelectedDayKey(dayKey);
+                          }}
+                          className={`w-full text-left text-[10px] font-bold px-2 py-1 rounded-lg truncate transition-opacity ${intensidade} ${foraDoMes ? 'opacity-50' : ''}`}
+                        >
+                          {primeiro.subject_name} · {grupo.length} alunos
+                        </button>
+                      );
+                    }
+
+                    // INDIVIDUAL: comportamento inalterado (hover/pin popover).
+                    const exam = primeiro;
                     const aluno = Array.isArray(exam.alunos) ? exam.alunos[0] : exam.alunos;
                     const isPinned = pinnedExamId === exam.id;
 
@@ -232,7 +277,7 @@ export default function AdminAgendaReadonly() {
 
                   {excedente > 0 && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setPinnedExamId(null); setSelectedDayKey(dayKey); }}
+                      onClick={(e) => { e.stopPropagation(); setPinnedExamId(null); setGrupoSelecionadoIds(null); setSelectedDayKey(dayKey); }}
                       className="text-[10px] font-black text-accent hover:underline text-left px-2"
                     >
                       +{excedente} mais
@@ -245,46 +290,59 @@ export default function AdminAgendaReadonly() {
         </div>
       </div>
 
-      {/* MODAL DE LISTA COMPLETA DO DIA */}
-      {selectedDayKey && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) setSelectedDayKey(null); }}
-        >
-          <div className="bg-surface border border-border rounded-3xl w-full max-w-md max-h-[70vh] overflow-y-auto shadow-2xl">
-            <div className="flex justify-between items-center p-5 border-b border-border sticky top-0 bg-surface">
-              <div>
-                <h3 className="font-black text-lg text-primary capitalize">
-                  {format(new Date(selectedDayKey + 'T00:00:00'), "d 'de' MMMM", { locale: pt })}
-                </h3>
-                <p className="text-[10px] font-bold text-muted uppercase tracking-widest mt-0.5">
-                  {(groupedExams[selectedDayKey] || []).length} {(groupedExams[selectedDayKey] || []).length === 1 ? 'teste agendado' : 'testes agendados'}
-                </p>
+      {/* MODAL DE LISTA COMPLETA DO DIA (ou de um grupo específico dentro do dia) */}
+      {selectedDayKey && (() => {
+        const examsDoDiaCompleto = groupedExams[selectedDayKey] || [];
+        const examsParaMostrar = grupoSelecionadoIds
+          ? examsDoDiaCompleto.filter((e: any) => grupoSelecionadoIds.includes(e.id))
+          : examsDoDiaCompleto;
+        const primeiroDoGrupo = grupoSelecionadoIds ? examsParaMostrar[0] : null;
+
+        return (
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) { setSelectedDayKey(null); setGrupoSelecionadoIds(null); } }}
+          >
+            <div className="bg-surface border border-border rounded-3xl w-full max-w-md max-h-[70vh] overflow-y-auto shadow-2xl">
+              <div className="flex justify-between items-center p-5 border-b border-border sticky top-0 bg-surface">
+                <div>
+                  <h3 className="font-black text-lg text-primary capitalize">
+                    {format(new Date(selectedDayKey + 'T00:00:00'), "d 'de' MMMM", { locale: pt })}
+                  </h3>
+                  {primeiroDoGrupo && (
+                    <p className="text-xs font-bold text-accent mt-0.5">
+                      {primeiroDoGrupo.subject_name}{primeiroDoGrupo.topics ? ` — ${primeiroDoGrupo.topics}` : ''}
+                    </p>
+                  )}
+                  <p className="text-[10px] font-bold text-muted uppercase tracking-widest mt-0.5">
+                    {examsParaMostrar.length} {examsParaMostrar.length === 1 ? 'teste agendado' : 'testes agendados'}
+                  </p>
+                </div>
+                <button onClick={() => { setSelectedDayKey(null); setGrupoSelecionadoIds(null); }} className="p-2 bg-page border border-border rounded-xl hover:bg-raised transition-colors text-secondary">
+                  <X size={16} />
+                </button>
               </div>
-              <button onClick={() => setSelectedDayKey(null)} className="p-2 bg-page border border-border rounded-xl hover:bg-raised transition-colors text-secondary">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-3 space-y-1">
-              {(groupedExams[selectedDayKey] || []).map((exam) => {
-                const aluno = Array.isArray(exam.alunos) ? exam.alunos[0] : exam.alunos;
-                const intensidade = getIntensityClasses((groupedExams[selectedDayKey!] || []).length);
-                return (
-                  <div key={exam.id} className="flex justify-between items-start gap-3 p-3 rounded-2xl hover:bg-page/60 transition-colors">
-                    <div>
-                      <p className="font-black text-sm text-primary">{aluno?.nome || 'Desconhecido'}</p>
-                      <p className="text-[11px] text-muted mt-0.5">{exam.topics || 'Sem matéria especificada'}</p>
+              <div className="p-3 space-y-1">
+                {examsParaMostrar.map((exam: any) => {
+                  const aluno = Array.isArray(exam.alunos) ? exam.alunos[0] : exam.alunos;
+                  const intensidade = getIntensityClasses(examsDoDiaCompleto.length);
+                  return (
+                    <div key={exam.id} className="flex justify-between items-start gap-3 p-3 rounded-2xl hover:bg-page/60 transition-colors">
+                      <div>
+                        <p className="font-black text-sm text-primary">{aluno?.nome || 'Desconhecido'}</p>
+                        <p className="text-[11px] text-muted mt-0.5">{exam.topics || 'Sem matéria especificada'}</p>
+                      </div>
+                      <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg whitespace-nowrap ${intensidade}`}>
+                        {exam.subject_name} · {aluno?.ano_escolar}º
+                      </span>
                     </div>
-                    <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg whitespace-nowrap ${intensidade}`}>
-                      {exam.subject_name} · {aluno?.ano_escolar}º
-                    </span>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </main>
   );
 }

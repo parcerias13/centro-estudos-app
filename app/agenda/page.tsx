@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { ArrowLeft, Calendar, Loader2, Plus, CheckCircle2, BookOpen } from 'lucide-react';
 import Link from 'next/link';
 
 export default function StudentAgenda() {
+  const { toast, showError } = useStatusToast();
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -54,6 +56,29 @@ export default function StudentAgenda() {
     const centro_id = user?.app_metadata?.centro_id;
     if (!centro_id) {
       setFormError('Não foi possível identificar o centro. Recarrega a página e tenta novamente.');
+      setSending(false);
+      return;
+    }
+
+    // Bloqueia duplicado: mesma disciplina + mesmo dia, independentemente de
+    // quem criou a linha (admin/professor ou o próprio aluno).
+    const { data: existente, error: errExistente } = await supabase
+      .from('exams')
+      .select('id')
+      .eq('aluno_id', user?.id)
+      .eq('centro_id', centro_id)
+      .eq('subject_name', subject)
+      .eq('date', date)
+      .maybeSingle();
+
+    if (errExistente) {
+      setFormError('Erro ao verificar testes existentes: ' + errExistente.message);
+      setSending(false);
+      return;
+    }
+
+    if (existente) {
+      showError(`Já tens um teste de ${subject} marcado para este dia.`);
       setSending(false);
       return;
     }
@@ -185,6 +210,8 @@ export default function StudentAgenda() {
           )}
         </div>
       </section>
+
+      <StatusToast toast={toast} />
     </main>
   );
 }
