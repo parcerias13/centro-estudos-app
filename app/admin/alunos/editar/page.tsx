@@ -38,6 +38,7 @@ function EditarAlunoContent() {
   const [anoEscolar, setAnoEscolar] = useState('1');
   const [mensalidadeBase, setMensalidadeBase] = useState(''); // NOVO: Valor fixo
   const [saidaAutorizada, setSaidaAutorizada] = useState(false);
+  const [ativo, setAtivo] = useState(true);
   const [consentimentoIa, setConsentimentoIa] = useState(false);
   const [usaApp, setUsaApp] = useState(true); 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -96,6 +97,7 @@ function EditarAlunoContent() {
       setAnoEscolar(aluno.ano_escolar?.toString() || '1');
       setMensalidadeBase(aluno.mensalidade_base?.toString() || ''); // CARREGAMENTO DO VALOR FIXO
       setSaidaAutorizada(aluno.saida_autorizada || false);
+      setAtivo(aluno.ativo ?? true);
       setConsentimentoIa(aluno.consentimento_ia || false);
       setUsaApp(aluno.usa_app ?? true);
       setAvatarUrl(aluno.avatar_url || null);
@@ -188,6 +190,7 @@ function EditarAlunoContent() {
           ano_escolar: parseInt(anoEscolar),
           mensalidade_base: parseFloat(mensalidadeBase), // ATUALIZAÇÃO DO VALOR FIXO
           saida_autorizada: saidaAutorizada,
+          ativo,
           consentimento_ia: eMaiorDe13() ? consentimentoIa : false,
           usa_app: usaApp,
           avatar_url: avatarUrl,
@@ -445,6 +448,16 @@ function EditarAlunoContent() {
           <h2 className="text-[10px] font-black uppercase text-accent tracking-[0.2em]">3. Permissões e Compliance</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-page p-5 rounded-2xl border border-border flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-sm">Aluno Ativo</h4>
+                <p className="text-[10px] text-muted uppercase font-black">{ativo ? 'A frequentar o centro' : 'Inativo — fora da faturação'}</p>
+              </div>
+              <button type="button" onClick={() => setAtivo(!ativo)} className={`transition-colors ${ativo ? 'text-success' : 'text-muted'}`}>
+                {ativo ? <ToggleRight size={40} /> : <ToggleLeft size={40} />}
+              </button>
+            </div>
+
             <div className={`bg-page p-5 rounded-2xl border flex items-center justify-between transition-all ${usaApp ? 'border-accent/30 shadow-lg shadow-accent/5' : 'border-border opacity-70'}`}>
               <div className="flex items-center gap-4">
                 <div className={`p-3 rounded-xl ${usaApp ? 'bg-accent-soft text-accent' : 'bg-raised text-muted'}`}>
