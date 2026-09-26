@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { garantirMesGerado } from '@/lib/mensalidades';
 import { ArrowLeft, Activity, RefreshCw, Loader2 } from 'lucide-react';
 
 export default function AdminStats() {
@@ -15,12 +16,15 @@ export default function AdminStats() {
     margemPct: 0,
     despesasFixas: 0,
     despesasVariaveis: 0,
+    totalExplicacoesMes: 0,
   });
 
   const processStats = useCallback(async () => {
     setLoading(true);
     try {
       const agora = new Date();
+      const anoAtual = agora.getFullYear();
+      const mesAtual = agora.getMonth() + 1;
       const primeiroDiaMes = new Date(agora.getFullYear(), agora.getMonth(), 1).toISOString();
       const totalDiasMes = new Date(agora.getFullYear(), agora.getMonth() + 1, 0).getDate();
       const diaAtual = agora.getDate();
@@ -29,27 +33,46 @@ export default function AdminStats() {
       const inicioMesStr = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-01`;
       const fimMesStr = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(totalDiasMes).padStart(2, '0')}`;
 
+      const { data: { user } } = await supabase.auth.getUser();
+      const centro_id = user?.app_metadata?.centro_id;
+      if (!centro_id) throw new Error('Não foi possível identificar o centro.');
+
       const [
         { data: extras },
-        { data: alunos },
+        mensalidadesMes,
         { data: despesas },
+        { data: explicacoesMes },
       ] = await Promise.all([
         supabase.from('consumos_diarios').select('preco_aplicado').gte('data_consumo', primeiroDiaMes.split('T')[0]),
-        supabase.from('alunos').select('mensalidade_base'),
+        // Garante as linhas do mês corrente antes de somar — mesma função partilhada
+        // usada em /admin/pagamentos, para nunca mostrar 0€ só por ninguém ter aberto
+        // essa página ainda este mês.
+        garantirMesGerado(centro_id, anoAtual, mesAtual),
         supabase.from('despesas').select('valor, tipo').gte('data', inicioMesStr).lte('data', fimMesStr),
+        // Explicações: só existem quando alguém as cria — ao contrário das mensalidades,
+        // não há estado vazio a proteger, por isso soma-se direto, sem garantirMesGerado.
+        supabase.from('explicacoes').select('valor_calculado').eq('dado', true).gte('data', inicioMesStr).lte('data', fimMesStr),
       ]);
 
-      // --- RECEITA (lógica intocada) ---
-      const totalMensalidadesBase = alunos?.reduce((acc, curr) => acc + (Number(curr.mensalidade_base) || 0), 0) || 0;
+      // --- RECEITA ---
+      // Mensalidades: passou a vir da tabela `mensalidades` (estado real de pagamento por aluno/mês)
+      // em vez de assumir que a mensalidade_base de todos os alunos entra sempre.
+      const totalEsperadoMensalidades = mensalidadesMes?.reduce((acc, m) => acc + (Number(m.valor_esperado) || 0), 0) || 0;
+      const totalPagoMensalidades = mensalidadesMes?.reduce((acc, m) => acc + (m.pago ? (Number(m.valor_pago) || 0) : 0), 0) || 0;
       const totalExtrasMes = extras?.reduce((acc, curr) => acc + (Number(curr.preco_aplicado) || 0), 0) || 0;
-      const accumulatedRevenue = totalMensalidadesBase + totalExtrasMes;
+      const accumulatedRevenue = totalPagoMensalidades + totalExtrasMes;
       const mediaExtrasDiaria = totalExtrasMes / diaAtual;
-      const projectedRevenue = totalMensalidadesBase + (mediaExtrasDiaria * totalDiasMes);
+      const projectedRevenue = totalEsperadoMensalidades + (mediaExtrasDiaria * totalDiasMes);
 
       // --- DESPESAS DO MÊS ---
-      const totalDespesasMes = despesas?.reduce((acc, d) => acc + (Number(d.valor) || 0), 0) || 0;
+      // Explicações pagas a professores entram no total de despesas (dinheiro real a
+      // sair), mas ficam à parte de despesasFixas/despesasVariaveis para o aviso de
+      // integridade abaixo continuar válido (compara as três parcelas, não só duas).
+      const totalExplicacoesMes = explicacoesMes?.reduce((acc, e) => acc + (Number(e.valor_calculado) || 0), 0) || 0;
+      const totalDespesasBase = despesas?.reduce((acc, d) => acc + (Number(d.valor) || 0), 0) || 0;
       const despesasFixas = despesas?.filter(d => d.tipo === 'fixa').reduce((acc, d) => acc + (Number(d.valor) || 0), 0) || 0;
       const despesasVariaveis = despesas?.filter(d => d.tipo === 'variavel').reduce((acc, d) => acc + (Number(d.valor) || 0), 0) || 0;
+      const totalDespesasMes = totalDespesasBase + totalExplicacoesMes;
 
       // --- LUCRO ---
       const lucroLiquido = accumulatedRevenue - totalDespesasMes;
@@ -63,6 +86,7 @@ export default function AdminStats() {
         margemPct,
         despesasFixas,
         despesasVariaveis,
+        totalExplicacoesMes,
       });
     } catch (err) {
       console.error("Erro BI:", err);
@@ -76,7 +100,7 @@ export default function AdminStats() {
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={32} /></div>;
 
   const lucroPositivo = stats.lucroLiquido >= 0;
-  const integridadeOk = Math.abs((stats.despesasFixas + stats.despesasVariaveis) - stats.totalDespesasMes) < 0.005;
+  const integridadeOk = Math.abs((stats.despesasFixas + stats.despesasVariaveis + stats.totalExplicacoesMes) - stats.totalDespesasMes) < 0.005;
   // Só para a barra (visual): parte de despesas vs. parte de lucro
   const baseBarra = stats.totalDespesasMes + Math.max(stats.lucroLiquido, 0);
   const despesasBarraPct = baseBarra > 0 ? (stats.totalDespesasMes / baseBarra) * 100 : 0;
@@ -142,7 +166,7 @@ export default function AdminStats() {
           <div>
             <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Despesas Totais</p>
             <p className="text-2xl font-black text-primary tracking-tighter">{stats.totalDespesasMes.toFixed(2)}€</p>
-            <p className="text-sm font-bold text-muted mt-2">Fixas: {stats.despesasFixas.toFixed(2)}€ · Variáveis: {stats.despesasVariaveis.toFixed(2)}€</p>
+            <p className="text-sm font-bold text-muted mt-2">Fixas: {stats.despesasFixas.toFixed(2)}€ · Variáveis: {stats.despesasVariaveis.toFixed(2)}€ · Explicações: {stats.totalExplicacoesMes.toFixed(2)}€</p>
             {!integridadeOk && (
               <p className="text-xs text-danger font-bold uppercase mt-1">Soma não bate com o total</p>
             )}
