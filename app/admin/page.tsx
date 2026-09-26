@@ -74,10 +74,14 @@ export default function DashboardAdmin() {
       
       if (errP) throw errP;
 
+      const { data: { user } } = await supabase.auth.getUser();
+      const centro_id = user?.app_metadata?.centro_id;
+
       const hojeStr = new Date().toISOString().split('T')[0];
       const { data: exames } = await supabase
         .from('exams')
         .select('*, alunos(nome)')
+        .eq('centro_id', centro_id)
         .gte('date', hojeStr)
         .order('date', { ascending: true });
 

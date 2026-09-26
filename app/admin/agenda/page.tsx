@@ -38,9 +38,13 @@ export default function AdminAgendaReadonly() {
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
 
   const fetchExams = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const centro_id = user?.app_metadata?.centro_id;
+
     const { data, error } = await supabase
       .from('exams')
       .select('*, alunos(nome, ano_escolar)')
+      .eq('centro_id', centro_id)
       .order('date', { ascending: true });
 
     if (error) console.error("Erro na Agenda Admin:", error.message);

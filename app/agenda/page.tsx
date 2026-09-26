@@ -32,6 +32,7 @@ export default function StudentAgenda() {
       .from('exams')
       .select('*')
       .eq('aluno_id', user.id)
+      .eq('centro_id', user.app_metadata?.centro_id)
       .gte('date', today) // O Filtro Bulletproof: "Maior ou igual a hoje"
       .order('date', { ascending: true });
     

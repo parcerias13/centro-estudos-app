@@ -88,6 +88,7 @@ export default function StudentHome() {
       .from('exams')
       .select('*')
       .eq('aluno_id', user.id)
+      .eq('centro_id', user.app_metadata?.centro_id)
       .gte('date', hojeStr)
       .order('date', { ascending: true })
       .limit(1)
