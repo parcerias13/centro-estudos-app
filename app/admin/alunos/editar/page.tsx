@@ -5,13 +5,14 @@ import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
-import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign, KeyRound, Eye, EyeOff, RefreshCw, FileText, MapPin } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign, KeyRound, Eye, EyeOff, RefreshCw, FileText, MapPin, School, Users2, Trash2 } from 'lucide-react';
 
 function EditarAlunoContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const studentId = searchParams.get('id');
-  const { toast, showError } = useStatusToast();
+  const { toast, showError, showSuccess } = useStatusToast();
+  const [apagando, setApagando] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,6 +37,8 @@ function EditarAlunoContent() {
   const [telemovelAluno, setTelemovelAluno] = useState('');
   const [dataNascimento, setDataNascimento] = useState('');
   const [anoEscolar, setAnoEscolar] = useState('1');
+  const [escola, setEscola] = useState('');
+  const [turma, setTurma] = useState('');
   const [mensalidadeBase, setMensalidadeBase] = useState(''); // NOVO: Valor fixo
   const [saidaAutorizada, setSaidaAutorizada] = useState(false);
   const [ativo, setAtivo] = useState(true);
@@ -95,6 +98,8 @@ function EditarAlunoContent() {
       setTelemovelAluno(aluno.telemovel_aluno || '');
       setDataNascimento(aluno.data_nascimento || '');
       setAnoEscolar(aluno.ano_escolar?.toString() || '1');
+      setEscola(aluno.escola || '');
+      setTurma(aluno.turma || '');
       setMensalidadeBase(aluno.mensalidade_base?.toString() || ''); // CARREGAMENTO DO VALOR FIXO
       setSaidaAutorizada(aluno.saida_autorizada || false);
       setAtivo(aluno.ativo ?? true);
@@ -160,6 +165,20 @@ function EditarAlunoContent() {
     setResetLoading(false);
   };
 
+  const handleApagarAluno = async () => {
+    if (!confirm('Tens a certeza que queres apagar este aluno? Todo o histórico será perdido — esta ação não pode ser desfeita.')) return;
+    setApagando(true);
+    const { error } = await supabase.from('alunos').delete().eq('id', studentId);
+    setApagando(false);
+    if (error) {
+      showError('Erro ao apagar: ' + error.message);
+      return;
+    }
+    showSuccess('Aluno apagado.');
+    router.push('/admin/alunos');
+    router.refresh();
+  };
+
   const toggleDia = (id: number) => {
     setDiasSelecionados(prev => {
       if (prev.includes(id)) return prev.filter(d => d !== id);
@@ -188,6 +207,8 @@ function EditarAlunoContent() {
           telemovel_aluno: telemovelAluno,
           data_nascimento: dataNascimento,
           ano_escolar: parseInt(anoEscolar),
+          escola: escola.trim() || null,
+          turma: turma.trim() || null,
           mensalidade_base: parseFloat(mensalidadeBase), // ATUALIZAÇÃO DO VALOR FIXO
           saida_autorizada: saidaAutorizada,
           ativo,
@@ -301,6 +322,20 @@ function EditarAlunoContent() {
                   <option key={i + 1} value={i + 1}>{i + 1}º Ano</option>
                 ))}
               </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-muted tracking-widest flex items-center gap-2">
+                <School size={12} /> Escola
+              </label>
+              <input type="text" value={escola} onChange={(e) => setEscola(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all" placeholder="Ex: Escola Secundária de..." />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-muted tracking-widest flex items-center gap-2">
+                <Users2 size={12} /> Turma
+              </label>
+              <input type="text" value={turma} onChange={(e) => setTurma(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all" placeholder="Ex: 9ºB" />
             </div>
 
             <div className="space-y-2">
@@ -517,6 +552,24 @@ function EditarAlunoContent() {
           {isSubmitting ? 'A ATUALIZAR...' : 'GRAVAR ALTERAÇÕES'}
         </button>
       </form>
+
+      {/* ZONA DE PERIGO — apagar aluno, movido para aqui em vez de um clique
+          direto na lista (mesma confirmação de sempre, um passo mais deliberado) */}
+      <div className="mt-8 bg-danger-bg/40 border border-danger/20 rounded-3xl p-6 flex items-center justify-between gap-4">
+        <div>
+          <h3 className="font-black text-sm text-danger">Zona de Perigo</h3>
+          <p className="text-[11px] text-muted mt-1">Apagar este aluno remove também todo o histórico associado. Não pode ser desfeito.</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleApagarAluno}
+          disabled={apagando}
+          className="shrink-0 flex items-center gap-2 bg-page border border-danger/30 text-danger hover:bg-danger hover:text-on-danger px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50"
+        >
+          {apagando ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+          Apagar Aluno
+        </button>
+      </div>
 
       <StatusToast toast={toast} />
     </main>

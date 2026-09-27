@@ -18,6 +18,7 @@ export default function AdminLayout({
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [role, setRole] = useState<string | null>(null)
+  const [pendentesNotas, setPendentesNotas] = useState(0)
   const pathname = usePathname()
 
   useEffect(() => {
@@ -25,6 +26,22 @@ export default function AdminLayout({
       setRole(user?.app_metadata?.role?.toLowerCase() ?? null)
     })
   }, [])
+
+  // Aviso "N por confirmar" junto a Alunos — só quem pode confirmar (admin,
+  // professor) precisa de ver isto. Fica fora da Agenda por decisão: notas
+  // vivem só na Ficha do Aluno.
+  useEffect(() => {
+    if (role !== 'admin' && role !== 'professor') return
+    let cancelado = false
+    ;(async () => {
+      const [{ count: examsCount }, { count: periodoCount }] = await Promise.all([
+        supabase.from('exams').select('id', { count: 'exact', head: true }).eq('nota_confirmada', false).not('nota_valor', 'is', null),
+        supabase.from('notas_periodo').select('id', { count: 'exact', head: true }).eq('nota_confirmada', false),
+      ])
+      if (!cancelado) setPendentesNotas((examsCount || 0) + (periodoCount || 0))
+    })()
+    return () => { cancelado = true }
+  }, [role])
 
   // Lista de items atualizada com Refeitório
   const menuItems = [
@@ -76,17 +93,24 @@ export default function AdminLayout({
         <nav className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
           {visibleMenuItems.map((item) => {
             const isActive = pathname === item.href || (item.href !== '/admin' && pathname?.startsWith(item.href + '/'))
+            const badge = item.name === 'Alunos' && pendentesNotas > 0 ? pendentesNotas : null
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setIsMenuOpen(false)}
+                title={badge !== null ? `${badge} nota(s) por confirmar` : undefined}
                 className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group ${
                   isActive ? 'bg-white/10 text-sidebar-text' : 'text-sidebar-text-secondary hover:text-sidebar-text hover:bg-white/5'
                 }`}
               >
                 <item.icon size={18} className="shrink-0 group-hover:scale-110 transition-transform" />
-                <span className="text-sm font-medium">{item.name}</span>
+                <span className="text-sm font-medium flex-1">{item.name}</span>
+                {badge !== null && (
+                  <span className="bg-danger text-on-danger text-[10px] font-black min-w-5 h-5 px-1.5 rounded-full shrink-0 flex items-center justify-center">
+                    {badge}
+                  </span>
+                )}
               </Link>
             )
           })}

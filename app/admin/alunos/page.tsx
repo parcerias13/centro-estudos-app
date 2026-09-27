@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import ExcelJS from 'exceljs';
-import { UserPlus, Search, FileBarChart, Edit, Trash2, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter, FileText, FileSpreadsheet, UploadCloud, Receipt } from 'lucide-react';
+import { UserPlus, Search, FileBarChart, Edit, ClipboardList, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter, FileText, FileSpreadsheet, UploadCloud, Receipt } from 'lucide-react';
 import { CABECALHOS, LINHA_EXEMPLO } from './importAlunosConfig';
 import ImportarAlunosModal from './ImportarAlunosModal';
 import ExportarFaturacaoModal from './ExportarFaturacaoModal';
@@ -71,17 +71,6 @@ export default function ListaAlunos() {
       console.error('Erro ao processar prioridades:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (confirm('Tem a certeza que quer apagar este aluno? Todo o histórico será perdido.')) {
-      const { error } = await supabase.from('alunos').delete().eq('id', id);
-      if (error) {
-        alert('Erro ao apagar: ' + error.message);
-      } else {
-        fetchAlunos(); 
-      }
     }
   };
 
@@ -285,13 +274,13 @@ export default function ListaAlunos() {
                   <Edit size={20} />
                 </Link>
 
-                <button 
-                  onClick={() => handleDelete(aluno.id)}
-                  className="p-3 bg-raised text-secondary hover:bg-danger hover:text-on-danger rounded-xl transition-all border border-border hover:border-danger shadow-xl"
-                  title="Remover Matrícula"
+                <Link
+                  href={`/admin/alunos/ficha?id=${aluno.id}`}
+                  className="p-3 bg-raised text-secondary hover:bg-accent hover:text-on-accent rounded-xl transition-all border border-border hover:border-accent shadow-xl"
+                  title="Ver Notas"
                 >
-                  <Trash2 size={20} />
-                </button>
+                  <ClipboardList size={20} />
+                </Link>
               </div>
             </div>
           ))
