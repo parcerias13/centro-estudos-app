@@ -23,6 +23,10 @@ function FichaAlunoContent() {
   const [exams, setExams] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
   const [notasPeriodo, setNotasPeriodo] = useState<any[]>([]);
+  // Força o remount dos inputs de período quando um apagar é bloqueado pela
+  // RLS (nota já confirmada) — sem isto, o campo ficava visualmente vazio
+  // mesmo com a linha intacta na BD, porque o valor de origem não mudou.
+  const [resyncTick, setResyncTick] = useState(0);
 
   const [role, setRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -126,9 +130,18 @@ function FichaAlunoContent() {
 
     if (bruto === '') {
       if (!linhaExistente) return;
-      const { error } = await supabase.from('notas_periodo').delete().eq('id', linhaExistente.id);
+      const { data, error } = await supabase.from('notas_periodo').delete().eq('id', linhaExistente.id).select();
       if (error) {
         showError('Erro ao remover nota: ' + error.message);
+        setResyncTick((t) => t + 1);
+        return;
+      }
+      // RLS não devolve erro quando bloqueia — só filtra a linha (0 devolvidas).
+      // Isso acontece quando a nota já está confirmada e quem tenta apagar não é
+      // admin: não podemos assumir sucesso só porque não houve erro.
+      if (!data || data.length === 0) {
+        showError('Não é possível apagar — esta nota já foi confirmada. Contacta o admin.');
+        setResyncTick((t) => t + 1);
         return;
       }
       setNotasPeriodo((prev) => prev.filter((n) => n.id !== linhaExistente.id));
@@ -331,7 +344,7 @@ function FichaAlunoContent() {
                           <div className="flex flex-col items-center gap-1">
                             <div className="flex items-center gap-1">
                               <input
-                                key={`np-${disciplina.id}-${periodo}-${linha?.nota}`}
+                                key={`np-${disciplina.id}-${periodo}-${linha?.nota}-${resyncTick}`}
                                 type="number"
                                 step="1"
                                 min={escalaPeriodo.min}
