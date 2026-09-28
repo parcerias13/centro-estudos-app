@@ -28,6 +28,23 @@ type Subject = {
 
 const ANOS = Array.from({ length: 12 }, (_, i) => i + 1);
 
+// Atalhos por ciclo — marcam/desmarcam o grupo inteiro de uma vez, sem
+// substituir os botões individuais 1º-12º (continuam a ter a palavra final).
+const CICLOS = [
+  { label: '1º Ciclo', anos: [1, 2, 3, 4] },
+  { label: '2º Ciclo', anos: [5, 6] },
+  { label: '3º Ciclo', anos: [7, 8, 9] },
+  { label: 'Secundário', anos: [10, 11, 12] },
+];
+
+// Se o ciclo já está todo marcado, desmarca-o; caso contrário marca os anos
+// em falta, sem mexer no resto da seleção.
+function proximoEstadoCiclo(selecionados: number[], anosDoCiclo: number[]): number[] {
+  const todosMarcados = anosDoCiclo.every((a) => selecionados.includes(a));
+  if (todosMarcados) return selecionados.filter((a) => !anosDoCiclo.includes(a));
+  return [...new Set([...selecionados, ...anosDoCiclo])];
+}
+
 // Editor inline (no painel expandido) para restringir uma disciplina a anos
 // escolares específicos. Nenhum ano marcado = aparece para todos os anos.
 function AnosAplicaveisEditor({
@@ -94,6 +111,22 @@ function AnosAplicaveisEditor({
         <>
           <p className="text-[9px] font-black uppercase text-muted tracking-widest">Anos aplicáveis</p>
           <p className="text-[10px] text-muted mb-2">Nenhum ano marcado = aparece para todos os anos.</p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {CICLOS.map((ciclo) => (
+              <button
+                key={ciclo.label}
+                type="button"
+                onClick={() => setSel((prev) => proximoEstadoCiclo(prev, ciclo.anos))}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all ${
+                  ciclo.anos.every((a) => sel.includes(a))
+                    ? 'bg-accent-soft border-accent text-accent'
+                    : 'bg-surface border-border text-muted hover:border-accent/40'
+                }`}
+              >
+                {ciclo.label}
+              </button>
+            ))}
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {ANOS.map((ano) => (
               <button
@@ -597,6 +630,22 @@ export default function DisciplinasEMateriais() {
                   Anos aplicáveis
                 </label>
                 <p className="text-[10px] text-muted mt-1">Nenhum marcado = aparece para todos os anos.</p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {CICLOS.map((ciclo) => (
+                    <button
+                      key={ciclo.label}
+                      type="button"
+                      onClick={() => setNewSubjectYears((prev) => proximoEstadoCiclo(prev, ciclo.anos))}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all ${
+                        ciclo.anos.every((a) => newSubjectYears.includes(a))
+                          ? 'bg-accent-soft border-accent text-accent'
+                          : 'bg-page border-border text-muted hover:border-accent/40'
+                      }`}
+                    >
+                      {ciclo.label}
+                    </button>
+                  ))}
+                </div>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {ANOS.map((ano) => (
                     <button
