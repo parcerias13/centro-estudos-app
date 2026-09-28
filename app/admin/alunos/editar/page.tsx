@@ -36,7 +36,7 @@ function EditarAlunoContent() {
   const [moradaEncarregado, setMoradaEncarregado] = useState('');
   const [telemovelAluno, setTelemovelAluno] = useState('');
   const [dataNascimento, setDataNascimento] = useState('');
-  const [anoEscolar, setAnoEscolar] = useState('1');
+  const [anoEscolar, setAnoEscolar] = useState('');
   const [escola, setEscola] = useState('');
   const [turma, setTurma] = useState('');
   const [mensalidadeBase, setMensalidadeBase] = useState(''); // NOVO: Valor fixo
@@ -97,7 +97,9 @@ function EditarAlunoContent() {
       setMoradaEncarregado(aluno.morada_encarregado || '');
       setTelemovelAluno(aluno.telemovel_aluno || '');
       setDataNascimento(aluno.data_nascimento || '');
-      setAnoEscolar(aluno.ano_escolar?.toString() || '1');
+      // Sem fallback para um ano por defeito: se por algum motivo vier nulo,
+      // o campo fica vazio e o botão de gravar bloqueado até o admin escolher.
+      setAnoEscolar(aluno.ano_escolar != null ? aluno.ano_escolar.toString() : '');
       setEscola(aluno.escola || '');
       setTurma(aluno.turma || '');
       setMensalidadeBase(aluno.mensalidade_base?.toString() || ''); // CARREGAMENTO DO VALOR FIXO
@@ -192,6 +194,10 @@ function EditarAlunoContent() {
 
   const handleUpdate = async () => {
     setErro('');
+    if (!anoEscolar) {
+      showError('Escolhe o ano escolar.');
+      return;
+    }
     const { data: { user } } = await supabase.auth.getUser();
     const centro_id = user?.app_metadata?.centro_id;
     if (!centro_id) {
@@ -322,6 +328,7 @@ function EditarAlunoContent() {
                 onChange={(e) => setAnoEscolar(e.target.value)} 
                 className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all text-primary appearance-none cursor-pointer"
               >
+                <option value="" disabled>Escolhe o ano</option>
                 {[...Array(12)].map((_, i) => (
                   <option key={i + 1} value={i + 1}>{i + 1}º Ano</option>
                 ))}
@@ -547,9 +554,9 @@ function EditarAlunoContent() {
           )}
         </div>
 
-        <button 
-          type="submit" 
-          disabled={isSubmitting || uploading} 
+        <button
+          type="submit"
+          disabled={isSubmitting || uploading || !anoEscolar}
           className="w-full bg-accent hover:bg-accent-hover text-on-accent p-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 shadow-xl shadow-accent/10"
         >
           {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={20} />}

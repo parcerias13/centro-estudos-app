@@ -50,6 +50,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Campos obrigatórios em falta.' }, { status: 400 })
   }
 
+  // ano_escolar é NOT NULL + CHECK (1-12) na base de dados — valida aqui para
+  // nunca deixar o erro cru do Postgres chegar ao utilizador, e antes de criar
+  // a conta de Auth para não deixar um utilizador órfão por reverter.
+  const anoEscolarNum = Number(ano_escolar)
+  if (!Number.isInteger(anoEscolarNum) || anoEscolarNum < 1 || anoEscolarNum > 12) {
+    return NextResponse.json({ error: 'Ano Escolar em falta ou inválido (1 a 12).' }, { status: 400 })
+  }
+
   // Criar utilizador sem enviar email de confirmação e sem afetar a sessão atual
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email,
@@ -77,7 +85,7 @@ export async function POST(req: Request) {
     nif_encarregado,
     morada_encarregado,
     telemovel_aluno,
-    ano_escolar,
+    ano_escolar: anoEscolarNum,
     mensalidade_base,
     saida_autorizada,
     consentimento_ia,

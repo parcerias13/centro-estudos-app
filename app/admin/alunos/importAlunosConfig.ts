@@ -63,6 +63,22 @@ function paraNumeroOuNull(valor: unknown): number | null {
   return Number.isFinite(numero) ? numero : null;
 }
 
+// Estrito: só um inteiro sozinho ("5", "05") ou inteiro seguido de "º",
+// ".º", "º ano" ou ".º ano" (espaços opcionais, sem distinguir maiúsculas).
+// Rejeita datas ("12/2026"), decimais ("5.5") e texto solto ("quinto") —
+// ano_escolar passa a NOT NULL + CHECK (1-12) na base de dados, por isso um
+// valor mal interpretado aqui escreveria o ano errado sem aviso nenhum.
+const REGEX_ANO_ESCOLAR = /^(\d{1,2})\s*(\.?\s*º(\s*ano)?)?$/i;
+
+function paraAnoEscolarOuNull(valor: unknown): number | null {
+  const texto = String(valor ?? '').trim();
+  if (texto === '') return null;
+  const match = texto.match(REGEX_ANO_ESCOLAR);
+  if (!match) return null;
+  const numero = parseInt(match[1], 10);
+  return numero >= 1 && numero <= 12 ? numero : null;
+}
+
 function paraBooleanoOuNull(valor: unknown): boolean | null {
   const texto = String(valor ?? '').trim().toLowerCase();
   if (texto === '') return null;
@@ -110,7 +126,7 @@ export function mapearLinha(linhaBruta: Record<string, unknown>, linhaExcel: num
     data_nascimento: paraDataNascimento(linhaBruta['Data Nascimento*'] ?? linhaBruta['Data Nascimento']),
     email_encarregado: paraTextoOuNull(linhaBruta['Email Encarregado*'] ?? linhaBruta['Email Encarregado'])?.toLowerCase() ?? null,
     telefone_encarregado: paraTextoOuNull(linhaBruta['Telefone Encarregado*'] ?? linhaBruta['Telefone Encarregado']),
-    ano_escolar: paraNumeroOuNull(linhaBruta['Ano Escolar*'] ?? linhaBruta['Ano Escolar']),
+    ano_escolar: paraAnoEscolarOuNull(linhaBruta['Ano Escolar*'] ?? linhaBruta['Ano Escolar']),
     mensalidade_base: paraNumeroOuNull(linhaBruta['Mensalidade Base*'] ?? linhaBruta['Mensalidade Base']),
     telemovel_aluno: paraTextoOuNull(linhaBruta['Telemovel Aluno']),
     dias_selecionados: paraDiasSelecionados(linhaBruta['Dias Semana']),
@@ -126,6 +142,7 @@ export function mapearLinha(linhaBruta: Record<string, unknown>, linhaExcel: num
   if (!dados.email_encarregado) erros.push('Email do Encarregado em falta');
   else if (!REGEX_EMAIL.test(dados.email_encarregado)) erros.push('Email do Encarregado inválido');
   if (!dados.telefone_encarregado) erros.push('Telefone do Encarregado em falta');
+  if (dados.ano_escolar === null) erros.push('Ano Escolar em falta ou inválido (1 a 12)');
 
   return { linhaExcel, dados, erros };
 }

@@ -23,7 +23,7 @@ export default function NovoAluno() {
   const [moradaEncarregado, setMoradaEncarregado] = useState('');
   const [telemovelAluno, setTelemovelAluno] = useState('');
   const [dataNascimento, setDataNascimento] = useState('');
-  const [anoEscolar, setAnoEscolar] = useState('1');
+  const [anoEscolar, setAnoEscolar] = useState('');
   const [saidaAutorizada, setSaidaAutorizada] = useState(false);
   const [consentimentoIa, setConsentimentoIa] = useState(false);
   const [usaApp, setUsaApp] = useState(true); 
@@ -92,6 +92,11 @@ export default function NovoAluno() {
   };
 
   const handleGuardar = async () => {
+    if (!anoEscolar) {
+      setErro('Escolhe o ano escolar.');
+      return;
+    }
+
     if (!dataNascimento) {
       setErro('A data de nascimento é obrigatória.');
       return;
@@ -239,6 +244,7 @@ export default function NovoAluno() {
                 onChange={(e) => setAnoEscolar(e.target.value)} 
                 className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all text-primary appearance-none cursor-pointer"
               >
+                <option value="" disabled>Escolhe o ano</option>
                 {[...Array(12)].map((_, i) => (
                   <option key={i + 1} value={i + 1}>{i + 1}º Ano</option>
                 ))}
@@ -387,8 +393,8 @@ export default function NovoAluno() {
         </div>
 
         <button 
-          type="submit" 
-          disabled={isSubmitting || uploading} 
+          type="submit"
+          disabled={isSubmitting || uploading || !anoEscolar}
           className="w-full bg-accent hover:bg-accent-hover text-on-accent p-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all active:scale-[0.98] disabled:opacity-50 shadow-xl shadow-accent/20"
         >
           {isSubmitting ? <Loader2 className="animate-spin" /> : <Save size={20} />}
