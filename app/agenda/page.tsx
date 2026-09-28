@@ -22,9 +22,12 @@ export default function StudentAgenda() {
   const fetchInitialData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    const centro_id = user.app_metadata?.centro_id;
 
     // 1. Buscar Disciplinas Disponíveis (para o Dropdown)
-    const { data: subData } = await supabase.from('subjects').select('*').order('name');
+    let subjectsQuery = supabase.from('subjects').select('*').order('name');
+    if (centro_id) subjectsQuery = subjectsQuery.eq('centro_id', centro_id);
+    const { data: subData } = await subjectsQuery;
     if (subData) setSubjects(subData);
 
     // 2. Buscar Testes Agendados (Apenas de Hoje para a Frente)
