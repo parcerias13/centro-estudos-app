@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
-import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw } from 'lucide-react';
+import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw, ClipboardList } from 'lucide-react';
 
 export default function StudentHome() {
   const { toast, showError } = useStatusToast();
@@ -25,6 +25,7 @@ export default function StudentHome() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return (window.location.href = '/login');
     if (user.app_metadata?.role === 'admin') return (window.location.href = '/admin');
+    const centro_id = user.app_metadata?.centro_id;
 
     const { data: session } = await supabase
       .from('diario_bordo')
@@ -68,10 +69,9 @@ export default function StudentHome() {
       else setIsLimitReached(false);
     }
 
-    const { data: subjs } = await supabase
-      .from('subjects')
-      .select('*, salas(nome)')
-      .order('name');
+    let subjectsQuery = supabase.from('subjects').select('*, salas(nome)').order('name');
+    if (centro_id) subjectsQuery = subjectsQuery.eq('centro_id', centro_id);
+    const { data: subjs } = await subjectsQuery;
     // Restrição por ano: mostra a disciplina se não tiver anos definidos
     // (aplica-se a todos) OU se incluir o ano do aluno. Aluno sem ano
     // definido só vê as disciplinas sem restrição.
@@ -270,6 +270,11 @@ export default function StudentHome() {
                    <Calendar size={24} className="text-purple-500" />
                    <span className="text-[8px] font-black uppercase tracking-widest text-secondary">Agenda</span>
                  </Link>
+                 <Link href="/notas" className="relative bg-surface border border-accent/50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 shadow-lg shadow-accent/10">
+                   <span className="absolute top-2 right-2 bg-accent text-on-accent text-[7px] font-black px-1.5 py-0.5 rounded-full uppercase">Novo</span>
+                   <ClipboardList size={24} className="text-accent" />
+                   <span className="text-[8px] font-black uppercase tracking-widest text-accent">Notas</span>
+                 </Link>
               </div>
               <button onClick={() => safeAction(handleCheckout)} disabled={isSubmitting} className="w-full bg-surface hover:bg-danger-bg text-secondary hover:text-danger border border-border py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all">
                 {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <LogOut size={20} />} TERMINAR SESSÃO
@@ -316,6 +321,16 @@ export default function StudentHome() {
                     <Link href="/biblioteca" className="bg-linear-to-br from-orange-900/50 to-red-900/50 border border-orange-500/30 p-5 rounded-3xl h-32 flex flex-col justify-between">
                         <div className="bg-orange-500/20 p-2 rounded-lg text-orange-400 w-fit"><Library size={20} /></div>
                         <p className="font-black text-primary text-lg">Biblioteca</p>
+                    </Link>
+                    <Link href="/notas" className="col-span-2 bg-linear-to-r from-accent to-accent-hover p-5 rounded-3xl flex items-center justify-between shadow-xl shadow-accent/20">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-white/20 p-3 rounded-2xl text-on-accent"><ClipboardList size={28} /></div>
+                          <div>
+                            <p className="font-black text-on-accent text-xl italic uppercase tracking-tighter">As Minhas Notas</p>
+                            <p className="text-[10px] text-white/80 font-bold uppercase tracking-widest">Testes e Notas de Período</p>
+                          </div>
+                        </div>
+                        <span className="bg-white/20 text-on-accent text-[10px] font-black px-3 py-1 rounded-full uppercase">Novo</span>
                     </Link>
                     {hasIaConsent && (
                       <Link href="/aluno/lab" className="col-span-2 bg-linear-to-r from-orange-600 to-orange-400 p-5 rounded-3xl flex items-center justify-between shadow-xl shadow-orange-900/20">
