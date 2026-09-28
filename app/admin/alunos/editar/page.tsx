@@ -171,7 +171,11 @@ function EditarAlunoContent() {
     const { error } = await supabase.from('alunos').delete().eq('id', studentId);
     setApagando(false);
     if (error) {
-      showError('Erro ao apagar: ' + error.message);
+      if (error.code === '23503') {
+        showError('Este aluno tem histórico — marca-o como inativo em vez de apagar.');
+      } else {
+        showError('Erro ao apagar: ' + error.message);
+      }
       return;
     }
     showSuccess('Aluno apagado.');
