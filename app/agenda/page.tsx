@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
+import { disciplinasParaAno } from '@/lib/disciplinas';
 import { ArrowLeft, Calendar, Loader2, Plus, CheckCircle2, BookOpen } from 'lucide-react';
 import Link from 'next/link';
 
@@ -24,13 +25,16 @@ export default function StudentAgenda() {
     if (!user) return;
     const centro_id = user.app_metadata?.centro_id;
 
-    // 1. Buscar Disciplinas Disponíveis (para o Dropdown)
+    // 1. Buscar o ano do próprio aluno, para filtrar as disciplinas
+    const { data: aluno } = await supabase.from('alunos').select('ano_escolar').eq('id', user.id).maybeSingle();
+
+    // 2. Buscar Disciplinas Disponíveis (para o Dropdown)
     let subjectsQuery = supabase.from('subjects').select('*').order('name');
     if (centro_id) subjectsQuery = subjectsQuery.eq('centro_id', centro_id);
     const { data: subData } = await subjectsQuery;
-    if (subData) setSubjects(subData);
+    setSubjects(disciplinasParaAno(subData || [], aluno?.ano_escolar ?? null));
 
-    // 2. Buscar Testes Agendados (Apenas de Hoje para a Frente)
+    // 3. Buscar Testes Agendados (Apenas de Hoje para a Frente)
     const today = new Date().toISOString().split('T')[0];
 
     const { data: examData } = await supabase

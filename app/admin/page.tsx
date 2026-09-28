@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
+import { disciplinasComuns } from '@/lib/disciplinas';
 import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, MapPin, CheckCircle2, XCircle, UserPlus, Search, X, Plus, Calendar, ChevronDown, ChevronUp, Undo2 } from 'lucide-react';
 
 
@@ -99,7 +100,7 @@ export default function DashboardAdmin() {
         .select('*, pacotes(nome), aluno_horarios(dia_semana)')
         .order('nome');
         
-      const { data: subData } = await supabase.from('subjects').select('*').order('name');
+      const { data: subData } = await supabase.from('subjects').select('*').eq('centro_id', centro_id).order('name');
       
       setPresencas(presentes || []);
       setProximosTestes(exames || []);
@@ -407,6 +408,20 @@ export default function DashboardAdmin() {
     a.nome.toLowerCase().includes(examSearchQuery.toLowerCase()) &&
     (examAlunosComConta === null || examAlunosComConta.has(a.id))
   );
+  // Disciplinas comuns a todos os anos dos alunos selecionados — sem alunos
+  // selecionados ainda, mostra tudo (nada para restringir).
+  const disciplinasComunsExame = disciplinasComuns(subjects, selectedExamStudents.map((a) => a.ano_escolar));
+  const semDisciplinaComum = selectedExamStudents.length > 0 && disciplinasComunsExame.length === 0;
+
+  // Se a seleção de alunos mudar e a disciplina já escolhida deixar de ser
+  // comum a todos, reinicia — nunca deixa confirmar um teste inválido para
+  // algum dos alunos selecionados.
+  useEffect(() => {
+    if (examSubject && !disciplinasComunsExame.some((s: any) => s.name === examSubject)) {
+      setExamSubject('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedExamStudents]);
 
   const renderAlunoCheckinRow = (aluno: any) => {
     const isValidUrl = aluno.avatar_url && (aluno.avatar_url.startsWith('http://') || aluno.avatar_url.startsWith('https://'));
@@ -692,10 +707,15 @@ export default function DashboardAdmin() {
                 <p className="text-xs font-black text-warning uppercase">{selectedExamStudents.length} aluno(s) selecionado(s)</p>
               )}
 
-              <select value={examSubject} onChange={(e) => setExamSubject(e.target.value)} className="w-full bg-page border border-border p-4 rounded-2xl outline-none font-bold text-primary">
+              <select value={examSubject} onChange={(e) => setExamSubject(e.target.value)} disabled={semDisciplinaComum} className="w-full bg-page border border-border p-4 rounded-2xl outline-none font-bold text-primary disabled:opacity-50">
                 <option value="">Disciplina...</option>
-                {subjects.map(sub => (<option key={sub.id} value={sub.name}>{sub.name}</option>))}
+                {disciplinasComunsExame.map(sub => (<option key={sub.id} value={sub.name}>{sub.name}</option>))}
               </select>
+              {semDisciplinaComum && (
+                <p className="text-danger text-xs font-bold bg-danger-bg border border-danger/20 px-4 py-3 rounded-xl">
+                  Os alunos selecionados não têm disciplinas em comum — escolhe alunos do mesmo ano.
+                </p>
+              )}
 
               <textarea
                 value={examTopics}
@@ -718,7 +738,7 @@ export default function DashboardAdmin() {
 
             <button
               onClick={handleCreateExam}
-              disabled={isSubmitting || selectedExamStudents.length === 0 || !examDate || !examSubject}
+              disabled={isSubmitting || selectedExamStudents.length === 0 || !examDate || !examSubject || semDisciplinaComum}
               className="w-full mt-6 bg-accent hover:bg-accent-hover text-on-accent p-5 rounded-2xl font-black disabled:opacity-50"
             >
               CONFIRMAR AGENDAMENTO{selectedExamStudents.length > 1 ? ` (${selectedExamStudents.length} alunos)` : ''}

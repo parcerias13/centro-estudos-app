@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
+import { disciplinasParaAno } from '@/lib/disciplinas';
 import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw, ClipboardList } from 'lucide-react';
 
 export default function StudentHome() {
@@ -72,16 +73,8 @@ export default function StudentHome() {
     let subjectsQuery = supabase.from('subjects').select('*, salas(nome)').order('name');
     if (centro_id) subjectsQuery = subjectsQuery.eq('centro_id', centro_id);
     const { data: subjs } = await subjectsQuery;
-    // Restrição por ano: mostra a disciplina se não tiver anos definidos
-    // (aplica-se a todos) OU se incluir o ano do aluno. Aluno sem ano
-    // definido só vê as disciplinas sem restrição.
     const anoAluno = student?.ano_escolar ?? null;
-    const visiveis = (subjs || []).filter((s: any) =>
-      !s.anos_aplicaveis ||
-      s.anos_aplicaveis.length === 0 ||
-      (anoAluno != null && s.anos_aplicaveis.includes(anoAluno))
-    );
-    setSubjects(visiveis);
+    setSubjects(disciplinasParaAno(subjs || [], anoAluno));
 
     const hojeStr = new Date().toISOString().split('T')[0];
     const { data: teste } = await supabase

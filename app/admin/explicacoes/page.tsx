@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { calcularValorExplicacao } from '@/lib/explicacoes';
+import { disciplinasComuns } from '@/lib/disciplinas';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Plus, X, GraduationCap, Loader2,
@@ -61,15 +62,16 @@ export default function ExplicacoesPage() {
     (async () => {
       const [{ data: { user } }, { data: subData }, { data: alunosData }] = await Promise.all([
         supabase.auth.getUser(),
-        supabase.from('subjects').select('id, name').order('name'),
-        supabase.from('alunos').select('id, nome').eq('ativo', true).order('nome'),
+        supabase.from('subjects').select('id, name, centro_id, anos_aplicaveis').order('name'),
+        supabase.from('alunos').select('id, nome, ano_escolar').eq('ativo', true).order('nome'),
       ]);
-
-      setSubjects(subData || []);
-      setAlunosAtivos(alunosData || []);
 
       const r = user?.app_metadata?.role?.toLowerCase() ?? null;
       const cId = user?.app_metadata?.centro_id ?? null;
+      // subjects já vem pedido em paralelo com getUser() (não depende dele) —
+      // filtra pelo centro aqui, só depois de cId estar disponível.
+      setSubjects((subData || []).filter((s: any) => s.centro_id === cId));
+      setAlunosAtivos(alunosData || []);
       setRole(r);
       setCentroId(cId);
 
@@ -456,6 +458,21 @@ function NovaExplicacaoModal({ professorId, centroId, subjects, alunosAtivos, on
 
   const alunosFiltrados = alunosAtivos.filter((a: any) => a.nome.toLowerCase().includes(buscaAluno.toLowerCase()));
 
+  // Disciplinas comuns aos alunos selecionados — sem ninguém selecionado
+  // ainda, mostra tudo. Disciplina continua opcional, por isso não há aviso
+  // nem bloqueio quando não há nenhuma em comum, só a opção "Sem disciplina".
+  const disciplinasComunsExplicacao = disciplinasComuns(
+    subjects,
+    alunoIds.map((id) => alunosAtivos.find((a: any) => a.id === id)?.ano_escolar)
+  );
+
+  useEffect(() => {
+    if (disciplinaId && !disciplinasComunsExplicacao.some((s: any) => String(s.id) === disciplinaId)) {
+      setDisciplinaId('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alunoIds]);
+
   const handleCriar = async () => {
     if (alunoIds.length === 0) {
       showError('Escolhe pelo menos um aluno.');
@@ -581,7 +598,7 @@ function NovaExplicacaoModal({ professorId, centroId, subjects, alunosAtivos, on
               className="w-full bg-page border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1 appearance-none"
             >
               <option value="">Sem disciplina</option>
-              {subjects.map((s: any) => (
+              {disciplinasComunsExplicacao.map((s: any) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>

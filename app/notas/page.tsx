@@ -8,8 +8,9 @@ import { getAnoLetivoAtual } from '@/lib/anoLetivo';
 import { calcularEstadoNota, getEscalaTeste, getEscalaPeriodo } from '@/lib/notas';
 import { getHojeLisboa } from '@/lib/dataLisboa';
 import { ABERTURA_PERIODOS, periodoJaAbriu } from '@/lib/periodos';
+import { disciplinasParaAno, foraDoAno } from '@/lib/disciplinas';
 import {
-  ArrowLeft, Loader2, ClipboardList, BookOpen, Lock, Clock, CheckCircle2, Plus, X,
+  ArrowLeft, Loader2, ClipboardList, BookOpen, Lock, Clock, CheckCircle2, Plus, X, AlertTriangle,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -220,11 +221,11 @@ export default function AsMinhasNotas() {
 
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={32} /></div>;
 
-  const disciplinasAplicaveis = subjects.filter((s: any) =>
-    !s.anos_aplicaveis ||
-    s.anos_aplicaveis.length === 0 ||
-    (aluno?.ano_escolar != null && s.anos_aplicaveis.includes(aluno.ano_escolar))
-  );
+  // Histórico nunca desaparece: uma disciplina com nota de período já
+  // lançada continua na grelha mesmo que deixe de se aplicar ao ano atual
+  // (fica marcada "fora do ano" — ver foraDoAno() abaixo).
+  const idsComHistorico = [...new Set(notasPeriodo.map((n: any) => n.disciplina_id))];
+  const disciplinasAplicaveis = disciplinasParaAno(subjects, aluno?.ano_escolar ?? null, idsComHistorico);
 
   return (
     <main className="min-h-screen bg-page text-primary p-6 max-w-md mx-auto space-y-8 pb-20">
@@ -345,7 +346,14 @@ export default function AsMinhasNotas() {
               ) : (
                 disciplinasAplicaveis.map((disciplina: any) => (
                   <tr key={disciplina.id}>
-                    <td className="p-2 font-bold text-primary text-sm whitespace-nowrap">{disciplina.name}</td>
+                    <td className="p-2 font-bold text-primary text-sm whitespace-nowrap">
+                      {disciplina.name}
+                      {foraDoAno(disciplina, aluno?.ano_escolar ?? null) && (
+                        <span className="ml-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase bg-warning-bg text-warning align-middle" title="Já não se aplica ao teu ano atual — continua visível por teres notas aqui.">
+                          <AlertTriangle size={8} /> Fora do ano
+                        </span>
+                      )}
+                    </td>
                     {([1, 2, 3] as const).map((periodo) => {
                       const linha = notasPeriodo.find((n) => n.disciplina_id === disciplina.id && n.periodo === periodo);
                       const estado = estadoCelulaPeriodo(linha, periodo, anoLetivoAtual, userId);
