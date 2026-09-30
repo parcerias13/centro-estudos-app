@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { garantirMesGerado } from '@/lib/mensalidades';
@@ -101,6 +101,12 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Explicações (família) — soma de valor_cobrado_familia e lista de sessões
+  // do mês, por aluno; e o estado de pago próprio, em pagamentos_explicacoes_familia.
+  const [explicacoesPorAluno, setExplicacoesPorAluno] = useState<Record<string, { soma: number; semPrecoCount: number; sessoes: any[] }>>({});
+  const [pagamentosExplicacoes, setPagamentosExplicacoes] = useState<Record<string, { id: string; pago: boolean; data_pagamento: string | null }>>({});
+  const [expandedAlunoIds, setExpandedAlunoIds] = useState<Set<string>>(new Set());
+
   const hoje = new Date();
   // Meses futuros não geram linhas — o valor_esperado é um snapshot e não deve
   // ser fixado antes de o mês chegar de verdade (a mensalidade pode mudar entretanto).
@@ -133,8 +139,49 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
         return;
       }
 
-      const linhas = await garantirMesGerado(centro_id, ano, mes);
+      const inicioMes = format(new Date(ano, mes - 1, 1), 'yyyy-MM-dd');
+      const fimMes = format(new Date(ano, mes, 0), 'yyyy-MM-dd');
+
+      // Uma query batched para todas as sessões dadas do mês (com alunos,
+      // disciplina e professor embutidos) + uma para os pagamentos de
+      // explicações do mês — nunca uma por aluno.
+      const [linhas, { data: sessoesData, error: errSessoes }, { data: pagamentosData, error: errPagamentos }] = await Promise.all([
+        garantirMesGerado(centro_id, ano, mes),
+        supabase
+          .from('explicacoes')
+          .select('data, subjects(name), staff(name), explicacoes_alunos(aluno_id, valor_cobrado_familia)')
+          .eq('dado', true)
+          .gte('data', inicioMes)
+          .lte('data', fimMes),
+        supabase.from('pagamentos_explicacoes_familia').select('id, aluno_id, pago, data_pagamento').eq('ano', ano).eq('mes', mes),
+      ]);
+
+      if (errSessoes || errPagamentos) {
+        showError('Erro ao carregar explicações: ' + (errSessoes || errPagamentos)?.message);
+      }
+
       setRows(linhas);
+
+      const porAluno: Record<string, { soma: number; semPrecoCount: number; sessoes: any[] }> = {};
+      (sessoesData || []).forEach((exp: any) => {
+        const disciplina = exp.subjects?.name || 'Sem disciplina';
+        const professor = exp.staff?.name || '—';
+        (exp.explicacoes_alunos || []).forEach((ea: any) => {
+          if (!porAluno[ea.aluno_id]) porAluno[ea.aluno_id] = { soma: 0, semPrecoCount: 0, sessoes: [] };
+          const entry = porAluno[ea.aluno_id];
+          if (ea.valor_cobrado_familia != null) {
+            entry.soma += Number(ea.valor_cobrado_familia);
+          } else {
+            entry.semPrecoCount += 1;
+          }
+          entry.sessoes.push({ data: exp.data, disciplina, professor, valor: ea.valor_cobrado_familia });
+        });
+      });
+      setExplicacoesPorAluno(porAluno);
+
+      const pagMap: Record<string, { id: string; pago: boolean; data_pagamento: string | null }> = {};
+      (pagamentosData || []).forEach((p: any) => { pagMap[p.aluno_id] = { id: p.id, pago: p.pago, data_pagamento: p.data_pagamento }; });
+      setPagamentosExplicacoes(pagMap);
     } catch (err: any) {
       showError('Erro ao carregar mensalidades: ' + err.message);
     } finally {
@@ -191,6 +238,52 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
       return;
     }
     setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, data_pagamento: valor } : r)));
+    showSuccess('Data de pagamento atualizada.');
+  };
+
+  // --- Estado de pago das Explicações (família) — próprio, não toca em mensalidades ---
+  const toggleExpandido = (alunoId: string) => {
+    setExpandedAlunoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(alunoId)) next.delete(alunoId);
+      else next.add(alunoId);
+      return next;
+    });
+  };
+
+  const handleToggleExplicacoesPago = async (alunoId: string) => {
+    const atual = pagamentosExplicacoes[alunoId];
+    const novoPago = !atual?.pago;
+    // Sem centro_id no payload: pagamentos_explicacoes_familia não tem essa
+    // coluna (ao contrário de pagamentos_professores) — a RLS já protege via
+    // alunos.centro_id.
+    const payload: Record<string, any> = { aluno_id: alunoId, ano, mes, pago: novoPago };
+    if (novoPago && !atual?.data_pagamento) payload.data_pagamento = new Date().toISOString().split('T')[0];
+
+    const { data, error } = await supabase
+      .from('pagamentos_explicacoes_familia')
+      .upsert(payload, { onConflict: 'aluno_id,ano,mes' })
+      .select()
+      .single();
+
+    if (error) {
+      showError('Erro ao atualizar pagamento de explicações: ' + error.message);
+      return;
+    }
+    setPagamentosExplicacoes((prev) => ({ ...prev, [alunoId]: { id: data.id, pago: data.pago, data_pagamento: data.data_pagamento } }));
+    showSuccess(novoPago ? 'Explicações marcadas como pagas.' : 'Explicações marcadas como não pagas.');
+  };
+
+  const handleUpdateDataPagamentoExplicacoes = async (alunoId: string, dataStr: string) => {
+    const pagamento = pagamentosExplicacoes[alunoId];
+    if (!pagamento) return;
+    const valor = dataStr === '' ? null : dataStr;
+    const { error } = await supabase.from('pagamentos_explicacoes_familia').update({ data_pagamento: valor }).eq('id', pagamento.id);
+    if (error) {
+      showError('Erro ao atualizar data de pagamento: ' + error.message);
+      return;
+    }
+    setPagamentosExplicacoes((prev) => ({ ...prev, [alunoId]: { ...prev[alunoId], data_pagamento: valor } }));
     showSuccess('Data de pagamento atualizada.');
   };
 
@@ -264,64 +357,151 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-page/50 border-b border-border text-[10px] uppercase tracking-widest text-muted">
-                <th className="p-6 font-black">Aluno</th>
-                <th className="p-6 font-black text-right">Valor Esperado</th>
-                <th className="p-6 font-black text-center">Estado</th>
-                <th className="p-6 font-black text-right">Valor Pago</th>
-                <th className="p-6 font-black text-center">Data de Pagamento</th>
+                <th className="p-6 font-black" rowSpan={2}>Aluno</th>
+                <th className="p-3 font-black text-center border-l border-border" colSpan={4}>Mensalidade</th>
+                <th className="p-3 font-black text-center border-l border-border" colSpan={2}>Explicações</th>
+              </tr>
+              <tr className="bg-page/50 border-b border-border text-[10px] uppercase tracking-widest text-muted">
+                <th className="p-4 font-black text-right border-l border-border">Valor Esperado</th>
+                <th className="p-4 font-black text-center">Estado</th>
+                <th className="p-4 font-black text-right">Valor Pago</th>
+                <th className="p-4 font-black text-center">Data de Pagamento</th>
+                <th className="p-4 font-black text-right border-l border-border">Valor</th>
+                <th className="p-4 font-black text-center">Estado</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {!loading && rowsFiltradas.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-16 text-center text-muted font-medium italic">
+                  <td colSpan={7} className="p-16 text-center text-muted font-medium italic">
                     <Wallet size={48} className="mx-auto mb-4 opacity-20" />
                     {rows.length === 0 ? 'Sem alunos ativos para gerar mensalidades neste mês.' : 'Nenhum aluno encontrado para a pesquisa.'}
                   </td>
                 </tr>
               ) : (
-                rowsFiltradas.map((row) => (
-                  <tr key={row.id} className="hover:bg-raised/20 transition-colors">
-                    <td className="p-6 font-black text-primary whitespace-nowrap">{getNome(row)}</td>
-                    <td className="p-6 text-right font-mono font-bold text-secondary whitespace-nowrap">
-                      {Number(row.valor_esperado).toFixed(2)}€
-                    </td>
-                    <td className="p-6 text-center whitespace-nowrap">
-                      <button
-                        onClick={() => handleTogglePago(row)}
-                        className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
-                          row.pago
-                            ? 'bg-success-bg text-success border-success/30'
-                            : 'bg-danger-bg text-danger border-danger/30'
-                        }`}
-                      >
-                        {row.pago ? 'Pago' : 'Não Pago'}
-                      </button>
-                    </td>
-                    <td className="p-6 text-right whitespace-nowrap">
-                      <input
-                        key={`vp-${row.id}-${row.valor_pago}`}
-                        type="number"
-                        step="0.01"
-                        defaultValue={row.valor_pago ?? ''}
-                        disabled={!row.pago}
-                        placeholder="—"
-                        onBlur={(e) => handleUpdateValorPago(row, e.target.value)}
-                        className="w-24 bg-page border border-border p-2 rounded-lg text-right font-mono font-bold text-primary outline-none focus:border-accent/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                      />
-                    </td>
-                    <td className="p-6 text-center whitespace-nowrap">
-                      <input
-                        key={`dp-${row.id}-${row.data_pagamento}`}
-                        type="date"
-                        defaultValue={row.data_pagamento ?? ''}
-                        disabled={!row.pago}
-                        onChange={(e) => handleUpdateData(row, e.target.value)}
-                        className="bg-page border border-border p-2 rounded-lg text-primary outline-none focus:border-accent/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                      />
-                    </td>
-                  </tr>
-                ))
+                rowsFiltradas.map((row) => {
+                  const explicacoes = explicacoesPorAluno[row.aluno_id];
+                  const pagamentoExplicacoes = pagamentosExplicacoes[row.aluno_id];
+                  const expandido = expandedAlunoIds.has(row.aluno_id);
+
+                  return (
+                    <Fragment key={row.id}>
+                      <tr className="hover:bg-raised/20 transition-colors">
+                        <td className="p-6 font-black text-primary whitespace-nowrap">{getNome(row)}</td>
+                        <td className="p-6 text-right font-mono font-bold text-secondary whitespace-nowrap border-l border-border">
+                          {Number(row.valor_esperado).toFixed(2)}€
+                        </td>
+                        <td className="p-6 text-center whitespace-nowrap">
+                          <button
+                            onClick={() => handleTogglePago(row)}
+                            className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                              row.pago
+                                ? 'bg-success-bg text-success border-success/30'
+                                : 'bg-danger-bg text-danger border-danger/30'
+                            }`}
+                          >
+                            {row.pago ? 'Pago' : 'Não Pago'}
+                          </button>
+                        </td>
+                        <td className="p-6 text-right whitespace-nowrap">
+                          <input
+                            key={`vp-${row.id}-${row.valor_pago}`}
+                            type="number"
+                            step="0.01"
+                            defaultValue={row.valor_pago ?? ''}
+                            disabled={!row.pago}
+                            placeholder="—"
+                            onBlur={(e) => handleUpdateValorPago(row, e.target.value)}
+                            className="w-24 bg-page border border-border p-2 rounded-lg text-right font-mono font-bold text-primary outline-none focus:border-accent/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                          />
+                        </td>
+                        <td className="p-6 text-center whitespace-nowrap">
+                          <input
+                            key={`dp-${row.id}-${row.data_pagamento}`}
+                            type="date"
+                            defaultValue={row.data_pagamento ?? ''}
+                            disabled={!row.pago}
+                            onChange={(e) => handleUpdateData(row, e.target.value)}
+                            className="bg-page border border-border p-2 rounded-lg text-primary outline-none focus:border-accent/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                          />
+                        </td>
+                        <td className="p-6 text-right whitespace-nowrap border-l border-border">
+                          {explicacoes ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandido(row.aluno_id)}
+                                className="font-mono font-bold text-primary hover:text-accent underline decoration-dotted transition-colors"
+                              >
+                                {explicacoes.soma.toFixed(2)}€
+                              </button>
+                              {explicacoes.semPrecoCount > 0 && (
+                                <p className="text-[9px] text-warning font-bold mt-1 flex items-center gap-1 justify-end">
+                                  <AlertTriangle size={11} />
+                                  Preço não definido — {explicacoes.semPrecoCount} {explicacoes.semPrecoCount === 1 ? 'sessão' : 'sessões'} sem valor
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-muted font-bold">—</span>
+                          )}
+                        </td>
+                        <td className="p-6 text-center whitespace-nowrap">
+                          {explicacoes ? (
+                            <button
+                              onClick={() => handleToggleExplicacoesPago(row.aluno_id)}
+                              className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                                pagamentoExplicacoes?.pago
+                                  ? 'bg-success-bg text-success border-success/30'
+                                  : 'bg-danger-bg text-danger border-danger/30'
+                              }`}
+                            >
+                              {pagamentoExplicacoes?.pago ? 'Pago' : 'Não Pago'}
+                            </button>
+                          ) : (
+                            <span className="text-muted text-[10px] font-black uppercase tracking-widest">Sem sessões</span>
+                          )}
+                        </td>
+                      </tr>
+                      {expandido && explicacoes && (
+                        <tr className="bg-page/30">
+                          <td colSpan={7} className="p-6">
+                            <div className="flex items-start justify-between gap-6">
+                              <div className="space-y-1.5 flex-1">
+                                <p className="text-[9px] font-black uppercase text-muted tracking-widest mb-2">Sessões de {getNome(row)} este mês</p>
+                                {explicacoes.sessoes.map((s: any, i: number) => (
+                                  <div key={i} className="flex items-center justify-between text-xs bg-surface border border-border/60 rounded-xl px-4 py-2">
+                                    <span className="text-secondary font-bold">
+                                      {new Date(s.data + 'T00:00:00').toLocaleDateString('pt-PT')} · {s.disciplina} · {s.professor}
+                                    </span>
+                                    {s.valor != null ? (
+                                      <span className="font-mono font-bold text-primary">{Number(s.valor).toFixed(2)}€</span>
+                                    ) : (
+                                      <span className="font-bold text-warning flex items-center gap-1">
+                                        <AlertTriangle size={10} /> Sem preço
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="shrink-0 space-y-1">
+                                <label className="text-[9px] font-black text-muted uppercase ml-1">Data de Pagamento</label>
+                                <input
+                                  key={`dpe-${row.aluno_id}-${pagamentoExplicacoes?.data_pagamento}`}
+                                  type="date"
+                                  defaultValue={pagamentoExplicacoes?.data_pagamento ?? ''}
+                                  disabled={!pagamentoExplicacoes?.pago}
+                                  onChange={(e) => handleUpdateDataPagamentoExplicacoes(row.aluno_id, e.target.value)}
+                                  className="bg-page border border-border p-2 rounded-lg text-primary outline-none focus:border-accent/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all block"
+                                />
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>
