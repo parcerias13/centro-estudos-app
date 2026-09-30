@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
   Building2, Mail, Save, Loader2, DollarSign,
-  Plus, Trash2, RefreshCw, ShieldAlert, Key, Receipt
+  Plus, Trash2, RefreshCw, ShieldAlert, Key, Receipt, GraduationCap, Pencil
 } from 'lucide-react';
 
 const CATEGORIAS_DESPESA = ['Professores', 'Materiais', 'Comida', 'Outros'];
@@ -18,8 +18,15 @@ const TIPOS_DESPESA = [
 ] as const;
 const TIPO_LABEL: Record<string, string> = { fixa: 'Fixa', variavel: 'Variável' };
 
+// Mesma convenção de tarifa_tipo já usada em tarifas_professor_disciplina (Equipa).
+const TIPOS_PRECO_FAMILIA = [
+  { valor: 'fixo', label: 'Fixo por sessão' },
+  { valor: 'por_hora', label: 'Por hora' },
+] as const;
+const TIPO_PRECO_LABEL: Record<string, string> = { fixo: 'Fixo por sessão', por_hora: 'Por hora' };
+
 export default function GestaoTotalPage() {
-  const { toast, showError } = useStatusToast();
+  const { toast, showError, showSuccess } = useStatusToast();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -49,6 +56,18 @@ export default function GestaoTotalPage() {
   const [despData, setDespData] = useState(new Date().toISOString().split('T')[0]);
   const [criandoDespesa, setCriandoDespesa] = useState(false);
 
+  // Preços de explicações à família (precos_explicacoes_familia) — mesma
+  // estrutura de estado das exceções de tarifa em Equipa (Fase 2), para as
+  // duas telas não derivarem por pequenas diferenças de implementação.
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [precosFamilia, setPrecosFamilia] = useState<any[]>([]);
+  const [precoEditandoId, setPrecoEditandoId] = useState<string | null>(null); // null = formulário fechado, 'novo' = a criar
+  const [precoDisciplinaId, setPrecoDisciplinaId] = useState('');
+  const [precoAno, setPrecoAno] = useState(''); // '' = todos os anos
+  const [precoTipo, setPrecoTipo] = useState('');
+  const [precoValor, setPrecoValor] = useState('');
+  const [savingPreco, setSavingPreco] = useState(false);
+
   const loadTudo = useCallback(async () => {
     try {
       setLoading(true);
@@ -77,6 +96,25 @@ export default function GestaoTotalPage() {
           .lte('data', fimMesStr)
           .order('data', { ascending: false });
         setDespesas(despRes || []);
+
+        // Disciplinas do centro + preços à família — mesma fonte (subjects)
+        // e a mesma lógica de anos_aplicaveis já usada em Equipa (Fase 2).
+        const centro_id = user?.app_metadata?.centro_id;
+        if (centro_id) {
+          const { data: subjectsRes } = await supabase
+            .from('subjects')
+            .select('id, name, anos_aplicaveis')
+            .eq('centro_id', centro_id)
+            .order('name');
+          setSubjects(subjectsRes || []);
+
+          const { data: precosRes } = await supabase
+            .from('precos_explicacoes_familia')
+            .select('*, subjects(name)')
+            .eq('centro_id', centro_id)
+            .order('ano_escolar', { ascending: true, nullsFirst: true });
+          setPrecosFamilia(precosRes || []);
+        }
 
         const config = await configRes.json();
         setNomeCentro(config.nome_centro || '');
@@ -220,6 +258,107 @@ export default function GestaoTotalPage() {
       return;
     }
     loadTudo();
+  };
+
+  // --- Preços de explicações à família — mesmo padrão das exceções de tarifa em Equipa (Fase 2) ---
+  const anosParaDisciplina = (disciplinaId: string) => {
+    const disciplina = subjects.find((s) => String(s.id) === disciplinaId);
+    if (!disciplina?.anos_aplicaveis || disciplina.anos_aplicaveis.length === 0) {
+      return Array.from({ length: 12 }, (_, i) => i + 1);
+    }
+    return [...disciplina.anos_aplicaveis].sort((a: number, b: number) => a - b);
+  };
+
+  const abrirNovoPreco = () => {
+    setPrecoEditandoId('novo');
+    setPrecoDisciplinaId('');
+    setPrecoAno('');
+    setPrecoTipo('');
+    setPrecoValor('');
+  };
+
+  const editarPreco = (preco: any) => {
+    setPrecoEditandoId(preco.id);
+    setPrecoDisciplinaId(String(preco.disciplina_id));
+    setPrecoAno(preco.ano_escolar != null ? String(preco.ano_escolar) : '');
+    setPrecoTipo(preco.tipo);
+    setPrecoValor(preco.valor.toString());
+  };
+
+  const fecharFormPreco = () => {
+    setPrecoEditandoId(null);
+    setPrecoDisciplinaId('');
+    setPrecoAno('');
+    setPrecoTipo('');
+    setPrecoValor('');
+  };
+
+  const handleSalvarPreco = async () => {
+    if (!precoDisciplinaId) {
+      showError('Escolhe a disciplina.');
+      return;
+    }
+    if (!precoTipo) {
+      showError('Escolhe o tipo de preço.');
+      return;
+    }
+    const valor = parseFloat(precoValor);
+    if (isNaN(valor) || valor < 0) {
+      showError('Indica um valor válido.');
+      return;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const centro_id = user?.app_metadata?.centro_id;
+    if (!centro_id) {
+      showError('Não foi possível obter o centro. Recarrega a página.');
+      return;
+    }
+
+    setSavingPreco(true);
+    const payload = {
+      centro_id,
+      disciplina_id: Number(precoDisciplinaId),
+      ano_escolar: precoAno === '' ? null : Number(precoAno),
+      tipo: precoTipo,
+      valor,
+    };
+
+    const { error } =
+      precoEditandoId && precoEditandoId !== 'novo'
+        ? await supabase.from('precos_explicacoes_familia').update(payload).eq('id', precoEditandoId)
+        : await supabase.from('precos_explicacoes_familia').insert(payload);
+
+    setSavingPreco(false);
+
+    if (error) {
+      if (error.code === '23505') {
+        showError('Já existe um preço para esta disciplina e ano — edita o que já existe em vez de criar outro.');
+      } else {
+        showError('Erro ao guardar preço: ' + error.message);
+      }
+      return;
+    }
+
+    showSuccess('Preço guardado.');
+    fecharFormPreco();
+    const { data } = await supabase
+      .from('precos_explicacoes_familia')
+      .select('*, subjects(name)')
+      .eq('centro_id', centro_id)
+      .order('ano_escolar', { ascending: true, nullsFirst: true });
+    setPrecosFamilia(data || []);
+  };
+
+  const handleApagarPreco = async (id: string) => {
+    if (!confirm('Remover este preço?')) return;
+    const { error } = await supabase.from('precos_explicacoes_familia').delete().eq('id', id);
+    if (error) {
+      showError('Erro ao remover preço: ' + error.message);
+      return;
+    }
+    setPrecosFamilia((prev) => prev.filter((p) => p.id !== id));
+    showSuccess('Preço removido.');
   };
 
   if (loading) return (
@@ -581,6 +720,133 @@ export default function GestaoTotalPage() {
               <p className="text-danger text-[11px] font-bold px-1 pt-2">{saveError}</p>
             )}
           </form>
+        </section>
+
+        {/* BLOCO 4: PREÇOS DE EXPLICAÇÕES (FAMÍLIA) */}
+        <section className="bg-surface border border-border/60 p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm">
+          <div className="flex justify-between items-center mb-8">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-accent-soft rounded-2xl text-accent">
+                <GraduationCap size={24} />
+              </div>
+              <h3 className="text-primary font-black uppercase text-sm tracking-widest">Preços de Explicações (Família)</h3>
+            </div>
+            <button
+              onClick={() => (precoEditandoId === null ? abrirNovoPreco() : fecharFormPreco())}
+              className={`p-2 rounded-xl border transition-all active:scale-90 ${precoEditandoId !== null ? 'bg-border text-primary border-border' : 'bg-accent-soft text-accent border-accent/20 hover:bg-accent hover:text-on-accent'}`}
+            >
+              <Plus size={20} />
+            </button>
+          </div>
+
+          {precoEditandoId !== null && (
+            <div className="mb-6 bg-page/50 border border-border rounded-3xl p-5 space-y-4">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-muted uppercase ml-1">Disciplina</label>
+                <select
+                  value={precoDisciplinaId}
+                  onChange={(e) => { setPrecoDisciplinaId(e.target.value); setPrecoAno(''); }}
+                  className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none"
+                >
+                  <option value="">Disciplina...</option>
+                  {subjects.map((s: any) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-muted uppercase ml-1">Ano</label>
+                <select
+                  value={precoAno}
+                  onChange={(e) => setPrecoAno(e.target.value)}
+                  disabled={!precoDisciplinaId}
+                  className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none disabled:opacity-50"
+                >
+                  <option value="">Todos os anos</option>
+                  {anosParaDisciplina(precoDisciplinaId).map((ano) => (
+                    <option key={ano} value={ano}>{ano}º Ano</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1">
+                  <label className="text-[9px] font-black text-muted uppercase ml-1">Tipo</label>
+                  <select
+                    value={precoTipo}
+                    onChange={(e) => setPrecoTipo(e.target.value)}
+                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none"
+                  >
+                    <option value="">Tipo...</option>
+                    {TIPOS_PRECO_FAMILIA.map((t) => (
+                      <option key={t.valor} value={t.valor}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label className="text-[9px] font-black text-muted uppercase ml-1">Valor (€)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={precoValor}
+                    onChange={(e) => setPrecoValor(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-mono font-black text-accent focus:border-accent outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleSalvarPreco}
+                  disabled={savingPreco}
+                  className="flex-1 py-3 bg-accent hover:bg-accent-hover text-on-accent rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {savingPreco ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  Guardar Preço
+                </button>
+                <button
+                  type="button"
+                  onClick={fecharFormPreco}
+                  disabled={savingPreco}
+                  className="px-5 py-3 bg-raised hover:bg-border rounded-2xl font-black text-sm transition-all active:scale-95"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            {precosFamilia.length > 0 ? precosFamilia.map((p: any) => (
+              <div
+                key={p.id}
+                className="bg-page/40 border border-border/50 p-5 rounded-3xl flex items-center justify-between group hover:border-border transition-all"
+              >
+                <div className="flex flex-col min-w-0">
+                  <span className="font-black uppercase text-[11px] text-secondary tracking-tight truncate">{p.subjects?.name}</span>
+                  <span className="text-[10px] text-muted font-bold mt-0.5">
+                    {p.ano_escolar != null ? `${p.ano_escolar}º ano` : 'Todos os anos'} · {TIPO_PRECO_LABEL[p.tipo] ?? p.tipo}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 ml-3">
+                  <span className="font-mono font-black text-accent text-lg">{Number(p.valor).toFixed(2)} €</span>
+                  <button type="button" onClick={() => editarPreco(p)} className="p-1.5 text-muted hover:text-accent transition-colors">
+                    <Pencil size={14} />
+                  </button>
+                  <button type="button" onClick={() => handleApagarPreco(p.id)} className="p-1.5 text-muted hover:text-danger transition-colors">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            )) : (
+              <div className="text-center py-12 border-2 border-dashed border-border/50 rounded-[2rem]">
+                <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem preços definidos</p>
+              </div>
+            )}
+          </div>
         </section>
 
       </div>
