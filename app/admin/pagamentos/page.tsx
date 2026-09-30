@@ -521,6 +521,11 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Sessões em bruto por professor, para a expansão de "Sessões Dadas" —
+  // mesmo padrão de explicacoesPorAluno em MensalidadesTab.
+  const [sessoesPorProfessor, setSessoesPorProfessor] = useState<Record<string, any[]>>({});
+  const [expandedProfessorIds, setExpandedProfessorIds] = useState<Set<string>>(new Set());
+
   // Mesmo padrão isFetchingRef/fetchPendingRef usado no Dashboard, em Explicações
   // e na aba Mensalidades — aplicado desde já, sem esperar o problema aparecer.
   const isFetchingRef = useRef(false);
@@ -540,7 +545,12 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
 
       const [{ data: professoresData, error: errProf }, { data: sessoesData, error: errSess }, { data: pagamentosData, error: errPag }] = await Promise.all([
         supabase.from('staff').select('id, name, tarifa_tipo').eq('role', 'professor').order('name'),
-        supabase.from('explicacoes').select('professor_id, horas_dadas, valor_calculado').eq('dado', true).gte('data', inicioMes).lte('data', fimMes),
+        supabase
+          .from('explicacoes')
+          .select('data, professor_id, horas_dadas, valor_calculado, subjects(name), explicacoes_alunos(aluno_id, alunos(nome))')
+          .eq('dado', true)
+          .gte('data', inicioMes)
+          .lte('data', fimMes),
         supabase.from('pagamentos_professores').select('professor_id, pago').eq('ano', ano).eq('mes', mes),
       ]);
 
@@ -553,12 +563,24 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
       (pagamentosData || []).forEach((p: any) => { pagoMap[p.professor_id] = p.pago; });
 
       const agregados: Record<string, { sessoes: number; horas: number; valor: number }> = {};
+      const sessoesPorProf: Record<string, any[]> = {};
       (sessoesData || []).forEach((s: any) => {
         if (!agregados[s.professor_id]) agregados[s.professor_id] = { sessoes: 0, horas: 0, valor: 0 };
         agregados[s.professor_id].sessoes += 1;
         agregados[s.professor_id].horas += Number(s.horas_dadas) || 0;
         agregados[s.professor_id].valor += Number(s.valor_calculado) || 0;
+
+        if (!sessoesPorProf[s.professor_id]) sessoesPorProf[s.professor_id] = [];
+        const alunos = (s.explicacoes_alunos || []).map((ea: any) => ea.alunos?.nome).filter(Boolean).join(', ');
+        sessoesPorProf[s.professor_id].push({
+          data: s.data,
+          disciplina: s.subjects?.name || 'Sem disciplina',
+          alunos: alunos || '—',
+          horas: s.horas_dadas,
+          valor: s.valor_calculado,
+        });
       });
+      setSessoesPorProfessor(sessoesPorProf);
 
       const novasLinhas = (professoresData || [])
         .filter((p: any) => agregados[p.id])
@@ -611,6 +633,17 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
     }
     setLinhas((prev) => prev.map((l) => (l.professorId === linha.professorId ? { ...l, pago: novoPago } : l)));
     showSuccess(novoPago ? 'Professor marcado como pago.' : 'Marcado como não pago.');
+  };
+
+  // Expansão de "Sessões Dadas" — mesma mecânica de toggleExpandido em MensalidadesTab,
+  // usa os dados já fetched em sessoesPorProfessor (nunca uma query nova ao clicar).
+  const toggleExpandidoProfessor = (professorId: string) => {
+    setExpandedProfessorIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(professorId)) next.delete(professorId);
+      else next.add(professorId);
+      return next;
+    });
   };
 
   const linhasFiltradas = linhas.filter((l) => l.nome.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -686,32 +719,61 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
               ) : (
                 linhasFiltradas.map((linha) => {
                   const semTarifa = linha.valorAPagar === 0 && linha.sessoesDadas > 0 && !linha.tarifaDefinida;
+                  const sessoes = sessoesPorProfessor[linha.professorId] || [];
+                  const expandido = expandedProfessorIds.has(linha.professorId);
                   return (
-                    <tr key={linha.professorId} className="hover:bg-raised/20 transition-colors">
-                      <td className="p-6 font-black text-primary whitespace-nowrap">{linha.nome}</td>
-                      <td className="p-6 text-center font-mono font-bold text-secondary whitespace-nowrap">{linha.sessoesDadas}</td>
-                      <td className="p-6 text-center font-mono font-bold text-secondary whitespace-nowrap">{linha.horasTotais.toFixed(1)}h</td>
-                      <td className="p-6 text-right whitespace-nowrap">
-                        <p className="font-mono font-bold text-primary">{linha.valorAPagar.toFixed(2)}€</p>
-                        {semTarifa && (
-                          <p className="text-[9px] text-warning font-bold flex items-center gap-1 justify-end mt-1">
-                            <AlertTriangle size={10} /> Tarifa não definida
-                          </p>
-                        )}
-                      </td>
-                      <td className="p-6 text-center whitespace-nowrap">
-                        <button
-                          onClick={() => handleTogglePago(linha)}
-                          className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
-                            linha.pago
-                              ? 'bg-success-bg text-success border-success/30'
-                              : 'bg-danger-bg text-danger border-danger/30'
-                          }`}
-                        >
-                          {linha.pago ? 'Pago' : 'Não Pago'}
-                        </button>
-                      </td>
-                    </tr>
+                    <Fragment key={linha.professorId}>
+                      <tr className="hover:bg-raised/20 transition-colors">
+                        <td className="p-6 font-black text-primary whitespace-nowrap">{linha.nome}</td>
+                        <td className="p-6 text-center whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandidoProfessor(linha.professorId)}
+                            className="font-mono font-bold text-secondary hover:text-accent underline decoration-dotted transition-colors"
+                          >
+                            {linha.sessoesDadas}
+                          </button>
+                        </td>
+                        <td className="p-6 text-center font-mono font-bold text-secondary whitespace-nowrap">{linha.horasTotais.toFixed(1)}h</td>
+                        <td className="p-6 text-right whitespace-nowrap">
+                          <p className="font-mono font-bold text-primary">{linha.valorAPagar.toFixed(2)}€</p>
+                          {semTarifa && (
+                            <p className="text-[9px] text-warning font-bold flex items-center gap-1 justify-end mt-1">
+                              <AlertTriangle size={10} /> Tarifa não definida
+                            </p>
+                          )}
+                        </td>
+                        <td className="p-6 text-center whitespace-nowrap">
+                          <button
+                            onClick={() => handleTogglePago(linha)}
+                            className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                              linha.pago
+                                ? 'bg-success-bg text-success border-success/30'
+                                : 'bg-danger-bg text-danger border-danger/30'
+                            }`}
+                          >
+                            {linha.pago ? 'Pago' : 'Não Pago'}
+                          </button>
+                        </td>
+                      </tr>
+                      {expandido && (
+                        <tr className="bg-page/30">
+                          <td colSpan={5} className="p-6">
+                            <p className="text-[9px] font-black uppercase text-muted tracking-widest mb-2">Sessões de {linha.nome} este mês</p>
+                            <div className="space-y-1.5">
+                              {sessoes.map((s: any, i: number) => (
+                                <div key={i} className="flex items-center justify-between text-xs bg-surface border border-border/60 rounded-xl px-4 py-2">
+                                  <span className="text-secondary font-bold">
+                                    {new Date(s.data + 'T00:00:00').toLocaleDateString('pt-PT')} · {s.disciplina} · {s.alunos} · {Number(s.horas).toFixed(1)}h
+                                  </span>
+                                  <span className="font-mono font-bold text-primary">{Number(s.valor).toFixed(2)}€</span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })
               )}
