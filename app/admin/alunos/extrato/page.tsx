@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Loader2, Calendar,
-  Utensils, Printer, CheckCircle2, DollarSign
+  Utensils, Printer, CheckCircle2, DollarSign, AlertTriangle
 } from 'lucide-react';
 
 function ExtratoDetalhadoContent() {
@@ -36,8 +36,8 @@ function ExtratoDetalhadoContent() {
     
     setStudent(aluno);
 
-    // 2. Buscar Presenças (apenas para assiduidade) e Extras do Mês
-    const [{ data: presencas }, { data: extras }] = await Promise.all([
+    // 2. Buscar Presenças (apenas para assiduidade), Extras e Explicações dadas do Mês
+    const [{ data: presencas }, { data: extras }, { data: explicacoesData }] = await Promise.all([
       supabase.from('diario_bordo')
         .select('*')
         .eq('aluno_id', studentId)
@@ -47,28 +47,53 @@ function ExtratoDetalhadoContent() {
         .select('*, servicos(nome)')
         .eq('aluno_id', studentId)
         .gte('data_consumo', primeiroDia.split('T')[0])
-        .lte('data_consumo', ultimoDia.split('T')[0])
+        .lte('data_consumo', ultimoDia.split('T')[0]),
+      supabase.from('explicacoes_alunos')
+        .select('valor_cobrado_familia, explicacoes!inner(data, dado, subjects(name), staff(name))')
+        .eq('aluno_id', studentId)
+        .eq('explicacoes.dado', true)
+        .gte('explicacoes.data', primeiroDia.split('T')[0])
+        .lte('explicacoes.data', ultimoDia.split('T')[0])
     ]);
 
-    // 3. NOVO MOTOR DE CÁLCULO (SOMA DIRETA: FIXO + EXTRAS)
+    // 3. NOVO MOTOR DE CÁLCULO (SOMA DIRETA: FIXO + EXTRAS + EXPLICAÇÕES)
     const mensalidadeFixa = Number(aluno?.mensalidade_base) || 0;
     const totalExtras = extras?.reduce((acc, curr) => acc + (Number(curr.preco_aplicado) || 0), 0) || 0;
     const datasUnicas = new Set(presencas?.map(p => p.entrada.split('T')[0]));
     const totalSessoes = datasUnicas.size;
+
+    // Só soma sessões com preço definido; conta as que não têm, para o aviso.
+    let totalExplicacoes = 0;
+    let explicacoesSemPreco = 0;
+    explicacoesData?.forEach(ea => {
+      if (ea.valor_cobrado_familia != null) totalExplicacoes += Number(ea.valor_cobrado_familia);
+      else explicacoesSemPreco += 1;
+    });
 
     // 4. AGRUPAMENTO DIÁRIO PARA O HISTÓRICO
     const mapaDias: Record<string, any> = {};
 
     presencas?.forEach(p => {
       const d = p.entrada.split('T')[0];
-      if (!mapaDias[d]) mapaDias[d] = { data: d, presenca: true, extras: [] };
+      if (!mapaDias[d]) mapaDias[d] = { data: d, presenca: true, extras: [], explicacoes: [] };
       else mapaDias[d].presenca = true;
     });
 
     extras?.forEach(e => {
       const d = e.data_consumo;
-      if (!mapaDias[d]) mapaDias[d] = { data: d, presenca: false, extras: [] };
+      if (!mapaDias[d]) mapaDias[d] = { data: d, presenca: false, extras: [], explicacoes: [] };
       mapaDias[d].extras.push(e);
+    });
+
+    explicacoesData?.forEach((ea: any) => {
+      const exp = Array.isArray(ea.explicacoes) ? ea.explicacoes[0] : ea.explicacoes;
+      const d = exp.data;
+      if (!mapaDias[d]) mapaDias[d] = { data: d, presenca: false, extras: [], explicacoes: [] };
+      mapaDias[d].explicacoes.push({
+        disciplina: exp.subjects?.name || 'Sem disciplina',
+        professor: exp.staff?.name || '—',
+        valor: ea.valor_cobrado_familia,
+      });
     });
 
     const listagem = Object.values(mapaDias).sort((a, b) => b.data.localeCompare(a.data));
@@ -78,7 +103,9 @@ function ExtratoDetalhadoContent() {
       totalSessoes,
       mensalidadeFixa,
       totalExtras,
-      totalGeral: mensalidadeFixa + totalExtras
+      totalExplicacoes,
+      explicacoesSemPreco,
+      totalGeral: mensalidadeFixa + totalExtras + totalExplicacoes
     });
 
     setLoading(false);
@@ -117,7 +144,7 @@ function ExtratoDetalhadoContent() {
             </div>
           </div>
           
-          <div className="grid grid-cols-3 gap-4 mt-8 pt-8 border-t border-border/50">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-8 border-t border-border/50">
             <div>
               <p className="text-[9px] text-muted font-black uppercase mb-1">Mensalidade Base</p>
               <p className="font-mono font-bold text-lg text-primary">{resumo.mensalidadeFixa.toFixed(2)}€</p>
@@ -125,6 +152,16 @@ function ExtratoDetalhadoContent() {
             <div>
               <p className="text-[9px] text-warning font-black uppercase mb-1">Total Extras</p>
               <p className="font-mono font-bold text-lg text-warning">+{resumo.totalExtras.toFixed(2)}€</p>
+            </div>
+            <div>
+              <p className="text-[9px] text-accent font-black uppercase mb-1">Explicações</p>
+              <p className="font-mono font-bold text-lg text-accent">+{resumo.totalExplicacoes.toFixed(2)}€</p>
+              {resumo.explicacoesSemPreco > 0 && (
+                <p className="text-[9px] text-warning font-bold mt-1 flex items-center gap-1">
+                  <AlertTriangle size={11} />
+                  Preço não definido — {resumo.explicacoesSemPreco} {resumo.explicacoesSemPreco === 1 ? 'sessão' : 'sessões'} sem valor
+                </p>
+              )}
             </div>
             <div className="text-right">
               <p className="text-[9px] text-muted font-black uppercase mb-1">Assiduidade</p>
@@ -149,11 +186,16 @@ function ExtratoDetalhadoContent() {
                       <CheckCircle2 size={14} /> Aluno presente no centro
                     </div>
                   )}
-                  {dia.extras.length > 0 && (
+                  {(dia.extras.length > 0 || dia.explicacoes.length > 0) && (
                     <div className="flex flex-wrap gap-2 mt-1">
                       {dia.extras.map((e: any, i: number) => (
-                        <span key={i} className="text-[9px] bg-warning-bg text-warning border border-warning/20 px-2 py-0.5 rounded-md font-bold uppercase">
+                        <span key={`extra-${i}`} className="text-[9px] bg-warning-bg text-warning border border-warning/20 px-2 py-0.5 rounded-md font-bold uppercase">
                           {e.servicos?.nome || 'Extra'}: {e.preco_aplicado}€
+                        </span>
+                      ))}
+                      {dia.explicacoes.map((ex: any, i: number) => (
+                        <span key={`explicacao-${i}`} className="text-[9px] bg-accent-soft text-accent border border-accent/20 px-2 py-0.5 rounded-md font-bold uppercase">
+                          Explicação: {ex.disciplina} — Prof. {ex.professor}: {ex.valor != null ? `${Number(ex.valor).toFixed(2)}€` : 'Sem preço'}
                         </span>
                       ))}
                     </div>
@@ -161,7 +203,13 @@ function ExtratoDetalhadoContent() {
                 </div>
               </div>
               <div className="text-right font-mono font-bold text-warning">
-                {dia.extras.length > 0 ? `+${dia.extras.reduce((a: any, c: any) => a + c.preco_aplicado, 0).toFixed(2)}€` : '—'}
+                {(() => {
+                  const temExplicacaoComPreco = dia.explicacoes.some((ex: any) => ex.valor != null);
+                  if (dia.extras.length === 0 && !temExplicacaoComPreco) return '—';
+                  const totalExtrasDia = dia.extras.reduce((a: any, c: any) => a + (Number(c.preco_aplicado) || 0), 0);
+                  const totalExplicacoesDia = dia.explicacoes.reduce((a: any, c: any) => a + (c.valor != null ? Number(c.valor) : 0), 0);
+                  return `+${(totalExtrasDia + totalExplicacoesDia).toFixed(2)}€`;
+                })()}
               </div>
             </div>
           )) : (
