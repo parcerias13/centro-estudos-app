@@ -3,12 +3,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { calcularValorExplicacao } from '@/lib/explicacoes';
 import { disciplinasComuns } from '@/lib/disciplinas';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Plus, X, GraduationCap, Loader2,
-  Clock, Trash2, Save, Search, Users,
+  Clock, Trash2, Save, Search, Users, AlertTriangle,
 } from 'lucide-react';
 import { startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, format, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -34,7 +33,6 @@ export default function ExplicacoesPage() {
   const [centroId, setCentroId] = useState<string | null>(null);
   const [professores, setProfessores] = useState<any[]>([]);
   const [selectedProfessorId, setSelectedProfessorId] = useState<string | null>(null);
-  const [professorAtual, setProfessorAtual] = useState<any | null>(null);
 
   const [subjects, setSubjects] = useState<any[]>([]);
   const [alunosAtivos, setAlunosAtivos] = useState<any[]>([]);
@@ -85,20 +83,6 @@ export default function ExplicacoesPage() {
     })();
   }, []);
 
-  // --- TARIFA DO PROFESSOR SELECIONADO (necessária para calcular valor_calculado) ---
-  useEffect(() => {
-    if (!selectedProfessorId) {
-      setProfessorAtual(null);
-      return;
-    }
-    supabase
-      .from('staff')
-      .select('id, name, tarifa_tipo, tarifa_valor, tarifa_escala_aluno')
-      .eq('id', selectedProfessorId)
-      .single()
-      .then(({ data }) => setProfessorAtual(data));
-  }, [selectedProfessorId]);
-
   // --- SESSÕES DA SEMANA ---
   // Guarda contra chamadas sobrepostas (mesmo padrão de isFetchingRef/fetchPendingRef
   // do Dashboard admin): navegação rápida entre semanas ou StrictMode em dev podem
@@ -123,7 +107,7 @@ export default function ExplicacoesPage() {
 
       const { data, error } = await supabase
         .from('explicacoes')
-        .select('*, explicacoes_alunos(aluno_id, alunos(nome)), subjects(name)')
+        .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, alunos(nome)), subjects(name)')
         .eq('professor_id', selectedProfessorId)
         .gte('data', format(currentWeekStart, 'yyyy-MM-dd'))
         .lte('data', format(weekEnd, 'yyyy-MM-dd'))
@@ -277,7 +261,6 @@ export default function ExplicacoesPage() {
       {detalheSessao && (
         <DetalheExplicacaoModal
           sessao={detalheSessao}
-          professorAtual={professorAtual}
           onClose={() => setDetalheSessao(null)}
           onSaved={handleSessaoAtualizada}
           onDeleted={handleSessaoApagada}
@@ -305,7 +288,7 @@ export default function ExplicacoesPage() {
 }
 
 // --- PAINEL DE DETALHE: toggle dado, horas, notas, apagar (só se ainda não dada) ---
-function DetalheExplicacaoModal({ sessao, professorAtual, onClose, onSaved, onDeleted, showError, showSuccess }: any) {
+function DetalheExplicacaoModal({ sessao, onClose, onSaved, onDeleted, showError, showSuccess }: any) {
   const [dado, setDado] = useState<boolean>(sessao.dado);
   const [horasDadas, setHorasDadas] = useState(sessao.horas_dadas?.toString() || '');
   const [notas, setNotas] = useState(sessao.notas || '');
@@ -323,29 +306,32 @@ function DetalheExplicacaoModal({ sessao, professorAtual, onClose, onSaved, onDe
     }
 
     setSaving(true);
-    const payload: Record<string, any> = { dado, horas_dadas: horas, notas: notas.trim() || null };
+    // valor_calculado (professor) e valor_cobrado_familia (por aluno) já não
+    // se calculam aqui — o trigger calcular_valores_explicacao trata dos dois
+    // assim que dado passa (ou continua) a true.
+    const payload = { dado, horas_dadas: horas, notas: notas.trim() || null };
 
-    if (dado) {
-      const numAlunos = sessao.explicacoes_alunos?.length || 0;
-      payload.valor_calculado = calcularValorExplicacao({
-        tarifaTipo: professorAtual?.tarifa_tipo,
-        tarifaValor: professorAtual?.tarifa_valor,
-        tarifaEscalaAluno: professorAtual?.tarifa_escala_aluno,
-        horasDadas: horas,
-        numAlunos,
-      });
+    const { error } = await supabase.from('explicacoes').update(payload).eq('id', sessao.id);
+
+    if (error) {
+      setSaving(false);
+      showError('Erro ao guardar: ' + error.message);
+      return;
     }
 
-    const { data, error } = await supabase
+    // Reler numa segunda chamada, à parte do update — o update e o embedding de
+    // explicacoes_alunos no mesmo pedido partilham o snapshot da mesma instrução
+    // SQL, por isso não veem o valor_cobrado_familia que o trigger acabou de
+    // escrever na tabela relacionada (fica null até um pedido novo).
+    const { data, error: fetchError } = await supabase
       .from('explicacoes')
-      .update(payload)
+      .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, alunos(nome)), subjects(name)')
       .eq('id', sessao.id)
-      .select('*, explicacoes_alunos(aluno_id, alunos(nome)), subjects(name)')
       .single();
 
     setSaving(false);
-    if (error) {
-      showError('Erro ao guardar: ' + error.message);
+    if (fetchError) {
+      showError('Erro ao reler a explicação: ' + fetchError.message);
       return;
     }
     showSuccess('Explicação atualizada.');
@@ -417,6 +403,24 @@ function DetalheExplicacaoModal({ sessao, professorAtual, onClose, onSaved, onDe
               Último valor calculado: <span className="font-bold text-primary">{Number(sessao.valor_calculado).toFixed(2)}€</span>
             </p>
           )}
+
+          {sessao.dado && sessao.explicacoes_alunos?.length > 0 && (
+            <div className="bg-page p-3 rounded-xl border border-border space-y-1.5">
+              <p className="text-[9px] font-black uppercase text-muted tracking-widest">Cobrado à família</p>
+              {sessao.explicacoes_alunos.map((ea: any) => (
+                <div key={ea.id} className="flex items-center justify-between text-xs">
+                  <span className="text-secondary font-bold">{ea.alunos?.nome}</span>
+                  {ea.valor_cobrado_familia != null ? (
+                    <span className="font-bold text-primary">{Number(ea.valor_cobrado_familia).toFixed(2)}€</span>
+                  ) : (
+                    <span className="font-bold text-warning flex items-center gap-1">
+                      <AlertTriangle size={10} /> Sem preço
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex gap-3 mt-6">
@@ -452,8 +456,21 @@ function NovaExplicacaoModal({ professorId, centroId, subjects, alunosAtivos, on
   const [disciplinaId, setDisciplinaId] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Uma sessão em grupo é sempre do mesmo ano escolar — o cálculo do
+  // professor (trigger calcular_valores_explicacao) assume isto para
+  // resolver uma tarifa inequívoca. Só valida ao adicionar; remover nunca
+  // é bloqueado.
   const toggleAluno = (id: string) => {
-    setAlunoIds((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
+    const jaSelecionado = alunoIds.includes(id);
+    if (!jaSelecionado && alunoIds.length > 0) {
+      const anoDoGrupo = alunosAtivos.find((a: any) => a.id === alunoIds[0])?.ano_escolar;
+      const anoDoNovo = alunosAtivos.find((a: any) => a.id === id)?.ano_escolar;
+      if (anoDoGrupo != null && anoDoNovo !== anoDoGrupo) {
+        showError('Todos os alunos de uma sessão têm de ser do mesmo ano escolar.');
+        return;
+      }
+    }
+    setAlunoIds((prev) => (jaSelecionado ? prev.filter((a) => a !== id) : [...prev, id]));
   };
 
   const alunosFiltrados = alunosAtivos.filter((a: any) => a.nome.toLowerCase().includes(buscaAluno.toLowerCase()));
