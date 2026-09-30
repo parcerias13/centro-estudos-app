@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Shield, Plus, Trash2, Loader2, Save, Mail, User, Lock, X, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Shield, Plus, Trash2, Loader2, Save, Mail, User, Lock, X, AlertTriangle, Pencil } from 'lucide-react';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 
 export default function AdminTeam() {
@@ -29,6 +29,18 @@ export default function AdminTeam() {
   // Sessões já dadas por professores sem tarifa definida — aviso, não bloqueio
   // (ver /admin/explicacoes: dado=true sem tarifa grava valor_calculado=0€ em silêncio).
   const [sessoesSemTarifaCount, setSessoesSemTarifaCount] = useState<Record<string, number>>({});
+
+  // Exceções de tarifa por disciplina/ano (tarifas_professor_disciplina)
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [excecoes, setExcecoes] = useState<any[]>([]);
+  const [loadingExcecoes, setLoadingExcecoes] = useState(false);
+  const [excecaoEditandoId, setExcecaoEditandoId] = useState<string | null>(null); // null = formulário fechado, 'novo' = a criar
+  const [excecaoDisciplinaId, setExcecaoDisciplinaId] = useState('');
+  const [excecaoAno, setExcecaoAno] = useState(''); // '' = todos os anos
+  const [excecaoTipo, setExcecaoTipo] = useState('');
+  const [excecaoValor, setExcecaoValor] = useState('');
+  const [excecaoEscalaAluno, setExcecaoEscalaAluno] = useState(false);
+  const [savingExcecao, setSavingExcecao] = useState(false);
 
   const fetchTeam = async () => {
     const { data } = await supabase.from('staff').select('*').order('name');
@@ -60,6 +72,147 @@ export default function AdminTeam() {
   useEffect(() => {
     fetchTeam();
   }, []);
+
+  // Disciplinas do centro, para o dropdown das exceções.
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      const centro_id = user?.app_metadata?.centro_id;
+      if (!centro_id) return;
+      supabase
+        .from('subjects')
+        .select('id, name, anos_aplicaveis')
+        .eq('centro_id', centro_id)
+        .order('name')
+        .then(({ data }) => setSubjects(data || []));
+    });
+  }, []);
+
+  // Exceções do professor cujo modal de tarifa está aberto.
+  useEffect(() => {
+    if (!tarifaModalMember) {
+      setExcecoes([]);
+      fecharFormExcecao();
+      return;
+    }
+    setLoadingExcecoes(true);
+    supabase
+      .from('tarifas_professor_disciplina')
+      .select('*, subjects(name)')
+      .eq('professor_id', tarifaModalMember.id)
+      .order('ano_escolar', { ascending: true, nullsFirst: true })
+      .then(({ data, error }) => {
+        setLoadingExcecoes(false);
+        if (error) {
+          showError('Erro ao carregar exceções: ' + error.message);
+          return;
+        }
+        setExcecoes(data || []);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tarifaModalMember]);
+
+  const anosParaDisciplina = (disciplinaId: string) => {
+    const disciplina = subjects.find((s) => String(s.id) === disciplinaId);
+    if (!disciplina?.anos_aplicaveis || disciplina.anos_aplicaveis.length === 0) {
+      return Array.from({ length: 12 }, (_, i) => i + 1);
+    }
+    return [...disciplina.anos_aplicaveis].sort((a: number, b: number) => a - b);
+  };
+
+  const abrirNovaExcecao = () => {
+    setExcecaoEditandoId('novo');
+    setExcecaoDisciplinaId('');
+    setExcecaoAno('');
+    setExcecaoTipo('');
+    setExcecaoValor('');
+    setExcecaoEscalaAluno(false);
+  };
+
+  const editarExcecao = (exc: any) => {
+    setExcecaoEditandoId(exc.id);
+    setExcecaoDisciplinaId(String(exc.disciplina_id));
+    setExcecaoAno(exc.ano_escolar != null ? String(exc.ano_escolar) : '');
+    setExcecaoTipo(exc.tarifa_tipo);
+    setExcecaoValor(exc.tarifa_valor.toString());
+    setExcecaoEscalaAluno(exc.tarifa_escala_aluno || false);
+  };
+
+  const fecharFormExcecao = () => {
+    setExcecaoEditandoId(null);
+    setExcecaoDisciplinaId('');
+    setExcecaoAno('');
+    setExcecaoTipo('');
+    setExcecaoValor('');
+    setExcecaoEscalaAluno(false);
+  };
+
+  const handleSalvarExcecao = async () => {
+    if (!tarifaModalMember) return;
+    if (!excecaoDisciplinaId) {
+      showError('Escolhe a disciplina.');
+      return;
+    }
+    if (!excecaoTipo) {
+      showError('Escolhe o tipo de tarifa.');
+      return;
+    }
+    const valor = parseFloat(excecaoValor);
+    if (isNaN(valor) || valor < 0) {
+      showError('Indica um valor de tarifa válido.');
+      return;
+    }
+
+    const ctx = await getAdminContext();
+    if (!ctx) return;
+
+    setSavingExcecao(true);
+    const payload = {
+      professor_id: tarifaModalMember.id,
+      disciplina_id: Number(excecaoDisciplinaId),
+      ano_escolar: excecaoAno === '' ? null : Number(excecaoAno),
+      tarifa_tipo: excecaoTipo,
+      tarifa_valor: valor,
+      tarifa_escala_aluno: excecaoEscalaAluno,
+    };
+
+    const { error } =
+      excecaoEditandoId && excecaoEditandoId !== 'novo'
+        ? await supabase.from('tarifas_professor_disciplina').update(payload).eq('id', excecaoEditandoId)
+        : await supabase.from('tarifas_professor_disciplina').insert(payload);
+
+    setSavingExcecao(false);
+
+    if (error) {
+      if (error.code === '23505') {
+        showError('Já existe uma exceção para esta disciplina e ano — edita a que já existe em vez de criar outra.');
+      } else {
+        showError('Erro ao guardar exceção: ' + error.message);
+      }
+      return;
+    }
+
+    showSuccess('Exceção guardada.');
+    fecharFormExcecao();
+    const { data } = await supabase
+      .from('tarifas_professor_disciplina')
+      .select('*, subjects(name)')
+      .eq('professor_id', tarifaModalMember.id)
+      .order('ano_escolar', { ascending: true, nullsFirst: true });
+    setExcecoes(data || []);
+  };
+
+  const handleApagarExcecao = async (id: string) => {
+    if (!confirm('Remover esta exceção de tarifa?')) return;
+    const ctx = await getAdminContext();
+    if (!ctx) return;
+    const { error } = await supabase.from('tarifas_professor_disciplina').delete().eq('id', id);
+    if (error) {
+      showError('Erro ao remover exceção: ' + error.message);
+      return;
+    }
+    setExcecoes((prev) => prev.filter((e) => e.id !== id));
+    showSuccess('Exceção removida.');
+  };
 
   const getAdminContext = async (): Promise<{ centro_id: string } | null> => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -375,6 +528,134 @@ export default function AdminTeam() {
               {savingTarifa ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
               Guardar Tarifa
             </button>
+
+            {/* EXCEÇÕES POR DISCIPLINA/ANO — vencem sobre a tarifa geral acima */}
+            <div className="mt-6 pt-6 border-t border-border">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-black uppercase text-muted tracking-widest">Exceções por Disciplina</h3>
+                {excecaoEditandoId === null && (
+                  <button
+                    type="button"
+                    onClick={abrirNovaExcecao}
+                    className="text-[10px] font-black text-accent hover:text-accent-hover flex items-center gap-1"
+                  >
+                    <Plus size={12} /> Adicionar exceção
+                  </button>
+                )}
+              </div>
+
+              {loadingExcecoes ? (
+                <Loader2 className="animate-spin text-accent mx-auto my-4" size={18} />
+              ) : (
+                <div className="space-y-2 mb-3">
+                  {excecoes.length === 0 && excecaoEditandoId === null && (
+                    <p className="text-[11px] text-muted italic">Sem exceções — usa sempre a tarifa geral acima.</p>
+                  )}
+                  {excecoes.map((exc) => (
+                    <div key={exc.id} className="bg-page border border-border p-3 rounded-xl flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-primary truncate">
+                          {exc.subjects?.name}{' '}
+                          <span className="text-muted font-normal">
+                            · {exc.ano_escolar != null ? `${exc.ano_escolar}º ano` : 'Todos os anos'}
+                          </span>
+                        </p>
+                        <p className="text-[10px] text-accent font-bold">
+                          {exc.tarifa_tipo === 'fixo'
+                            ? `${Number(exc.tarifa_valor).toFixed(2)}€ fixo`
+                            : `${Number(exc.tarifa_valor).toFixed(2)}€/hora`}
+                          {exc.tarifa_escala_aluno ? ' · escala por aluno' : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button type="button" onClick={() => editarExcecao(exc)} className="p-1.5 text-muted hover:text-accent transition-colors">
+                          <Pencil size={14} />
+                        </button>
+                        <button type="button" onClick={() => handleApagarExcecao(exc.id)} className="p-1.5 text-muted hover:text-danger transition-colors">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {excecaoEditandoId !== null && (
+                <div className="bg-page border border-border p-4 rounded-xl space-y-3">
+                  <select
+                    value={excecaoDisciplinaId}
+                    onChange={(e) => { setExcecaoDisciplinaId(e.target.value); setExcecaoAno(''); }}
+                    className="w-full bg-surface border border-border text-primary p-2.5 rounded-lg outline-none focus:border-accent text-sm"
+                  >
+                    <option value="">Disciplina...</option>
+                    {subjects.map((s: any) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={excecaoAno}
+                    onChange={(e) => setExcecaoAno(e.target.value)}
+                    disabled={!excecaoDisciplinaId}
+                    className="w-full bg-surface border border-border text-primary p-2.5 rounded-lg outline-none focus:border-accent text-sm disabled:opacity-50"
+                  >
+                    <option value="">Todos os anos</option>
+                    {anosParaDisciplina(excecaoDisciplinaId).map((ano) => (
+                      <option key={ano} value={ano}>{ano}º Ano</option>
+                    ))}
+                  </select>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={excecaoTipo}
+                      onChange={(e) => setExcecaoTipo(e.target.value)}
+                      className="w-full bg-surface border border-border text-primary p-2.5 rounded-lg outline-none focus:border-accent text-sm"
+                    >
+                      <option value="">Tipo...</option>
+                      <option value="fixo">Fixo por sessão</option>
+                      <option value="por_hora">Por hora</option>
+                    </select>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={excecaoValor}
+                      onChange={(e) => setExcecaoValor(e.target.value)}
+                      placeholder="0.00€"
+                      className="w-full bg-surface border border-border text-primary p-2.5 rounded-lg outline-none focus:border-accent text-sm"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 text-xs font-bold text-primary cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={excecaoEscalaAluno}
+                      onChange={(e) => setExcecaoEscalaAluno(e.target.checked)}
+                      className="w-4 h-4 accent-accent"
+                    />
+                    Multiplica pelo nº de alunos
+                  </label>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSalvarExcecao}
+                      disabled={savingExcecao}
+                      className="flex-1 bg-accent hover:bg-accent-hover text-on-accent text-xs font-black py-2.5 rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    >
+                      {savingExcecao ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} Guardar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={fecharFormExcecao}
+                      disabled={savingExcecao}
+                      className="px-4 text-xs font-black text-muted hover:text-secondary"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
