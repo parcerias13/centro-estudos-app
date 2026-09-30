@@ -729,7 +729,7 @@ export default function GestaoTotalPage() {
               <div className="p-3 bg-accent-soft rounded-2xl text-accent">
                 <GraduationCap size={24} />
               </div>
-              <h3 className="text-primary font-black uppercase text-sm tracking-widest">Preços de Explicações (Família)</h3>
+              <h3 className="text-primary font-black uppercase text-sm tracking-widest">Preços de Explicações</h3>
             </div>
             <button
               onClick={() => (precoEditandoId === null ? abrirNovoPreco() : fecharFormPreco())}
