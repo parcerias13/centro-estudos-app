@@ -2,6 +2,7 @@ export const CABECALHOS = [
   'Nome*',
   'Data Nascimento*',
   'Email Encarregado*',
+  'Email de Login do Aluno',
   'Telefone Encarregado*',
   'Ano Escolar*',
   'Mensalidade Base*',
@@ -17,6 +18,7 @@ export const LINHA_EXEMPLO = [
   'Maria Silva',
   '15/03/2015',
   'mae@gmail.com',
+  '',
   '912345678',
   '4',
   '79',
@@ -32,6 +34,10 @@ export interface AlunoImportado {
   nome: string;
   data_nascimento: string | null;
   email_encarregado: string | null;
+  // Opcional — só é preciso quando dois irmãos partilham o mesmo email do
+  // encarregado, já que esse é o email de login por defeito (ver
+  // emailLoginDoAluno() abaixo). Sem valor aqui, cai sempre no do encarregado.
+  email_login: string | null;
   telefone_encarregado: string | null;
   ano_escolar: number | null;
   mensalidade_base: number | null;
@@ -41,6 +47,10 @@ export interface AlunoImportado {
   usa_app: boolean | null;
   nif_encarregado: string | null;
   morada_encarregado: string | null;
+}
+
+export function emailLoginDoAluno(dados: AlunoImportado): string | null {
+  return dados.email_login || dados.email_encarregado;
 }
 
 export interface LinhaImportacao {
@@ -125,6 +135,7 @@ export function mapearLinha(linhaBruta: Record<string, unknown>, linhaExcel: num
     nome: String(linhaBruta['Nome*'] ?? linhaBruta['Nome'] ?? '').trim(),
     data_nascimento: paraDataNascimento(linhaBruta['Data Nascimento*'] ?? linhaBruta['Data Nascimento']),
     email_encarregado: paraTextoOuNull(linhaBruta['Email Encarregado*'] ?? linhaBruta['Email Encarregado'])?.toLowerCase() ?? null,
+    email_login: paraTextoOuNull(linhaBruta['Email de Login do Aluno'])?.toLowerCase() ?? null,
     telefone_encarregado: paraTextoOuNull(linhaBruta['Telefone Encarregado*'] ?? linhaBruta['Telefone Encarregado']),
     ano_escolar: paraAnoEscolarOuNull(linhaBruta['Ano Escolar*'] ?? linhaBruta['Ano Escolar']),
     mensalidade_base: paraNumeroOuNull(linhaBruta['Mensalidade Base*'] ?? linhaBruta['Mensalidade Base']),
@@ -141,13 +152,9 @@ export function mapearLinha(linhaBruta: Record<string, unknown>, linhaExcel: num
   if (!dados.data_nascimento) erros.push('Data de Nascimento em falta ou inválida (usa DD/MM/AAAA)');
   if (!dados.email_encarregado) erros.push('Email do Encarregado em falta');
   else if (!REGEX_EMAIL.test(dados.email_encarregado)) erros.push('Email do Encarregado inválido');
+  if (dados.email_login && !REGEX_EMAIL.test(dados.email_login)) erros.push('Email de Login do Aluno inválido');
   if (!dados.telefone_encarregado) erros.push('Telefone do Encarregado em falta');
   if (dados.ano_escolar === null) erros.push('Ano Escolar em falta ou inválido (1 a 12)');
 
   return { linhaExcel, dados, erros };
-}
-
-export function gerarPasswordAleatoria(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }

@@ -4,10 +4,11 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import ExcelJS from 'exceljs';
-import { UserPlus, Search, FileBarChart, Edit, ClipboardList, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter, FileText, FileSpreadsheet, UploadCloud, Receipt } from 'lucide-react';
+import { UserPlus, Search, FileBarChart, Edit, ClipboardList, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter, FileText, FileSpreadsheet, UploadCloud, Receipt, KeyRound } from 'lucide-react';
 import { CABECALHOS, LINHA_EXEMPLO } from './importAlunosConfig';
 import ImportarAlunosModal from './ImportarAlunosModal';
 import ExportarFaturacaoModal from './ExportarFaturacaoModal';
+import GerarCodigosModal from './GerarCodigosModal';
 
 
 export default function ListaAlunos() {
@@ -18,8 +19,13 @@ export default function ListaAlunos() {
   const [ficheiroImportacao, setFicheiroImportacao] = useState<File | null>(null);
   const inputImportacaoRef = useRef<HTMLInputElement>(null);
   const [mostrarExportarFaturacao, setMostrarExportarFaturacao] = useState(false);
+  const [mostrarGerarCodigos, setMostrarGerarCodigos] = useState(false);
+  const [role, setRole] = useState<string | null>(null);
 
-  useEffect(() => { fetchAlunos(); }, []);
+  useEffect(() => {
+    fetchAlunos();
+    supabase.auth.getUser().then(({ data: { user } }) => setRole(user?.app_metadata?.role?.toLowerCase() ?? null));
+  }, []);
 
   const fetchAlunos = async () => {
     setLoading(true);
@@ -169,6 +175,15 @@ export default function ListaAlunos() {
             <Receipt size={18} /> EXPORTAR FATURAÇÃO
           </button>
 
+          {role === 'admin' && (
+            <button
+              onClick={() => setMostrarGerarCodigos(true)}
+              className="bg-surface hover:bg-raised text-secondary px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-border transition-all active:scale-95"
+            >
+              <KeyRound size={18} /> CÓDIGOS DOS ENCARREGADOS
+            </button>
+          )}
+
           <Link href="/admin/alunos/novo" className="bg-accent hover:bg-accent-hover text-on-accent px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-accent/20 transition-all active:scale-95">
             <UserPlus size={20} /> NOVA MATRÍCULA
           </Link>
@@ -187,6 +202,13 @@ export default function ListaAlunos() {
         <ExportarFaturacaoModal
           alunos={alunos}
           onClose={() => setMostrarExportarFaturacao(false)}
+        />
+      )}
+
+      {mostrarGerarCodigos && (
+        <GerarCodigosModal
+          alunos={alunos}
+          onClose={() => setMostrarGerarCodigos(false)}
         />
       )}
 

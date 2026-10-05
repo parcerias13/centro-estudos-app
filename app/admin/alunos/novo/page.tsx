@@ -4,20 +4,23 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap, Mail, DollarSign, Eye, EyeOff, RefreshCw, FileText, MapPin } from 'lucide-react';
+import { useStatusToast, StatusToast } from '@/lib/statusToast';
+import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap, Mail, DollarSign, Copy, CheckCircle2, KeyRound, FileText, MapPin } from 'lucide-react';
 
 export default function NovoAluno() {
   const router = useRouter();
+  const { toast, showError, showSuccess } = useStatusToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [erro, setErro] = useState('');
 
+  // Acessos gerados pelo servidor, mostrados uma vez só depois de criar o aluno.
+  const [resultado, setResultado] = useState<{ password: string; codigo: string | null; avisoCodigo: string | null; avisoHorarios: string | null } | null>(null);
+
   // 1. DADOS PESSOAIS
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [telefone, setTelefone] = useState(''); 
+  const [telefone, setTelefone] = useState('');
   const [emailEncarregado, setEmailEncarregado] = useState('');
   const [nifEncarregado, setNifEncarregado] = useState('');
   const [moradaEncarregado, setMoradaEncarregado] = useState('');
@@ -77,11 +80,13 @@ export default function NovoAluno() {
     } finally { setUploading(false); }
   };
 
-  const gerarPassword = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    const pwd = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-    setPassword(pwd);
-    setShowPassword(true);
+  const copiar = async (texto: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      showSuccess(`${label} copiado.`);
+    } catch {
+      showError('Não foi possível copiar — copia manualmente.');
+    }
   };
 
   const toggleDia = (id: number) => {
@@ -122,7 +127,6 @@ export default function NovoAluno() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email,
-          password,
           nome,
           data_nascimento: dataNascimento,
           telefone_encarregado: telefone,
@@ -144,13 +148,70 @@ export default function NovoAluno() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || `Erro (${res.status})`);
 
-      router.push('/admin/alunos');
-      router.refresh();
+      setResultado({ password: body.password, codigo: body.codigo ?? null, avisoCodigo: body.avisoCodigo ?? null, avisoHorarios: body.avisoHorarios ?? null });
     } catch (err: any) {
       setErro(err.message);
       throw err;
     }
   };
+
+  const handleConcluir = () => {
+    router.push('/admin/alunos');
+    router.refresh();
+  };
+
+  if (resultado) {
+    return (
+      <main className="min-h-screen bg-page text-primary p-6 max-w-2xl mx-auto pb-20">
+        <div className="bg-surface border border-border rounded-3xl p-8 shadow-2xl space-y-6">
+          <div className="flex items-center gap-3 text-success">
+            <CheckCircle2 size={28} />
+            <h1 className="text-xl font-black">Matrícula criada</h1>
+          </div>
+          <p className="text-sm text-secondary">
+            Guarda estes acessos agora — só são mostrados uma vez. Comunica-os ao encarregado.
+          </p>
+
+          <div className="bg-page border border-border rounded-2xl p-5 space-y-2">
+            <p className="text-[10px] font-black uppercase text-muted tracking-widest">Password do Aluno</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 font-mono text-lg font-bold text-primary bg-surface border border-border rounded-xl px-4 py-3">{resultado.password}</code>
+              <button type="button" onClick={() => copiar(resultado.password, 'Password')} className="p-3 bg-raised hover:bg-border border border-border rounded-xl text-secondary hover:text-primary transition-all active:scale-95">
+                <Copy size={18} />
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-page border border-border rounded-2xl p-5 space-y-2">
+            <p className="text-[10px] font-black uppercase text-muted tracking-widest flex items-center gap-1.5"><KeyRound size={11} /> Código dos Encarregados</p>
+            {resultado.codigo ? (
+              <div className="flex items-center gap-2">
+                <code className="flex-1 font-mono text-lg font-bold text-primary bg-surface border border-border rounded-xl px-4 py-3 tracking-[0.3em]">{resultado.codigo}</code>
+                <button type="button" onClick={() => copiar(resultado.codigo!, 'Código')} className="p-3 bg-raised hover:bg-border border border-border rounded-xl text-secondary hover:text-primary transition-all active:scale-95">
+                  <Copy size={18} />
+                </button>
+              </div>
+            ) : (
+              <p className="text-warning text-sm font-bold bg-warning-bg border border-warning/20 rounded-xl px-4 py-3">{resultado.avisoCodigo}</p>
+            )}
+          </div>
+
+          {resultado.avisoHorarios && (
+            <p className="text-warning text-sm font-bold bg-warning-bg border border-warning/20 rounded-xl px-4 py-3">{resultado.avisoHorarios}</p>
+          )}
+
+          <button
+            type="button"
+            onClick={handleConcluir}
+            className="w-full bg-accent hover:bg-accent-hover text-on-accent p-4 rounded-2xl font-black transition-all active:scale-95"
+          >
+            Concluir
+          </button>
+        </div>
+        <StatusToast toast={toast} />
+      </main>
+    );
+  }
 
   return (
     <main className={`min-h-screen bg-page text-primary p-6 max-w-4xl mx-auto pb-20 transition-all ${isSubmitting ? 'pointer-events-none opacity-60' : ''}`}>
@@ -167,7 +228,7 @@ export default function NovoAluno() {
       </div>
 
       <form onSubmit={(e) => { e.preventDefault(); safeAction(handleGuardar); }} className="bg-surface border border-border rounded-3xl p-8 shadow-2xl space-y-10">
-        
+
         {erro && (
           <div className="bg-danger-bg border border-danger/30 p-4 rounded-xl flex items-start gap-3 text-danger">
             <ShieldAlert className="shrink-0" size={20} />
@@ -203,38 +264,8 @@ export default function NovoAluno() {
             <div className="space-y-2">
               <label className="text-[10px] font-black text-muted uppercase tracking-widest">Email de Acesso (Aluno)</label>
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all" />
+              <p className="text-[10px] text-muted">A password e o código dos encarregados são gerados automaticamente ao finalizar — vais vê-los uma vez só.</p>
             </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-muted uppercase tracking-widest">Password Provisória</label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
-                    className="w-full bg-page border border-border p-4 pr-12 rounded-xl outline-none focus:border-accent transition-all font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors"
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={gerarPassword}
-                  title="Gerar password aleatória"
-                  className="px-4 bg-raised hover:bg-border border border-border rounded-xl transition-all active:scale-95 text-secondary hover:text-primary shrink-0"
-                >
-                  <RefreshCw size={16} />
-                </button>
-              </div>
-            </div>
-
             <div className="space-y-2">
               <label className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
                 <GraduationCap size={12} /> Ano Escolar
@@ -401,6 +432,7 @@ export default function NovoAluno() {
           {isSubmitting ? 'A CRIAR ACESSOS...' : 'FINALIZAR MATRÍCULA'}
         </button>
       </form>
+      <StatusToast toast={toast} />
     </main>
   );
 }

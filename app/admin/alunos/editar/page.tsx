@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
-import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign, KeyRound, Eye, EyeOff, RefreshCw, FileText, MapPin, School, Users2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign, KeyRound, Eye, EyeOff, RefreshCw, FileText, MapPin, School, Users2, Trash2, Copy } from 'lucide-react';
 
 function EditarAlunoContent() {
   const router = useRouter();
@@ -26,6 +26,12 @@ function EditarAlunoContent() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState(false);
+
+  // Gerar código dos encarregados inline — independente da password
+  const [showGerarCodigo, setShowGerarCodigo] = useState(false);
+  const [codigoGerado, setCodigoGerado] = useState<string | null>(null);
+  const [gerandoCodigo, setGerandoCodigo] = useState(false);
+  const [codigoError, setCodigoError] = useState<string | null>(null);
 
   // 1. DADOS PESSOAIS
   const [nome, setNome] = useState('');
@@ -135,11 +141,33 @@ function EditarAlunoContent() {
     } finally { setUploading(false); }
   };
 
-  const gerarPassword = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    const pwd = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-    setNovaPassword(pwd);
-    setShowNovaPassword(true);
+  // Gera no servidor (crypto, nunca Math.random) e já aplica a nova password
+  // de imediato — ao contrário do botão "Guardar", que é para quem escreve
+  // uma password à mão.
+  const handleGerarPassword = async () => {
+    if (!confirm('A password atual deixa de funcionar e os pais ficam sem acesso até receberem a nova. Continuar?')) return;
+    setResetError(null);
+    setResetSuccess(false);
+    setResetLoading(true);
+    try {
+      const res = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alunoId: studentId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setNovaPassword(body.password);
+        setShowNovaPassword(true);
+        setResetSuccess(true);
+      } else {
+        setResetError(body?.error || `Erro (${res.status}). Tenta novamente.`);
+      }
+    } catch (err: any) {
+      setResetError(err?.message || 'Erro de rede. Tenta novamente.');
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   const handleResetPassword = async () => {
@@ -158,13 +186,48 @@ function EditarAlunoContent() {
     const body = await res.json().catch(() => ({}));
     if (res.ok) {
       setResetSuccess(true);
-      setNovaPassword('');
-      setShowNovaPassword(false);
-      setTimeout(() => { setResetSuccess(false); setShowResetPassword(false); }, 3000);
+      setTimeout(() => { setResetSuccess(false); setShowResetPassword(false); setNovaPassword(''); setShowNovaPassword(false); }, 3000);
     } else {
       setResetError(body?.error || `Erro (${res.status}). Tenta novamente.`);
     }
     setResetLoading(false);
+  };
+
+  const handleGerarCodigo = async (forcar = false) => {
+    if (!forcar && !confirm('Vais gerar um novo código de 4 dígitos para os encarregados. Continuar?')) return;
+    setCodigoError(null);
+    setGerandoCodigo(true);
+    try {
+      const res = await fetch('/api/admin/gerar-codigo-encarregado', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alunoId: studentId, ...(forcar ? { forcar: true } : {}) }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setCodigoGerado(body.codigo);
+      } else if (res.status === 409 && body?.error === 'codigo_da_familia') {
+        if (confirm('Os pais já escolheram o código deles. Gerar um novo apaga-o. Continuar?')) {
+          await handleGerarCodigo(true);
+          return;
+        }
+      } else {
+        setCodigoError(body?.error || `Erro (${res.status}). Tenta novamente.`);
+      }
+    } catch (err: any) {
+      setCodigoError(err?.message || 'Erro de rede. Tenta novamente.');
+    } finally {
+      setGerandoCodigo(false);
+    }
+  };
+
+  const copiar = async (texto: string) => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      showSuccess('Copiado.');
+    } catch {
+      showError('Não foi possível copiar — copia manualmente.');
+    }
   };
 
   const handleApagarAluno = async () => {
@@ -320,6 +383,17 @@ function EditarAlunoContent() {
             </div>
 
             <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-muted tracking-widest">Código dos Encarregados</label>
+              <button
+                type="button"
+                onClick={() => { setShowGerarCodigo(v => !v); setCodigoError(null); setCodigoGerado(null); }}
+                className="w-full flex items-center justify-center gap-2 bg-surface border border-border hover:border-warning/50 hover:text-warning text-secondary p-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all active:scale-95"
+              >
+                <KeyRound size={16} /> Gerar Código
+              </button>
+            </div>
+
+            <div className="space-y-2">
               <label className="text-[10px] font-black uppercase text-muted tracking-widest flex items-center gap-2">
                 <GraduationCap size={12} /> Ano Escolar
               </label>
@@ -422,15 +496,25 @@ function EditarAlunoContent() {
                 </div>
                 <button
                   type="button"
-                  onClick={gerarPassword}
-                  title="Gerar password aleatória"
-                  className="px-4 bg-raised hover:bg-border border border-border rounded-xl transition-all active:scale-95 text-secondary hover:text-primary shrink-0"
+                  onClick={() => copiar(novaPassword)}
+                  disabled={!novaPassword}
+                  title="Copiar"
+                  className="px-4 bg-raised hover:bg-border border border-border rounded-xl transition-all active:scale-95 text-secondary hover:text-primary shrink-0 disabled:opacity-40"
                 >
-                  <RefreshCw size={16} />
+                  <Copy size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGerarPassword}
+                  disabled={resetLoading}
+                  title="Gerar password segura no servidor"
+                  className="px-4 bg-raised hover:bg-border border border-border rounded-xl transition-all active:scale-95 text-secondary hover:text-primary shrink-0 disabled:opacity-50"
+                >
+                  {resetLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                 </button>
               </div>
               {resetError && <p className="text-danger text-[11px] font-bold">{resetError}</p>}
-              {resetSuccess && <p className="text-success text-[11px] font-bold">Password atualizada com sucesso.</p>}
+              {resetSuccess && <p className="text-success text-[11px] font-bold">Password atualizada com sucesso — guarda-a agora, só é mostrada uma vez.</p>}
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -443,10 +527,51 @@ function EditarAlunoContent() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowResetPassword(false); setNovaPassword(''); setResetError(null); }}
+                  onClick={() => { setShowResetPassword(false); setNovaPassword(''); setShowNovaPassword(false); setResetError(null); }}
                   className="px-5 py-3 bg-raised hover:bg-border rounded-xl font-black text-sm transition-all active:scale-95"
                 >
                   Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {showGerarCodigo && (
+            <div className="bg-page border border-warning/20 rounded-2xl p-5 space-y-4 mt-2">
+              <p className="text-[10px] font-black uppercase text-warning tracking-widest">Código dos Encarregados</p>
+              <p className="text-[11px] text-muted">
+                Gera um novo código de 4 dígitos. É mostrado uma única vez — comunica-o logo ao encarregado.
+              </p>
+              {codigoGerado && (
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 font-mono text-lg font-bold text-primary bg-surface border border-border rounded-xl px-4 py-3 tracking-[0.3em] text-center">{codigoGerado}</code>
+                  <button
+                    type="button"
+                    onClick={() => copiar(codigoGerado)}
+                    title="Copiar"
+                    className="px-4 py-3 bg-raised hover:bg-border border border-border rounded-xl transition-all active:scale-95 text-secondary hover:text-primary shrink-0"
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
+              )}
+              {codigoError && <p className="text-danger text-[11px] font-bold">{codigoError}</p>}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleGerarCodigo()}
+                  disabled={gerandoCodigo}
+                  className="flex-1 py-3 bg-accent hover:bg-accent-hover text-on-accent rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {gerandoCodigo ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
+                  {codigoGerado ? 'Gerar Outro Código' : 'Gerar Código'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowGerarCodigo(false); setCodigoGerado(null); setCodigoError(null); }}
+                  className="px-5 py-3 bg-raised hover:bg-border rounded-xl font-black text-sm transition-all active:scale-95"
+                >
+                  Fechar
                 </button>
               </div>
             </div>
