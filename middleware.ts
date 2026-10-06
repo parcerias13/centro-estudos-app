@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const ROLE_ALLOWED_PATHS: Record<string, string[]> = {
   professor: ['/admin/alunos', '/admin/agenda', '/admin/disciplinas', '/admin/explicacoes'],
-  secretaria: ['/admin/alunos', '/admin/agenda', '/admin/refeitorio', '/admin/historico', '/admin/relatorio'],
+  secretaria: ['/admin/alunos', '/admin/agenda', '/admin/refeitorio', '/admin/historico', '/admin/relatorio', '/admin/mensagens'],
 }
 
 function isPathAllowed(pathname: string, allowedPaths: string[]) {

@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { LayoutDashboard, Users, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut } from 'lucide-react'
+import { subscreverMensagensLidas } from '@/lib/eventoMensagensAdmin'
+import { LayoutDashboard, Users, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle } from 'lucide-react'
 
 const ROLE_ALLOWED_MENU: Record<string, string[]> = {
   professor: ['Dashboard', 'Alunos', 'Agenda', 'Disciplinas e Materiais', 'Explicações'],
-  secretaria: ['Dashboard', 'Alunos', 'Agenda', 'Refeitório', 'Histórico'],
+  secretaria: ['Dashboard', 'Alunos', 'Agenda', 'Refeitório', 'Histórico', 'Mensagens'],
 }
 
 export default function AdminLayout({
@@ -18,14 +19,62 @@ export default function AdminLayout({
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [role, setRole] = useState<string | null>(null)
+  const [centroId, setCentroId] = useState<string | null>(null)
   const [pendentesNotas, setPendentesNotas] = useState(0)
+  const [mensagensNaoLidas, setMensagensNaoLidas] = useState(0)
   const pathname = usePathname()
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       setRole(user?.app_metadata?.role?.toLowerCase() ?? null)
+      setCentroId(user?.app_metadata?.centro_id ?? null)
     })
   }, [])
+
+  // Badge "Mensagens" na sidebar — só conta mensagens da família ainda não
+  // lidas pelo centro, do próprio centro do utilizador (nunca de outro).
+  // Atualiza-se ao ganhar foco, a cada 30s enquanto o separador está
+  // visível, e imediatamente quando a página de Mensagens marca conversas
+  // como lidas (evento partilhado, sem acoplar as duas páginas).
+  const carregarBadgeMensagens = useCallback(async (centro_id: string) => {
+    const { count } = await supabase
+      .from('mensagens')
+      .select('id', { count: 'exact', head: true })
+      .eq('centro_id', centro_id)
+      .eq('autor', 'familia')
+      .is('lida_pelo_centro_em', null)
+    setMensagensNaoLidas(count || 0)
+  }, [])
+
+  useEffect(() => {
+    if ((role !== 'admin' && role !== 'secretaria') || !centroId) return
+
+    carregarBadgeMensagens(centroId)
+
+    const aoFocar = () => carregarBadgeMensagens(centroId)
+    window.addEventListener('focus', aoFocar)
+
+    let intervalo: ReturnType<typeof setInterval> | null = null
+    const geriIntervalo = () => {
+      if (document.visibilityState === 'visible') {
+        if (!intervalo) intervalo = setInterval(() => carregarBadgeMensagens(centroId), 30000)
+      } else if (intervalo) {
+        clearInterval(intervalo)
+        intervalo = null
+      }
+    }
+    geriIntervalo()
+    document.addEventListener('visibilitychange', geriIntervalo)
+
+    const cancelarEvento = subscreverMensagensLidas(() => carregarBadgeMensagens(centroId))
+
+    return () => {
+      window.removeEventListener('focus', aoFocar)
+      document.removeEventListener('visibilitychange', geriIntervalo)
+      if (intervalo) clearInterval(intervalo)
+      cancelarEvento()
+    }
+  }, [role, centroId, carregarBadgeMensagens])
 
   // Aviso "N por confirmar" junto a Alunos — só quem pode confirmar (admin,
   // professor) precisa de ver isto. Fica fora da Agenda por decisão: notas
@@ -50,6 +99,7 @@ export default function AdminLayout({
     { name: 'Agenda', href: '/admin/agenda', icon: Calendar },
     { name: 'Refeitório', href: '/admin/refeitorio', icon: Utensils }, // Novo item
     { name: 'Histórico', href: '/admin/historico', icon: History },
+    { name: 'Mensagens', href: '/admin/mensagens', icon: MessageCircle },
     { name: 'Disciplinas e Materiais', href: '/admin/disciplinas', icon: BookOpen },
     { name: 'Explicações', href: '/admin/explicacoes', icon: GraduationCap },
     { name: 'Performance', href: '/admin/performance', icon: BarChart3 },
@@ -93,13 +143,17 @@ export default function AdminLayout({
         <nav className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
           {visibleMenuItems.map((item) => {
             const isActive = pathname === item.href || (item.href !== '/admin' && pathname?.startsWith(item.href + '/'))
-            const badge = item.name === 'Alunos' && pendentesNotas > 0 ? pendentesNotas : null
+            const badge = item.name === 'Alunos' && pendentesNotas > 0
+              ? pendentesNotas
+              : item.name === 'Mensagens' && mensagensNaoLidas > 0
+                ? mensagensNaoLidas
+                : null
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setIsMenuOpen(false)}
-                title={badge !== null ? `${badge} nota(s) por confirmar` : undefined}
+                title={badge !== null ? (item.name === 'Mensagens' ? `${badge} mensagem(ns) por ler` : `${badge} nota(s) por confirmar`) : undefined}
                 className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group ${
                   isActive ? 'bg-white/10 text-sidebar-text' : 'text-sidebar-text-secondary hover:text-sidebar-text hover:bg-white/5'
                 }`}
