@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -28,7 +28,7 @@ const getEstadoSessao = (sessao: any) => {
   return { label: 'Agendada', classes: 'bg-accent-soft text-accent border-accent/30' };
 };
 
-export default function ExplicacoesPage() {
+function ExplicacoesPageContent() {
   const { toast, showError, showSuccess } = useStatusToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -377,6 +377,14 @@ export default function ExplicacoesPage() {
 
       <StatusToast toast={toast} />
     </main>
+  );
+}
+
+export default function ExplicacoesPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>}>
+      <ExplicacoesPageContent />
+    </Suspense>
   );
 }
 
