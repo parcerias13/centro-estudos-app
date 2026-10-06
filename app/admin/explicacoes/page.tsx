@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { disciplinasComuns } from '@/lib/disciplinas';
+import { sanitizarPedidoExplicacao } from '@/lib/formatoMensagens';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Plus, X, GraduationCap, Loader2,
-  Clock, Trash2, Save, Search, Users, AlertTriangle,
+  Clock, Trash2, Save, Search, Users, AlertTriangle, HelpCircle,
 } from 'lucide-react';
 import { startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, format, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -28,6 +30,8 @@ const getEstadoSessao = (sessao: any) => {
 
 export default function ExplicacoesPage() {
   const { toast, showError, showSuccess } = useStatusToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [role, setRole] = useState<string | null>(null);
   const [centroId, setCentroId] = useState<string | null>(null);
@@ -43,6 +47,55 @@ export default function ExplicacoesPage() {
 
   const [detalheSessao, setDetalheSessao] = useState<any | null>(null);
   const [novaModalOpen, setNovaModalOpen] = useState(false);
+  const [pedidoPreSelecionado, setPedidoPreSelecionado] = useState<{ id: string; alunoId: string; disciplinaId: string | null } | null>(null);
+
+  // Banner "N pedidos por marcar" — só para admin. Um professor também abre
+  // esta página (para a sua própria agenda) e não tem acesso de leitura a
+  // mensagens (RLS); nunca pede nem mostra nada para ele, e nunca dá erro.
+  const [pedidosPendentes, setPedidosPendentes] = useState<any[]>([]);
+
+  const carregarPedidosPendentes = useCallback(async (centro_id: string) => {
+    const { data, error } = await supabase
+      .from('mensagens')
+      .select('id, aluno_id, payload, criada_em, alunos!aluno_id(nome, ano_escolar)')
+      .eq('centro_id', centro_id)
+      .eq('tipo', 'pedido_explicacao')
+      .eq('estado', 'pendente')
+      .order('criada_em', { ascending: true });
+    if (!error) setPedidosPendentes(data || []);
+  }, []);
+
+  useEffect(() => {
+    if (role !== 'admin' || !centroId) return;
+    carregarPedidosPendentes(centroId);
+  }, [role, centroId, carregarPedidosPendentes]);
+
+  // ?pedido=<mensagem_id> — pré-preenche o NovaExplicacaoModal a partir de
+  // um pedido pendente (vindo do cartão em /admin/mensagens ou do banner).
+  useEffect(() => {
+    const pedidoId = searchParams.get('pedido');
+    if (!pedidoId || role !== 'admin') return;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from('mensagens')
+        .select('id, aluno_id, payload, estado')
+        .eq('id', pedidoId)
+        .maybeSingle();
+
+      if (error || !data) {
+        showError('Não foi possível carregar o pedido.');
+      } else if (data.estado !== 'pendente') {
+        showError('Este pedido já foi tratado.');
+      } else {
+        const disciplinaId = sanitizarPedidoExplicacao(data.payload).disciplinaId;
+        setPedidoPreSelecionado({ id: data.id, alunoId: data.aluno_id, disciplinaId: disciplinaId != null ? String(disciplinaId) : null });
+        setNovaModalOpen(true);
+      }
+      router.replace('/admin/explicacoes');
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, role]);
 
   // --- CARGA INICIAL: identidade, disciplinas, alunos, professores (se admin) ---
   // initRef bloqueia a segunda invocação do StrictMode (dev). Independentemente
@@ -201,6 +254,37 @@ export default function ExplicacoesPage() {
         </div>
       </div>
 
+      {role === 'admin' && pedidosPendentes.length > 0 && (
+        <div className="bg-warning-bg border border-warning/20 rounded-2xl p-4 mb-8 space-y-3">
+          <div className="flex items-center gap-2 text-warning">
+            <HelpCircle size={18} />
+            <p className="font-black text-sm">{pedidosPendentes.length} pedido{pedidosPendentes.length > 1 ? 's' : ''} por marcar</p>
+          </div>
+          <div className="space-y-1.5">
+            {pedidosPendentes.map((p) => (
+              <Link
+                key={p.id}
+                href={`/admin/explicacoes?pedido=${p.id}`}
+                className="flex items-center justify-between gap-2 bg-page/60 hover:bg-page rounded-xl px-3 py-2 text-sm transition-colors"
+              >
+                <span className="font-bold text-primary truncate">
+                  {p.alunos?.nome ?? 'Aluno'}{p.alunos?.ano_escolar ? ` · ${p.alunos.ano_escolar}º` : ''} — {sanitizarPedidoExplicacao(p.payload).disciplina ?? 'Disciplina'}
+                </span>
+                <span className="text-[10px] font-black uppercase text-warning shrink-0">Marcar</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {pedidoPreSelecionado && !selectedProfessorId && (
+        <div className="bg-warning-bg border border-warning/20 rounded-2xl p-4 mb-8">
+          <p className="font-bold text-sm text-warning">
+            Escolhe o professor para marcar o pedido de {alunosAtivos.find((a: any) => a.id === pedidoPreSelecionado.alunoId)?.nome ?? 'aluno'}.
+          </p>
+        </div>
+      )}
+
       {!selectedProfessorId ? (
         <div className="bg-surface/70 border-2 border-dashed border-border p-16 rounded-[3rem] text-center flex flex-col items-center">
           <GraduationCap size={48} className="mb-6 text-muted" />
@@ -275,8 +359,17 @@ export default function ExplicacoesPage() {
           centroId={centroId}
           subjects={subjects}
           alunosAtivos={alunosAtivos}
-          onClose={() => setNovaModalOpen(false)}
-          onCreated={() => { setNovaModalOpen(false); fetchSessoes(); }}
+          initialAlunoIds={pedidoPreSelecionado ? [pedidoPreSelecionado.alunoId] : undefined}
+          initialDisciplinaId={pedidoPreSelecionado?.disciplinaId ?? undefined}
+          pedidoMensagemId={pedidoPreSelecionado?.id}
+          pedidoAlunoId={pedidoPreSelecionado?.alunoId}
+          onClose={() => { setNovaModalOpen(false); setPedidoPreSelecionado(null); }}
+          onCreated={() => {
+            setNovaModalOpen(false);
+            setPedidoPreSelecionado(null);
+            fetchSessoes();
+            if (centroId) carregarPedidosPendentes(centroId);
+          }}
           showError={showError}
           showSuccess={showSuccess}
         />
@@ -448,13 +541,28 @@ function DetalheExplicacaoModal({ sessao, onClose, onSaved, onDeleted, showError
 }
 
 // --- NOVA EXPLICAÇÃO: escolher aluno(s), data, hora, disciplina opcional ---
-function NovaExplicacaoModal({ professorId, centroId, subjects, alunosAtivos, onClose, onCreated, showError, showSuccess }: any) {
-  const [alunoIds, setAlunoIds] = useState<string[]>([]);
+type EtapaExplicacao = 'nova' | 'alunos' | 'rpc';
+
+function NovaExplicacaoModal({
+  professorId, centroId, subjects, alunosAtivos, initialAlunoIds, initialDisciplinaId, pedidoMensagemId, pedidoAlunoId,
+  onClose, onCreated, showError, showSuccess,
+}: any) {
+  const [alunoIds, setAlunoIds] = useState<string[]>(initialAlunoIds || []);
   const [buscaAluno, setBuscaAluno] = useState('');
   const [data, setData] = useState('');
   const [horaInicio, setHoraInicio] = useState('');
-  const [disciplinaId, setDisciplinaId] = useState('');
+  const [disciplinaId, setDisciplinaId] = useState(initialDisciplinaId || '');
   const [saving, setSaving] = useState(false);
+  // Fluxo em etapas, cada uma com repetição própria: 'nova' (nada criado
+  // ainda) -> 'alunos' (sessão criada, falta inserir explicacoes_alunos) ->
+  // 'rpc' (alunos associados, falta marcar_pedido_explicacao, só quando há
+  // pedido). Um novo clique em handleCriar nunca repete uma etapa já feita
+  // — só continua da etapa guardada aqui. etapaRef é a fonte da verdade
+  // (lida de forma síncrona dentro de handleCriar); etapa é só para o JSX.
+  const explicacaoCriadaIdRef = useRef<string | null>(null);
+  const etapaRef = useRef<EtapaExplicacao>('nova');
+  const [etapa, setEtapa] = useState<EtapaExplicacao>('nova');
+  const definirEtapa = (e: EtapaExplicacao) => { etapaRef.current = e; setEtapa(e); };
 
   // Uma sessão em grupo é sempre do mesmo ano escolar — o cálculo do
   // professor (trigger calcular_valores_explicacao) assume isto para
@@ -490,60 +598,117 @@ function NovaExplicacaoModal({ professorId, centroId, subjects, alunosAtivos, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alunoIds]);
 
+  // Cada passo devolve true/false — handleCriar decide o que fazer a seguir
+  // a partir disso, nunca repetindo um passo que já tenha devolvido true.
+  const passoInserirAlunos = async (explicacaoId: string): Promise<boolean> => {
+    const linhasAlunos = alunoIds.map((aluno_id) => ({ explicacao_id: explicacaoId, aluno_id }));
+    const { error } = await supabase.from('explicacoes_alunos').insert(linhasAlunos);
+    if (error) {
+      showError('A sessão já foi criada, mas não foi possível associar os alunos: ' + error.message + ' — tenta outra vez.');
+      return false;
+    }
+    return true;
+  };
+
+  const passoMarcarPedido = async (explicacaoId: string): Promise<boolean> => {
+    const { error } = await supabase.rpc('marcar_pedido_explicacao', {
+      p_mensagem_id: pedidoMensagemId,
+      p_explicacao_id: explicacaoId,
+    });
+    if (error) {
+      showError('A sessão e os alunos já estão associados, mas não foi possível marcar o pedido como atendido: ' + error.message + ' — tenta outra vez.');
+      return false;
+    }
+    return true;
+  };
+
   const handleCriar = async () => {
-    if (alunoIds.length === 0) {
-      showError('Escolhe pelo menos um aluno.');
-      return;
-    }
-    if (!data || !horaInicio) {
-      showError('Preenche a data e a hora.');
-      return;
-    }
-
+    if (saving) return;
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    try {
+      if (etapaRef.current === 'nova') {
+        if (alunoIds.length === 0) { showError('Escolhe pelo menos um aluno.'); return; }
+        if (!data || !horaInicio) { showError('Preenche a data e a hora.'); return; }
+        // Validado ANTES de criar — se o aluno do pedido foi retirado da
+        // seleção, nada é criado.
+        if (pedidoAlunoId && !alunoIds.includes(pedidoAlunoId)) {
+          showError('O aluno do pedido tem de estar na sessão.');
+          return;
+        }
 
-    const { data: novaExp, error: errExp } = await supabase
-      .from('explicacoes')
-      .insert({
-        centro_id: centroId,
-        professor_id: professorId,
-        disciplina_id: disciplinaId ? Number(disciplinaId) : null,
-        data,
-        hora_inicio: horaInicio,
-        created_by: user?.id,
-      })
-      .select()
-      .single();
+        const { data: { user } } = await supabase.auth.getUser();
+        const { data: novaExp, error: errExp } = await supabase
+          .from('explicacoes')
+          .insert({
+            centro_id: centroId,
+            professor_id: professorId,
+            disciplina_id: disciplinaId ? Number(disciplinaId) : null,
+            data,
+            hora_inicio: horaInicio,
+            created_by: user?.id,
+          })
+          .select()
+          .single();
 
-    if (errExp) {
-      showError('Erro ao criar explicação: ' + errExp.message);
+        if (errExp) { showError('Erro ao criar explicação: ' + errExp.message); return; }
+
+        explicacaoCriadaIdRef.current = novaExp.id;
+        definirEtapa('alunos');
+      }
+
+      if (etapaRef.current === 'alunos') {
+        const ok = await passoInserirAlunos(explicacaoCriadaIdRef.current!);
+        if (!ok) return;
+
+        if (!pedidoMensagemId) {
+          showSuccess('Explicação marcada com sucesso.');
+          onCreated();
+          return;
+        }
+        definirEtapa('rpc');
+      }
+
+      if (etapaRef.current === 'rpc') {
+        const ok = await passoMarcarPedido(explicacaoCriadaIdRef.current!);
+        if (!ok) return;
+
+        showSuccess('Explicação marcada e pedido atendido.');
+        onCreated();
+      }
+    } finally {
       setSaving(false);
-      return;
     }
+  };
 
-    const linhasAlunos = alunoIds.map((aluno_id) => ({ explicacao_id: novaExp.id, aluno_id }));
-    const { error: errAlunos } = await supabase.from('explicacoes_alunos').insert(linhasAlunos);
-
-    setSaving(false);
-    if (errAlunos) {
-      showError('Erro ao associar alunos: ' + errAlunos.message);
-      return;
+  // Fechar com a sessão já criada mas o fluxo por terminar exige
+  // confirmação explícita — a sessão fica mesmo assim, só deixa de haver
+  // forma automática de terminar o que falta.
+  const handleTentarFechar = () => {
+    if (etapaRef.current === 'nova') { onClose(); return; }
+    const falta = etapaRef.current === 'alunos' ? 'associar os alunos à sessão' : 'marcar o pedido como atendido';
+    if (confirm(`A sessão já foi criada, mas ainda falta ${falta}. Se saíres agora, tens de resolver isto à mão. Sair mesmo assim?`)) {
+      onClose();
     }
-
-    showSuccess('Explicação marcada com sucesso.');
-    onCreated();
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) handleTentarFechar(); }}>
       <div className="bg-surface border border-border w-full max-w-md rounded-3xl shadow-2xl p-8 max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-2">
           <h2 className="text-xl font-black text-primary">Nova Explicação</h2>
-          <button onClick={onClose} className="text-muted hover:text-primary transition-colors">
+          <button onClick={handleTentarFechar} className="text-muted hover:text-primary transition-colors">
             <X size={20} />
           </button>
         </div>
+        {pedidoMensagemId && (
+          <p className="text-xs text-accent font-bold mb-4">A marcar um pedido de explicação da família.</p>
+        )}
+        {etapa === 'alunos' && (
+          <p className="text-xs text-warning font-bold mb-4">A sessão já foi criada. Falta associar os alunos — tenta outra vez.</p>
+        )}
+        {etapa === 'rpc' && (
+          <p className="text-xs text-warning font-bold mb-4">A sessão e os alunos já estão associados. Falta marcar o pedido como atendido — tenta outra vez.</p>
+        )}
 
         <div className="space-y-4">
           <div>
@@ -557,7 +722,8 @@ function NovaExplicacaoModal({ professorId, centroId, subjects, alunosAtivos, on
                 placeholder="Pesquisar aluno..."
                 value={buscaAluno}
                 onChange={(e) => setBuscaAluno(e.target.value)}
-                className="w-full bg-page border border-border text-primary pl-9 pr-3 py-2.5 rounded-xl outline-none focus:border-accent text-sm"
+                disabled={etapa !== 'nova'}
+                className="w-full bg-page border border-border text-primary pl-9 pr-3 py-2.5 rounded-xl outline-none focus:border-accent text-sm disabled:opacity-50"
               />
             </div>
             <div className="max-h-40 overflow-y-auto mt-2 space-y-1 border border-border rounded-xl p-2">
@@ -571,7 +737,8 @@ function NovaExplicacaoModal({ professorId, centroId, subjects, alunosAtivos, on
                       key={aluno.id}
                       type="button"
                       onClick={() => toggleAluno(aluno.id)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition-all ${
+                      disabled={etapa !== 'nova'}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-50 ${
                         selecionado ? 'bg-accent text-on-accent' : 'bg-page text-primary hover:bg-raised'
                       }`}
                     >
@@ -593,7 +760,8 @@ function NovaExplicacaoModal({ professorId, centroId, subjects, alunosAtivos, on
                 type="date"
                 value={data}
                 onChange={(e) => setData(e.target.value)}
-                className="w-full bg-page border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1"
+                disabled={etapa !== 'nova'}
+                className="w-full bg-page border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1 disabled:opacity-50"
               />
             </div>
             <div>
@@ -602,7 +770,8 @@ function NovaExplicacaoModal({ professorId, centroId, subjects, alunosAtivos, on
                 type="time"
                 value={horaInicio}
                 onChange={(e) => setHoraInicio(e.target.value)}
-                className="w-full bg-page border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1"
+                disabled={etapa !== 'nova'}
+                className="w-full bg-page border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1 disabled:opacity-50"
               />
             </div>
           </div>
@@ -612,7 +781,8 @@ function NovaExplicacaoModal({ professorId, centroId, subjects, alunosAtivos, on
             <select
               value={disciplinaId}
               onChange={(e) => setDisciplinaId(e.target.value)}
-              className="w-full bg-page border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1 appearance-none"
+              disabled={etapa !== 'nova'}
+              className="w-full bg-page border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1 appearance-none disabled:opacity-50"
             >
               <option value="">Sem disciplina</option>
               {disciplinasComunsExplicacao.map((s: any) => (
@@ -628,7 +798,7 @@ function NovaExplicacaoModal({ professorId, centroId, subjects, alunosAtivos, on
           className="w-full mt-6 bg-accent hover:bg-accent-hover text-on-accent p-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
         >
           {saving ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
-          Marcar Explicação
+          {etapa === 'alunos' ? 'Repetir: Associar Alunos' : etapa === 'rpc' ? 'Repetir: Marcar Pedido como Atendido' : 'Marcar Explicação'}
         </button>
       </div>
     </div>

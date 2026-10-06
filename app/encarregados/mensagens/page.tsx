@@ -7,11 +7,23 @@ import { format } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { isUnlocked, touch, subscribe } from '@/lib/encarregadoUnlock';
-import { horaOuDataMensagem, comSeparadoresDeDia } from '@/lib/formatoMensagens';
+import { horaOuDataMensagem, comSeparadoresDeDia, sanitizarPedidoExplicacao } from '@/lib/formatoMensagens';
+import { disciplinasParaAno } from '@/lib/disciplinas';
 import {
   ArrowLeft, Loader2, MessageCircle, Send, FileText, HelpCircle, CalendarCheck,
-  CheckCircle2, Clock, XCircle, ChevronUp,
+  CheckCircle2, Clock, XCircle, ChevronUp, X, Plus,
 } from 'lucide-react';
+
+const DIAS_SEMANA = [
+  { valor: 1, rotulo: 'Seg' },
+  { valor: 2, rotulo: 'Ter' },
+  { valor: 3, rotulo: 'Qua' },
+  { valor: 4, rotulo: 'Qui' },
+  { valor: 5, rotulo: 'Sex' },
+  { valor: 6, rotulo: 'Sáb' },
+  { valor: 7, rotulo: 'Dom' },
+];
+const NOTA_MAX = 500;
 
 type TipoMensagem = 'texto' | 'relatorio_mensal' | 'pedido_explicacao' | 'confirmacao_explicacao';
 
@@ -96,7 +108,7 @@ function CartaoMensagem({ msg }: { msg: Mensagem }) {
   }
 
   if (msg.tipo === 'pedido_explicacao') {
-    const p = msg.payload || {};
+    const p = sanitizarPedidoExplicacao(msg.payload);
     return (
       <div className={estilo}>
         <div className="flex items-center justify-between gap-2">
@@ -106,7 +118,12 @@ function CartaoMensagem({ msg }: { msg: Mensagem }) {
           </div>
           <ChipPedido estado={msg.estado} />
         </div>
-        {p.disciplina && <p className="text-sm">{p.disciplina}{p.ano_escolar ? ` · ${p.ano_escolar}º ano` : ''}</p>}
+        {p.disciplina && <p className="text-sm">{p.disciplina}{p.anoEscolar ? ` · ${p.anoEscolar}º ano` : ''}</p>}
+        {p.dias.length > 0 && (
+          <p className="text-xs opacity-90">Dias: {p.dias.map((d) => DIAS_SEMANA.find((x) => x.valor === d)?.rotulo ?? d).join(', ')}</p>
+        )}
+        {p.horario && <p className="text-xs opacity-90">Horário: {p.horario}</p>}
+        {p.nota && <p className="text-xs opacity-90 italic">"{p.nota}"</p>}
         <p className="text-[9px] font-bold uppercase tracking-widest text-on-accent/70">{horaOuDataMensagem(msg.criada_em)}</p>
       </div>
     );
@@ -140,6 +157,9 @@ export default function MensagensEncarregadoPage() {
   const [carregandoAnteriores, setCarregandoAnteriores] = useState(false);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [disciplinasDisponiveis, setDisciplinasDisponiveis] = useState<Array<{ id: number; name: string }>>([]);
+  const [anoEscolar, setAnoEscolar] = useState<number | null>(null);
+  const [modalPedidoAberto, setModalPedidoAberto] = useState(false);
 
   const userIdRef = useRef<string | null>(null);
   const isFetchingRef = useRef(false);
@@ -246,6 +266,15 @@ export default function MensagensEncarregadoPage() {
         if (!user) { router.replace('/login'); return; }
         if (!isUnlocked(user.id)) { router.replace('/encarregados'); return; }
         userIdRef.current = user.id;
+
+        const centro_id = user.app_metadata?.centro_id ?? null;
+        const [{ data: alunoData }, { data: subjectsData }] = await Promise.all([
+          supabase.from('alunos').select('ano_escolar').eq('id', user.id).maybeSingle(),
+          centro_id ? supabase.from('subjects').select('id, name, anos_aplicaveis').eq('centro_id', centro_id).order('name') : Promise.resolve({ data: [] as any[] }),
+        ]);
+        setAnoEscolar(alunoData?.ano_escolar ?? null);
+        setDisciplinasDisponiveis(disciplinasParaAno(subjectsData || [], alunoData?.ano_escolar ?? null));
+
         await carregarMensagens(user.id);
       } finally {
         setLoading(false);
@@ -340,7 +369,15 @@ export default function MensagensEncarregadoPage() {
           <ArrowLeft size={20} /> <span className="font-bold text-sm">Voltar</span>
         </Link>
         <div className="bg-accent-soft text-accent p-2 rounded-xl"><MessageCircle size={18} /></div>
-        <h1 className="text-lg font-black italic">Mensagens</h1>
+        <h1 className="text-lg font-black italic flex-1">Mensagens</h1>
+        <button
+          onClick={() => setModalPedidoAberto(true)}
+          disabled={disciplinasDisponiveis.length === 0}
+          title={disciplinasDisponiveis.length === 0 ? 'Sem disciplinas disponíveis' : undefined}
+          className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest bg-accent-soft text-accent px-3 py-2 rounded-xl transition-all active:scale-95 disabled:opacity-40 shrink-0"
+        >
+          <HelpCircle size={14} /> Pedir Explicação
+        </button>
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -403,7 +440,179 @@ export default function MensagensEncarregadoPage() {
         </div>
       </div>
 
+      {modalPedidoAberto && userIdRef.current && (
+        <ModalPedirExplicacao
+          alunoId={userIdRef.current}
+          anoEscolar={anoEscolar}
+          disciplinas={disciplinasDisponiveis}
+          onClose={() => setModalPedidoAberto(false)}
+          onCriado={(nova) => {
+            setMensagens((atual) => [...(atual || []), nova]);
+            setModalPedidoAberto(false);
+            scrollParaFim(true);
+          }}
+          showError={showError}
+        />
+      )}
+
       <StatusToast toast={toast} />
     </main>
+  );
+}
+
+function ModalPedirExplicacao({
+  alunoId, anoEscolar, disciplinas, onClose, onCriado, showError,
+}: {
+  alunoId: string;
+  anoEscolar: number | null;
+  disciplinas: Array<{ id: number; name: string }>;
+  onClose: () => void;
+  onCriado: (nova: Mensagem) => void;
+  showError: (msg: string) => void;
+}) {
+  const [disciplinaId, setDisciplinaId] = useState('');
+  const [dias, setDias] = useState<number[]>([]);
+  const [horario, setHorario] = useState('');
+  const [nota, setNota] = useState('');
+  const [enviando, setEnviando] = useState(false);
+
+  const toggleDia = (valor: number) => {
+    setDias((atual) => (atual.includes(valor) ? atual.filter((d) => d !== valor) : [...atual, valor].sort()));
+  };
+
+  const handleCriar = async () => {
+    if (enviando) return;
+    if (!disciplinaId) { showError('Escolhe a disciplina.'); return; }
+    if (dias.length === 0) { showError('Escolhe pelo menos um dia da semana.'); return; }
+    if (nota.length > NOTA_MAX) { showError(`A nota não pode passar de ${NOTA_MAX} caracteres.`); return; }
+
+    setEnviando(true);
+    try {
+      // Nunca um segundo pedido pendente para a mesma disciplina — verifica
+      // sempre contra o servidor (não contra o que está carregado no ecrã,
+      // que pode não incluir pedidos antigos fora da página atual).
+      const { data: pendentes, error: erroPendentes } = await supabase
+        .from('mensagens')
+        .select('id')
+        .eq('aluno_id', alunoId)
+        .eq('tipo', 'pedido_explicacao')
+        .eq('estado', 'pendente')
+        .eq('payload->>disciplina_id', disciplinaId)
+        .limit(1);
+
+      if (erroPendentes) {
+        showError('Não foi possível verificar pedidos existentes: ' + erroPendentes.message);
+        return;
+      }
+      if (pendentes && pendentes.length > 0) {
+        showError('Já tens um pedido pendente para esta disciplina.');
+        return;
+      }
+
+      const disciplina = disciplinas.find((d) => String(d.id) === disciplinaId);
+      const { data, error } = await supabase
+        .from('mensagens')
+        .insert({
+          aluno_id: alunoId,
+          tipo: 'pedido_explicacao',
+          payload: {
+            disciplina_id: Number(disciplinaId),
+            disciplina: disciplina?.name ?? '',
+            ano_escolar: anoEscolar,
+            dias,
+            horario: horario.trim() || null,
+            nota: nota.trim() || null,
+          },
+        })
+        .select()
+        .single();
+
+      if (error) {
+        showError('Não foi possível enviar o pedido: ' + error.message);
+        return;
+      }
+
+      onCriado(data as Mensagem);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-surface border border-border w-full max-w-md rounded-3xl shadow-2xl p-6 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-black text-primary flex items-center gap-2"><HelpCircle className="text-accent" size={20} /> Pedir Explicação</h2>
+          <button onClick={onClose} className="text-muted hover:text-primary transition-colors"><X size={20} /></button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-bold text-muted uppercase ml-1">Disciplina</label>
+            <select
+              value={disciplinaId}
+              onChange={(e) => setDisciplinaId(e.target.value)}
+              className="w-full bg-page border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1 appearance-none"
+            >
+              <option value="">Escolhe a disciplina</option>
+              {disciplinas.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-muted uppercase ml-1">Dias da semana</label>
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {DIAS_SEMANA.map((d) => (
+                <button
+                  key={d.valor}
+                  type="button"
+                  onClick={() => toggleDia(d.valor)}
+                  className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                    dias.includes(d.valor) ? 'bg-accent text-on-accent border-accent' : 'bg-page text-muted border-border'
+                  }`}
+                >
+                  {d.rotulo}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-muted uppercase ml-1">Horário que dá jeito</label>
+            <input
+              type="text"
+              value={horario}
+              onChange={(e) => setHorario(e.target.value)}
+              placeholder="Ex: depois das 18h"
+              maxLength={120}
+              className="w-full bg-page border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1 text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-muted uppercase ml-1">Nota (opcional)</label>
+            <textarea
+              value={nota}
+              onChange={(e) => setNota(e.target.value)}
+              rows={3}
+              maxLength={NOTA_MAX}
+              placeholder="Algo que ajude o centro a preparar a sessão..."
+              className="w-full bg-page border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1 resize-none text-sm"
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={handleCriar}
+          disabled={enviando || !disciplinaId || dias.length === 0}
+          className="w-full mt-6 bg-accent hover:bg-accent-hover text-on-accent p-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+        >
+          {enviando ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
+          Enviar Pedido
+        </button>
+      </div>
+    </div>
   );
 }

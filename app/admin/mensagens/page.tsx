@@ -5,12 +5,14 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
-import { horaOuDataMensagem, comSeparadoresDeDia } from '@/lib/formatoMensagens';
+import { horaOuDataMensagem, comSeparadoresDeDia, sanitizarPedidoExplicacao } from '@/lib/formatoMensagens';
 import { avisarMensagensLidas } from '@/lib/eventoMensagensAdmin';
 import {
   Loader2, Search, MessageCircle, Send, ArrowLeft, ExternalLink, ChevronUp,
-  FileText, HelpCircle, CalendarCheck, CheckCircle2, Clock, XCircle,
+  FileText, HelpCircle, CalendarCheck, CheckCircle2, Clock, XCircle, Check,
 } from 'lucide-react';
+
+const DIAS_SEMANA_ROTULO: Record<number, string> = { 1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb', 7: 'Dom' };
 
 type Mensagem = {
   id: string;
@@ -83,14 +85,17 @@ function CartaoMensagem({ msg, nomeAutorCentro }: { msg: Mensagem; nomeAutorCent
   }
 
   if (msg.tipo === 'pedido_explicacao') {
-    const p = msg.payload || {};
+    const p = sanitizarPedidoExplicacao(msg.payload);
     return (
       <div className={estilo}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5"><HelpCircle size={13} /><p className="font-black text-[10px] uppercase tracking-widest">Pedido de Explicação</p></div>
           <ChipPedido estado={msg.estado} />
         </div>
-        {p.disciplina && <p className="text-xs">{p.disciplina}{p.ano_escolar ? ` · ${p.ano_escolar}º ano` : ''}</p>}
+        {p.disciplina && <p className="text-xs">{p.disciplina}{p.anoEscolar ? ` · ${p.anoEscolar}º ano` : ''}</p>}
+        {p.dias.length > 0 && <p className="text-xs">Dias: {p.dias.map((d) => DIAS_SEMANA_ROTULO[d] ?? d).join(', ')}</p>}
+        {p.horario && <p className="text-xs">Horário: {p.horario}</p>}
+        {p.nota && <p className="text-xs italic">"{p.nota}"</p>}
         {rodape}
       </div>
     );
@@ -115,6 +120,8 @@ export default function MensagensAdminPage() {
 
   const [loading, setLoading] = useState(true);
   const [centroId, setCentroId] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [recusandoId, setRecusandoId] = useState<string | null>(null);
   const [resumos, setResumos] = useState<Map<string, ResumoConversa>>(new Map());
   const [mensagensPorAluno, setMensagensPorAluno] = useState<Map<string, Mensagem[]>>(new Map());
   const [temAnterioresPorAluno, setTemAnterioresPorAluno] = useState<Map<string, boolean>>(new Map());
@@ -288,6 +295,7 @@ export default function MensagensAdminPage() {
         const { data: { user } } = await supabase.auth.getUser();
         const centro_id = user?.app_metadata?.centro_id ?? null;
         setCentroId(centro_id);
+        setRole(user?.app_metadata?.role?.toLowerCase() ?? null);
         if (centro_id) await carregarListaConversas(centro_id);
       } finally {
         setLoading(false);
@@ -394,6 +402,35 @@ export default function MensagensAdminPage() {
     } finally {
       enviandoRef.current = false;
       setEnviando(false);
+    }
+  };
+
+  const handleRecusar = async (msg: Mensagem) => {
+    if (recusandoId || !alunoSelecionadoId) return;
+    if (!confirm('Recusar este pedido de explicação? A família não recebe nenhuma mensagem automática — se quiseres explicar o motivo, responde em texto.')) return;
+
+    setRecusandoId(msg.id);
+    try {
+      const { data, error } = await supabase
+        .from('mensagens')
+        .update({ estado: 'recusada' })
+        .eq('id', msg.id)
+        .select()
+        .single();
+
+      if (error) {
+        showError('Não foi possível recusar o pedido: ' + error.message);
+        return;
+      }
+
+      setMensagensPorAluno((atual) => {
+        const copia = new Map(atual);
+        const lista = copia.get(alunoSelecionadoId);
+        if (lista) copia.set(alunoSelecionadoId, lista.map((m) => (m.id === msg.id ? (data as Mensagem) : m)));
+        return copia;
+      });
+    } finally {
+      setRecusandoId(null);
     }
   };
 
@@ -513,7 +550,26 @@ export default function MensagensAdminPage() {
                           </span>
                         </div>
                       ) : (
-                        <CartaoMensagem key={it.chave} msg={it.item} nomeAutorCentro={it.item.autor_id ? nomesStaff.get(it.item.autor_id) ?? null : null} />
+                        <div key={it.chave} className="space-y-1.5">
+                          <CartaoMensagem msg={it.item} nomeAutorCentro={it.item.autor_id ? nomesStaff.get(it.item.autor_id) ?? null : null} />
+                          {role === 'admin' && it.item.tipo === 'pedido_explicacao' && (it.item.estado ?? 'pendente') === 'pendente' && (
+                            <div className="flex gap-2 max-w-[85%]">
+                              <Link
+                                href={`/admin/explicacoes?pedido=${it.item.id}`}
+                                className="flex-1 flex items-center justify-center gap-1.5 bg-success-bg text-success border border-success/30 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-success/10 transition-all"
+                              >
+                                <Check size={11} /> Marcar
+                              </Link>
+                              <button
+                                onClick={() => handleRecusar(it.item)}
+                                disabled={recusandoId === it.item.id}
+                                className="flex-1 flex items-center justify-center gap-1.5 bg-danger-bg text-danger border border-danger/30 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-danger/10 transition-all disabled:opacity-50"
+                              >
+                                {recusandoId === it.item.id ? <Loader2 className="animate-spin" size={11} /> : <XCircle size={11} />} Recusar
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )
                     )}
                   </>
