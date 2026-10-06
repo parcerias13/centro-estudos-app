@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { disciplinasParaAno } from '@/lib/disciplinas';
-import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw, ClipboardList } from 'lucide-react';
+import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw, ClipboardList, Lock } from 'lucide-react';
 
 export default function StudentHome() {
   const { toast, showError } = useStatusToast();
@@ -20,6 +20,7 @@ export default function StudentHome() {
   const [isLimitReached, setIsLimitReached] = useState(false);
   const [limitData, setLimitData] = useState({ visits: 0, limit: 0 });
   const [showSwitchList, setShowSwitchList] = useState(false);
+  const [encarregadosNaoLidas, setEncarregadosNaoLidas] = useState(0);
 
 
   const fetchData = useCallback(async () => {
@@ -87,6 +88,15 @@ export default function StudentHome() {
       .limit(1)
       .maybeSingle();
     setProximoTeste(teste);
+
+    const { count: naoLidasCount } = await supabase
+      .from('mensagens')
+      .select('id', { count: 'exact', head: true })
+      .eq('aluno_id', user.id)
+      .eq('autor', 'centro')
+      .is('lida_pela_familia_em', null);
+    setEncarregadosNaoLidas(naoLidasCount || 0);
+
     setLoading(false);
   }, [supabase]);
 
@@ -269,6 +279,20 @@ export default function StudentHome() {
                    <span className="text-[8px] font-black uppercase tracking-widest text-accent">Notas</span>
                  </Link>
               </div>
+
+              <Link href="/encarregados" className="bg-surface border border-border p-4 rounded-2xl flex items-center justify-between group">
+                <div className="flex items-center gap-3">
+                  <Lock size={18} className="text-muted" />
+                  <div>
+                    <p className="font-bold text-sm">Área dos Encarregados</p>
+                    <p className="text-[8px] font-black uppercase tracking-widest text-muted">Só para encarregados</p>
+                  </div>
+                </div>
+                {encarregadosNaoLidas > 0 && (
+                  <span className="bg-danger text-on-danger text-[10px] font-black min-w-5 h-5 px-1.5 rounded-full flex items-center justify-center shrink-0">{encarregadosNaoLidas}</span>
+                )}
+              </Link>
+
               <button onClick={() => safeAction(handleCheckout)} disabled={isSubmitting} className="w-full bg-surface hover:bg-danger-bg text-secondary hover:text-danger border border-border py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all">
                 {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <LogOut size={20} />} TERMINAR SESSÃO
               </button>
@@ -324,6 +348,18 @@ export default function StudentHome() {
                           </div>
                         </div>
                         <span className="bg-white/20 text-on-accent text-[10px] font-black px-3 py-1 rounded-full uppercase">Novo</span>
+                    </Link>
+                    <Link href="/encarregados" className="col-span-2 bg-surface border border-border p-5 rounded-3xl flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-raised p-3 rounded-2xl text-muted"><Lock size={22} /></div>
+                          <div>
+                            <p className="font-black text-primary text-base">Área dos Encarregados</p>
+                            <p className="text-[10px] text-muted font-bold uppercase tracking-widest">Só para encarregados</p>
+                          </div>
+                        </div>
+                        {encarregadosNaoLidas > 0 && (
+                          <span className="bg-danger text-on-danger text-[10px] font-black min-w-5 h-5 px-1.5 rounded-full flex items-center justify-center shrink-0">{encarregadosNaoLidas}</span>
+                        )}
                     </Link>
                     {hasIaConsent && (
                       <Link href="/aluno/lab" className="col-span-2 bg-linear-to-r from-orange-600 to-orange-400 p-5 rounded-3xl flex items-center justify-between shadow-xl shadow-orange-900/20">
