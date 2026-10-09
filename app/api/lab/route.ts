@@ -3,8 +3,9 @@ import OpenAI from 'openai';
 import { extractText } from 'unpdf';
 import { createClient } from '@supabase/supabase-js';
 import cosineSimilarity from 'compute-cosine-similarity';
+import { LAB_AI_ATIVO } from '@/lib/features';
 
-export const dynamic = 'force-dynamic'; 
+export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const openai = new OpenAI({ 
@@ -42,7 +43,21 @@ async function getRelevantContext(query: string, pdfText: string) {
     .join("\n\n---\n\n");
 }
 
+// Interruptor único do LabAI (lib/features.ts) — nenhuma lógica da rota
+// corre enquanto estiver desligado: nada de ler o corpo, tocar na base de
+// dados, ou chamar a OpenAI. Ver LABAI_PENDENTE.md para o que falta resolver
+// antes de reativar.
+function indisponivel() {
+  return NextResponse.json({ error: 'Indisponível.' }, { status: 503 });
+}
+
+export async function GET() { return indisponivel(); }
+export async function PUT() { return indisponivel(); }
+export async function PATCH() { return indisponivel(); }
+export async function DELETE() { return indisponivel(); }
+
 export async function POST(req: Request) {
+  if (!LAB_AI_ATIVO) return indisponivel();
   try {
     const body = await req.json();
     const { message, history, anoEscolar, nomeAluno, fileUrl, mimeType, alunoId, resetContext } = body;

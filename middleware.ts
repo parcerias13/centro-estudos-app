@@ -60,6 +60,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
+  // LabAI desativado (lib/features.ts) — /aluno/lab e subcaminhos nunca
+  // carregam, para nenhum papel. Ver LABAI_PENDENTE.md antes de reativar.
+  if (request.nextUrl.pathname === '/aluno/lab' || request.nextUrl.pathname.startsWith('/aluno/lab/')) {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
   // Verificação de role para /admin/* via JWT (app_metadata) — sem query à base de dados
   if (user && request.nextUrl.pathname.startsWith('/admin')) {
     const role = user.app_metadata?.role?.toLowerCase()

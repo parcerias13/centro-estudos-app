@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { disciplinasParaAno } from '@/lib/disciplinas';
 import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw, ClipboardList, Lock } from 'lucide-react';
+import { LAB_AI_ATIVO } from '@/lib/features';
 
 export default function StudentHome() {
   const { toast, showError } = useStatusToast();
@@ -258,12 +259,12 @@ export default function StudentHome() {
             </div>
 
             <div className="w-full space-y-4">
-              <div className={`grid ${hasIaConsent ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-6`}>
+              <div className={`grid ${LAB_AI_ATIVO && hasIaConsent ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-6`}>
                  <Link href="/biblioteca" className="bg-surface border border-border p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group">
                    <Library size={24} className="text-orange-500" />
                    <span className="text-[8px] font-black uppercase tracking-widest text-secondary">Biblioteca</span>
                  </Link>
-                 {hasIaConsent && (
+                 {LAB_AI_ATIVO && hasIaConsent && (
                    <Link href="/aluno/lab" className="bg-surface border border-orange-500/50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 shadow-lg shadow-orange-900/10">
                      <BrainCircuit size={24} className="text-orange-400" />
                      <span className="text-[8px] font-black uppercase tracking-widest text-orange-400">Lab AI</span>
@@ -361,7 +362,7 @@ export default function StudentHome() {
                           <span className="bg-danger text-on-danger text-[10px] font-black min-w-5 h-5 px-1.5 rounded-full flex items-center justify-center shrink-0">{encarregadosNaoLidas}</span>
                         )}
                     </Link>
-                    {hasIaConsent && (
+                    {LAB_AI_ATIVO && hasIaConsent && (
                       <Link href="/aluno/lab" className="col-span-2 bg-linear-to-r from-orange-600 to-orange-400 p-5 rounded-3xl flex items-center justify-between shadow-xl shadow-orange-900/20">
                           <div className="flex items-center gap-4">
                             <div className="bg-white/20 p-3 rounded-2xl text-primary"><BrainCircuit size={28} /></div>
