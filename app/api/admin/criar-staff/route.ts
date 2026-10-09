@@ -33,11 +33,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Sem permissões de administrador.' }, { status: 403 })
   }
 
-  const { email, password, name, role, centro_id } = await req.json()
+  // Nunca confiar no centro_id do corpo do pedido — vem sempre da sessão do
+  // próprio admin, para um admin nunca poder criar staff noutro centro só
+  // por mudar o valor enviado.
+  const centro_id = user.app_metadata?.centro_id
+  if (!centro_id) {
+    return NextResponse.json({ error: 'Centro do administrador não identificado.' }, { status: 403 })
+  }
 
-  if (!email || !password || !name || !role || !centro_id) {
+  const { email, password, name, role: roleRecebido } = await req.json()
+
+  if (!email || !password || !name || !roleRecebido) {
     return NextResponse.json({ error: 'Campos obrigatórios em falta.' }, { status: 400 })
   }
+
+  // Este endpoint nunca cria outro admin — só professor ou secretaria.
+  const roleNormalizado = String(roleRecebido).toLowerCase()
+  if (roleNormalizado !== 'professor' && roleNormalizado !== 'secretaria') {
+    return NextResponse.json({ error: 'Cargo inválido.' }, { status: 400 })
+  }
+  const role = roleNormalizado
 
   const emailNormalizado = email.toLowerCase().trim()
 
@@ -49,7 +64,8 @@ export async function POST(req: Request) {
   })
 
   if (authError) {
-    return NextResponse.json({ error: `Erro Auth: ${authError.message}` }, { status: 500 })
+    console.error('criar-staff: falha ao criar utilizador', authError)
+    return NextResponse.json({ error: 'Não foi possível criar o utilizador.' }, { status: 500 })
   }
 
   const novoId = authData.user.id
@@ -61,7 +77,8 @@ export async function POST(req: Request) {
   if (metaError) {
     // Reverter a criação do utilizador se a escrita do app_metadata falhar
     await supabaseAdmin.auth.admin.deleteUser(novoId)
-    return NextResponse.json({ error: `Erro ao definir permissões: ${metaError.message}` }, { status: 500 })
+    console.error('criar-staff: falha ao definir permissões', metaError)
+    return NextResponse.json({ error: 'Não foi possível definir as permissões.' }, { status: 500 })
   }
 
   const { error: dbError } = await supabaseAdmin.from('staff').insert({
@@ -75,7 +92,8 @@ export async function POST(req: Request) {
   if (dbError) {
     // Reverter a criação do utilizador se o insert falhar
     await supabaseAdmin.auth.admin.deleteUser(novoId)
-    return NextResponse.json({ error: `Erro DB: ${dbError.message}` }, { status: 500 })
+    console.error('criar-staff: falha ao gravar staff', dbError)
+    return NextResponse.json({ error: 'Não foi possível gravar o novo membro da equipa.' }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true, staffId: novoId })
