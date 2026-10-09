@@ -8,11 +8,17 @@ import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { horaOuDataMensagem, comSeparadoresDeDia, sanitizarPedidoExplicacao } from '@/lib/formatoMensagens';
 import { avisarMensagensLidas } from '@/lib/eventoMensagensAdmin';
 import {
+  BUCKET_ANEXOS, MAX_ANEXOS_POR_MENSAGEM, validarAnexo, higienizarNomeFicheiro,
+  construirCaminhoAnexo, formatarTamanhoFicheiro,
+} from '@/lib/mensagensAnexos';
+import {
   Loader2, Search, MessageCircle, Send, ArrowLeft, ExternalLink, ChevronUp,
-  FileText, HelpCircle, CalendarCheck, CheckCircle2, Clock, XCircle, Check,
+  FileText, HelpCircle, CalendarCheck, CheckCircle2, Clock, XCircle, Check, Paperclip, X,
 } from 'lucide-react';
 
 const DIAS_SEMANA_ROTULO: Record<number, string> = { 1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb', 7: 'Dom' };
+
+type Anexo = { id: string; caminho: string; nome_original: string; mime: string; tamanho: number };
 
 type Mensagem = {
   id: string;
@@ -27,7 +33,10 @@ type Mensagem = {
   lida_pela_familia_em: string | null;
   lida_pelo_centro_em: string | null;
   criada_em: string;
+  anexos?: Anexo[] | null;
 };
+
+type AnexoEscolhido = { id: string; file: File; estado: 'pendente' | 'enviado' | 'erro'; erro?: string };
 
 type Aluno = { id: string; nome: string; ano_escolar: number | null };
 type UltimaMensagem = { tipo: Mensagem['tipo']; texto: string | null; criada_em: string };
@@ -36,6 +45,7 @@ type ResumoConversa = { aluno: Aluno; ultimaMensagem: UltimaMensagem | null; nao
 const TEXTO_MAX = 4000;
 const PAGINA = 200;
 const LIMITE_RESUMO = 1000;
+const SELECT_MENSAGEM = '*, anexos:mensagens_anexos(*)';
 
 function ChipPedido({ estado }: { estado: string | null }) {
   const valor = (estado || 'pendente').toLowerCase();
@@ -48,7 +58,52 @@ function ChipPedido({ estado }: { estado: string | null }) {
   return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-warning-bg text-warning"><Clock size={10} /> Pendente</span>;
 }
 
-function CartaoMensagem({ msg, nomeAutorCentro }: { msg: Mensagem; nomeAutorCentro: string | null }) {
+function TagAnexo({ anexo, showError }: { anexo: Anexo; showError: (msg: string) => void }) {
+  const [abrindo, setAbrindo] = useState(false);
+
+  // Separador aberto de forma SÍNCRONA dentro do clique (ver nota igual no
+  // lado da família) — Safari bloqueia window.open() depois de um await,
+  // mesmo dentro de um handler de clique.
+  const handleAbrir = () => {
+    if (abrindo) return;
+    const novaJanela = window.open('', '_blank');
+    if (!novaJanela) {
+      showError('O browser bloqueou o separador. Permite pop-ups para abrir anexos.');
+      return;
+    }
+    try { novaJanela.opener = null; } catch {}
+    setAbrindo(true);
+    (async () => {
+      try {
+        const { data, error } = await supabase.storage.from(BUCKET_ANEXOS).createSignedUrl(anexo.caminho, 60);
+        if (error || !data?.signedUrl) {
+          novaJanela.close();
+          showError('Não foi possível abrir o anexo: ' + (error?.message || 'sem URL'));
+          return;
+        }
+        novaJanela.location.href = data.signedUrl;
+      } catch (e: any) {
+        novaJanela.close();
+        showError('Não foi possível abrir o anexo: ' + (e?.message || 'erro inesperado'));
+      } finally {
+        setAbrindo(false);
+      }
+    })();
+  };
+
+  return (
+    <button
+      onClick={handleAbrir}
+      disabled={abrindo}
+      className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-full border border-current/20 bg-black/10 hover:bg-black/20 transition-all disabled:opacity-50"
+    >
+      {abrindo ? <Loader2 className="animate-spin" size={10} /> : <Paperclip size={10} />}
+      {anexo.nome_original} · {formatarTamanhoFicheiro(anexo.tamanho)}
+    </button>
+  );
+}
+
+function CartaoMensagem({ msg, nomeAutorCentro, showError }: { msg: Mensagem; nomeAutorCentro: string | null; showError: (msg: string) => void }) {
   const doCentro = msg.autor === 'centro';
   const base = 'max-w-[85%] rounded-2xl p-3 shadow-lg space-y-1.5';
   const estilo = doCentro ? `${base} bg-accent text-on-accent ml-auto` : `${base} bg-surface border border-border text-primary`;
@@ -58,11 +113,17 @@ function CartaoMensagem({ msg, nomeAutorCentro }: { msg: Mensagem; nomeAutorCent
       {doCentro && nomeAutorCentro ? `${nomeAutorCentro} · ` : ''}{horaOuDataMensagem(msg.criada_em)}
     </p>
   );
+  const anexos = (msg.anexos || []).length > 0 && (
+    <div className="flex flex-wrap gap-1.5">
+      {(msg.anexos || []).map((a) => <TagAnexo key={a.id} anexo={a} showError={showError} />)}
+    </div>
+  );
 
   if (msg.tipo === 'texto') {
     return (
       <div className={estilo}>
         <p className="text-sm whitespace-pre-wrap break-words">{msg.texto}</p>
+        {anexos}
         {rodape}
       </div>
     );
@@ -79,6 +140,7 @@ function CartaoMensagem({ msg, nomeAutorCentro }: { msg: Mensagem; nomeAutorCent
           {p.sessoes != null && <p>Sessões: {p.sessoes}</p>}
           {p.disciplina_principal && <p>Disciplina: {p.disciplina_principal}</p>}
         </div>
+        {anexos}
         {rodape}
       </div>
     );
@@ -96,6 +158,7 @@ function CartaoMensagem({ msg, nomeAutorCentro }: { msg: Mensagem; nomeAutorCent
         {p.dias.length > 0 && <p className="text-xs">Dias: {p.dias.map((d) => DIAS_SEMANA_ROTULO[d] ?? d).join(', ')}</p>}
         {p.horario && <p className="text-xs">Horário: {p.horario}</p>}
         {p.nota && <p className="text-xs italic">"{p.nota}"</p>}
+        {anexos}
         {rodape}
       </div>
     );
@@ -110,6 +173,7 @@ function CartaoMensagem({ msg, nomeAutorCentro }: { msg: Mensagem; nomeAutorCent
         {p.hora_inicio && <p>Hora: {p.hora_inicio}</p>}
         {p.professor && <p>Professor: {p.professor}</p>}
       </div>
+      {anexos}
       {rodape}
     </div>
   );
@@ -131,12 +195,15 @@ export default function MensagensAdminPage() {
   const [pesquisa, setPesquisa] = useState('');
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [anexosEscolhidos, setAnexosEscolhidos] = useState<AnexoEscolhido[]>([]);
   const [carregandoAnteriores, setCarregandoAnteriores] = useState(false);
 
   const isFetchingRef = useRef(false);
   const fetchPendingRef = useRef(false);
   const enviandoRef = useRef(false);
   const fimRef = useRef<HTMLDivElement | null>(null);
+  const mensagemCriadaIdRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const alunoSelecionadoIdRef = useRef<string | null>(null);
   alunoSelecionadoIdRef.current = alunoSelecionadoId;
   const mensagensPorAlunoRef = useRef(mensagensPorAluno);
@@ -199,7 +266,7 @@ export default function MensagensAdminPage() {
   const carregarConversa = useCallback(async (alunoId: string) => {
     const { data, error } = await supabase
       .from('mensagens')
-      .select('*')
+      .select(SELECT_MENSAGEM)
       .eq('aluno_id', alunoId)
       .order('criada_em', { ascending: false })
       .limit(PAGINA);
@@ -225,8 +292,8 @@ export default function MensagensAdminPage() {
       if (erroMarcar) {
         showError('Não foi possível marcar as mensagens como lidas: ' + erroMarcar.message);
       } else if (marcadas) {
-        const porId = new Map(marcadas.map((m) => [m.id, m as Mensagem]));
-        lista = lista.map((m) => porId.get(m.id) ?? m);
+        const porId = new Map(marcadas.map((m) => [m.id, m]));
+        lista = lista.map((m) => (porId.has(m.id) ? { ...m, ...porId.get(m.id) } : m));
         avisarMensagensLidas();
         setResumos((atual) => {
           const copia = new Map(atual);
@@ -266,7 +333,7 @@ export default function MensagensAdminPage() {
       const maisAntiga = atuais[0];
       const { data, error } = await supabase
         .from('mensagens')
-        .select('*')
+        .select(SELECT_MENSAGEM)
         .eq('aluno_id', alunoId)
         .lt('criada_em', maisAntiga.criada_em)
         .order('criada_em', { ascending: false })
@@ -361,6 +428,11 @@ export default function MensagensAdminPage() {
 
   const abrirConversa = useCallback((alunoId: string) => {
     setAlunoSelecionadoId(alunoId);
+    // Composição é por conversa — trocar de aluno nunca arrasta anexos
+    // escolhidos ou uma mensagem a meio do envio para a conversa errada.
+    setTexto('');
+    setAnexosEscolhidos([]);
+    mensagemCriadaIdRef.current = null;
     carregarConversa(alunoId);
   }, [carregarConversa]);
 
@@ -368,37 +440,131 @@ export default function MensagensAdminPage() {
     fimRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [alunoSelecionadoId, mensagensAtivas?.length]);
 
-  const handleEnviar = async () => {
-    if (enviandoRef.current || !alunoSelecionadoId) return;
-    const limpo = texto.trim();
-    if (!limpo || limpo.length > TEXTO_MAX) return;
+  const handleEscolherFicheiros = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const livres = MAX_ANEXOS_POR_MENSAGEM - anexosEscolhidos.length;
+    if (livres <= 0) {
+      showError(`Só podes anexar até ${MAX_ANEXOS_POR_MENSAGEM} ficheiros por mensagem.`);
+      return;
+    }
+    const escolhidos: AnexoEscolhido[] = [];
+    for (const file of Array.from(files)) {
+      if (escolhidos.length >= livres) {
+        showError(`Só podes anexar até ${MAX_ANEXOS_POR_MENSAGEM} ficheiros por mensagem.`);
+        break;
+      }
+      const erro = validarAnexo(file);
+      if (erro) { showError(`${file.name}: ${erro}`); continue; }
+      escolhidos.push({ id: crypto.randomUUID(), file, estado: 'pendente' });
+    }
+    if (escolhidos.length > 0) setAnexosEscolhidos((atual) => [...atual, ...escolhidos]);
+  };
 
-    enviandoRef.current = true;
-    setEnviando(true);
-    try {
-      const { data, error } = await supabase
-        .from('mensagens')
-        .insert({ aluno_id: alunoSelecionadoId, tipo: 'texto', texto: limpo })
+  const handleRemoverAnexo = (id: string) => {
+    setAnexosEscolhidos((atual) => atual.filter((a) => a.id !== id));
+  };
+
+  // Mesma lógica do lado da família: só reenvia o que ainda não ficou
+  // "enviado"; se a linha em mensagens_anexos falhar depois do upload ter
+  // corrido bem, apaga o ficheiro órfão do bucket antes de marcar erro.
+  const enviarAnexosPendentes = async (mensagemId: string, alunoId: string, lista: AnexoEscolhido[]): Promise<AnexoEscolhido[]> => {
+    const resultado: AnexoEscolhido[] = [];
+    for (const anexo of lista) {
+      if (anexo.estado === 'enviado') { resultado.push(anexo); continue; }
+
+      const caminho = construirCaminhoAnexo(centroId || '', alunoId, anexo.file.name);
+      const { error: erroUpload } = await supabase.storage.from(BUCKET_ANEXOS).upload(caminho, anexo.file, { contentType: anexo.file.type });
+      if (erroUpload) {
+        resultado.push({ ...anexo, estado: 'erro', erro: erroUpload.message });
+        continue;
+      }
+
+      const { data: linha, error: erroLinha } = await supabase
+        .from('mensagens_anexos')
+        .insert({
+          mensagem_id: mensagemId,
+          caminho,
+          nome_original: higienizarNomeFicheiro(anexo.file.name),
+          mime: anexo.file.type,
+          tamanho: anexo.file.size,
+        })
         .select()
         .single();
 
-      if (error) {
-        showError('Não foi possível enviar a mensagem: ' + error.message);
-        return;
+      if (erroLinha) {
+        await supabase.storage.from(BUCKET_ANEXOS).remove([caminho]);
+        resultado.push({ ...anexo, estado: 'erro', erro: erroLinha.message });
+        continue;
       }
 
       setMensagensPorAluno((atual) => {
         const copia = new Map(atual);
-        copia.set(alunoSelecionadoId, [...(copia.get(alunoSelecionadoId) || []), data as Mensagem]);
+        const lista2 = copia.get(alunoId);
+        if (lista2) copia.set(alunoId, lista2.map((m) => (m.id === mensagemId ? { ...m, anexos: [...(m.anexos || []), linha as Anexo] } : m)));
         return copia;
       });
-      setResumos((atual) => {
-        const copia = new Map(atual);
-        const r = copia.get(alunoSelecionadoId);
-        if (r) copia.set(alunoSelecionadoId, { ...r, ultimaMensagem: { tipo: 'texto', texto: limpo, criada_em: (data as Mensagem).criada_em } });
-        return copia;
-      });
-      setTexto('');
+      resultado.push({ ...anexo, estado: 'enviado' });
+    }
+    return resultado;
+  };
+
+  const handleEnviar = async () => {
+    if (enviandoRef.current || !alunoSelecionadoId) return;
+    const limpo = texto.trim();
+    if (!limpo && anexosEscolhidos.length === 0) return;
+    if (limpo.length > TEXTO_MAX) return;
+
+    enviandoRef.current = true;
+    setEnviando(true);
+    try {
+      let mensagemId = mensagemCriadaIdRef.current;
+
+      if (!mensagemId) {
+        const textoFinal = limpo || (
+          anexosEscolhidos.length === 1
+            ? `Anexo: ${higienizarNomeFicheiro(anexosEscolhidos[0].file.name)}`
+            : `${anexosEscolhidos.length} anexos`
+        );
+
+        const { data, error } = await supabase
+          .from('mensagens')
+          .insert({ aluno_id: alunoSelecionadoId, tipo: 'texto', texto: textoFinal })
+          .select(SELECT_MENSAGEM)
+          .single();
+
+        if (error) {
+          showError('Não foi possível enviar a mensagem: ' + error.message);
+          return;
+        }
+
+        mensagemId = data.id;
+        mensagemCriadaIdRef.current = mensagemId;
+        setMensagensPorAluno((atual) => {
+          const copia = new Map(atual);
+          copia.set(alunoSelecionadoId, [...(copia.get(alunoSelecionadoId) || []), data as Mensagem]);
+          return copia;
+        });
+        setResumos((atual) => {
+          const copia = new Map(atual);
+          const r = copia.get(alunoSelecionadoId);
+          if (r) copia.set(alunoSelecionadoId, { ...r, ultimaMensagem: { tipo: 'texto', texto: textoFinal, criada_em: (data as Mensagem).criada_em } });
+          return copia;
+        });
+        setTexto('');
+      }
+
+      if (anexosEscolhidos.length > 0) {
+        const atualizados = await enviarAnexosPendentes(mensagemId!, alunoSelecionadoId, anexosEscolhidos);
+        setAnexosEscolhidos(atualizados);
+        const falhas = atualizados.filter((a) => a.estado === 'erro').length;
+        if (falhas > 0) {
+          showError(`Mensagem enviada, mas ${falhas} anexo(s) falharam — toca em enviar para tentar outra vez.`);
+          return;
+        }
+      }
+
+      mensagemCriadaIdRef.current = null;
+      setAnexosEscolhidos([]);
     } finally {
       enviandoRef.current = false;
       setEnviando(false);
@@ -551,7 +717,7 @@ export default function MensagensAdminPage() {
                         </div>
                       ) : (
                         <div key={it.chave} className="space-y-1.5">
-                          <CartaoMensagem msg={it.item} nomeAutorCentro={it.item.autor_id ? nomesStaff.get(it.item.autor_id) ?? null : null} />
+                          <CartaoMensagem msg={it.item} nomeAutorCentro={it.item.autor_id ? nomesStaff.get(it.item.autor_id) ?? null : null} showError={showError} />
                           {role === 'admin' && it.item.tipo === 'pedido_explicacao' && (it.item.estado ?? 'pendente') === 'pendente' && (
                             <div className="flex gap-2 max-w-[85%]">
                               <Link
@@ -577,8 +743,46 @@ export default function MensagensAdminPage() {
                 <div ref={fimRef} />
               </div>
 
-              <div className="p-4 border-t border-border">
+              <div className="p-4 border-t border-border space-y-2">
+                {anexosEscolhidos.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {anexosEscolhidos.map((a) => (
+                      <span
+                        key={a.id}
+                        className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-full border ${
+                          a.estado === 'erro' ? 'bg-danger-bg text-danger border-danger/30'
+                            : a.estado === 'enviado' ? 'bg-success-bg text-success border-success/30'
+                            : 'bg-page text-muted border-border'
+                        }`}
+                      >
+                        <Paperclip size={10} />
+                        {higienizarNomeFicheiro(a.file.name)} · {formatarTamanhoFicheiro(a.file.size)}
+                        {a.estado !== 'enviado' && (
+                          <button onClick={() => handleRemoverAnexo(a.id)} className="hover:text-danger" title="Remover">
+                            <X size={10} />
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="flex items-end gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="application/pdf,image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => { handleEscolherFicheiros(e.target.files); e.target.value = ''; }}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={enviando || anexosEscolhidos.length >= MAX_ANEXOS_POR_MENSAGEM}
+                    title="Anexar ficheiro"
+                    className="bg-page border border-border text-muted hover:text-primary p-3 rounded-2xl shrink-0 flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    <Paperclip size={18} />
+                  </button>
                   <textarea
                     value={texto}
                     onChange={(e) => setTexto(e.target.value)}
@@ -591,7 +795,7 @@ export default function MensagensAdminPage() {
                   />
                   <button
                     onClick={handleEnviar}
-                    disabled={enviando || !texto.trim()}
+                    disabled={enviando || (!texto.trim() && anexosEscolhidos.length === 0)}
                     aria-label="Enviar mensagem"
                     className="bg-accent hover:bg-accent-hover text-on-accent p-3 rounded-2xl shrink-0 flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
                   >

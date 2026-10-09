@@ -10,8 +10,12 @@ import { isUnlocked, touch, subscribe } from '@/lib/encarregadoUnlock';
 import { horaOuDataMensagem, comSeparadoresDeDia, sanitizarPedidoExplicacao } from '@/lib/formatoMensagens';
 import { disciplinasParaAno } from '@/lib/disciplinas';
 import {
+  BUCKET_ANEXOS, MAX_ANEXOS_POR_MENSAGEM, validarAnexo, higienizarNomeFicheiro,
+  construirCaminhoAnexo, formatarTamanhoFicheiro,
+} from '@/lib/mensagensAnexos';
+import {
   ArrowLeft, Loader2, MessageCircle, Send, FileText, HelpCircle, CalendarCheck,
-  CheckCircle2, Clock, XCircle, ChevronUp, X, Plus,
+  CheckCircle2, Clock, XCircle, ChevronUp, X, Plus, Paperclip,
 } from 'lucide-react';
 
 const DIAS_SEMANA = [
@@ -27,6 +31,8 @@ const NOTA_MAX = 500;
 
 type TipoMensagem = 'texto' | 'relatorio_mensal' | 'pedido_explicacao' | 'confirmacao_explicacao';
 
+type Anexo = { id: string; caminho: string; nome_original: string; mime: string; tamanho: number };
+
 type Mensagem = {
   id: string;
   aluno_id: string;
@@ -40,10 +46,14 @@ type Mensagem = {
   lida_pela_familia_em: string | null;
   lida_pelo_centro_em: string | null;
   criada_em: string;
+  anexos?: Anexo[] | null;
 };
+
+type AnexoEscolhido = { id: string; file: File; estado: 'pendente' | 'enviado' | 'erro'; erro?: string };
 
 const TEXTO_MAX = 4000;
 const PAGINA = 200;
+const SELECT_MENSAGEM = '*, anexos:mensagens_anexos(*)';
 
 function ChipPedido({ estado }: { estado: string | null }) {
   const valor = (estado || 'pendente').toLowerCase();
@@ -68,17 +78,73 @@ function ChipPedido({ estado }: { estado: string | null }) {
   );
 }
 
-function CartaoMensagem({ msg }: { msg: Mensagem }) {
+function TagAnexo({ anexo, corTexto, showError }: { anexo: Anexo; corTexto: string; showError: (msg: string) => void }) {
+  const [abrindo, setAbrindo] = useState(false);
+
+  // O separador tem de abrir de forma SÍNCRONA dentro do clique — Safari
+  // (incluindo iOS) bloqueia window.open() chamado depois de um await, mesmo
+  // num handler de clique. Por isso: abre já um separador em branco, corta a
+  // ligação a window.opener, e só DEPOIS pede o URL assinado e navega esse
+  // separador para lá. Nunca navegar na mesma janela — um recarregamento
+  // apaga de propósito o desbloqueio do código (guardado só em memória).
+  const handleAbrir = () => {
+    if (abrindo) return;
+    const novaJanela = window.open('', '_blank');
+    if (!novaJanela) {
+      showError('O browser bloqueou o separador. Permite pop-ups para abrir anexos.');
+      return;
+    }
+    try { novaJanela.opener = null; } catch {}
+    setAbrindo(true);
+    (async () => {
+      try {
+        const { data, error } = await supabase.storage.from(BUCKET_ANEXOS).createSignedUrl(anexo.caminho, 60);
+        if (error || !data?.signedUrl) {
+          novaJanela.close();
+          showError('Não foi possível abrir o anexo: ' + (error?.message || 'sem URL'));
+          return;
+        }
+        novaJanela.location.href = data.signedUrl;
+      } catch (e: any) {
+        novaJanela.close();
+        showError('Não foi possível abrir o anexo: ' + (e?.message || 'erro inesperado'));
+      } finally {
+        setAbrindo(false);
+      }
+    })();
+  };
+
+  return (
+    <button
+      onClick={handleAbrir}
+      disabled={abrindo}
+      className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-full border border-current/20 ${corTexto} bg-black/10 hover:bg-black/20 transition-all disabled:opacity-50`}
+    >
+      {abrindo ? <Loader2 className="animate-spin" size={10} /> : <Paperclip size={10} />}
+      {anexo.nome_original} · {formatarTamanhoFicheiro(anexo.tamanho)}
+    </button>
+  );
+}
+
+function CartaoMensagem({ msg, showError }: { msg: Mensagem; showError: (msg: string) => void }) {
   const minha = msg.autor === 'familia';
   const base = 'max-w-[85%] rounded-3xl p-4 shadow-xl space-y-2';
   const estilo = minha
     ? `${base} bg-accent text-on-accent ml-auto`
     : `${base} bg-surface border border-border text-primary`;
+  const corTag = minha ? 'text-on-accent' : 'text-primary';
+
+  const anexos = (msg.anexos || []).length > 0 && (
+    <div className="flex flex-wrap gap-1.5">
+      {(msg.anexos || []).map((a) => <TagAnexo key={a.id} anexo={a} corTexto={corTag} showError={showError} />)}
+    </div>
+  );
 
   if (msg.tipo === 'texto') {
     return (
       <div className={estilo}>
         <p className="text-sm whitespace-pre-wrap break-words">{msg.texto}</p>
+        {anexos}
         <p className={`text-[9px] font-bold uppercase tracking-widest ${minha ? 'text-on-accent/70' : 'text-muted'}`}>
           {horaOuDataMensagem(msg.criada_em)}
         </p>
@@ -102,6 +168,7 @@ function CartaoMensagem({ msg }: { msg: Mensagem }) {
           {p.sessoes != null && <p className="text-muted">Sessões: <span className="font-bold text-primary">{p.sessoes}</span></p>}
           {p.disciplina_principal && <p className="text-muted col-span-2">Disciplina principal: <span className="font-bold text-primary">{p.disciplina_principal}</span></p>}
         </div>
+        {anexos}
         <p className="text-[9px] font-bold uppercase tracking-widest text-muted">{horaOuDataMensagem(msg.criada_em)}</p>
       </div>
     );
@@ -124,6 +191,7 @@ function CartaoMensagem({ msg }: { msg: Mensagem }) {
         )}
         {p.horario && <p className="text-xs opacity-90">Horário: {p.horario}</p>}
         {p.nota && <p className="text-xs opacity-90 italic">"{p.nota}"</p>}
+        {anexos}
         <p className="text-[9px] font-bold uppercase tracking-widest text-on-accent/70">{horaOuDataMensagem(msg.criada_em)}</p>
       </div>
     );
@@ -142,6 +210,7 @@ function CartaoMensagem({ msg }: { msg: Mensagem }) {
         {p.hora_inicio && <p className="text-muted">Hora: <span className="font-bold text-primary">{p.hora_inicio}</span></p>}
         {p.professor && <p className="text-muted">Professor: <span className="font-bold text-primary">{p.professor}</span></p>}
       </div>
+      {anexos}
       <p className="text-[9px] font-bold uppercase tracking-widest text-muted">{horaOuDataMensagem(msg.criada_em)}</p>
     </div>
   );
@@ -157,17 +226,21 @@ export default function MensagensEncarregadoPage() {
   const [carregandoAnteriores, setCarregandoAnteriores] = useState(false);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [anexosEscolhidos, setAnexosEscolhidos] = useState<AnexoEscolhido[]>([]);
   const [disciplinasDisponiveis, setDisciplinasDisponiveis] = useState<Array<{ id: number; name: string }>>([]);
   const [anoEscolar, setAnoEscolar] = useState<number | null>(null);
   const [modalPedidoAberto, setModalPedidoAberto] = useState(false);
 
   const userIdRef = useRef<string | null>(null);
+  const centroIdRef = useRef<string | null>(null);
   const isFetchingRef = useRef(false);
   const fetchPendingRef = useRef(false);
   const fimRef = useRef<HTMLDivElement | null>(null);
   const enviandoRef = useRef(false);
   const mensagensRef = useRef<Mensagem[] | null>(null);
   mensagensRef.current = mensagens;
+  const mensagemCriadaIdRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const scrollParaFim = useCallback((suave = false) => {
     fimRef.current?.scrollIntoView({ behavior: suave ? 'smooth' : 'auto' });
@@ -185,7 +258,7 @@ export default function MensagensEncarregadoPage() {
     try {
       const { data, error } = await supabase
         .from('mensagens')
-        .select('*')
+        .select(SELECT_MENSAGEM)
         .eq('aluno_id', uid)
         .order('criada_em', { ascending: false })
         .limit(PAGINA);
@@ -214,8 +287,8 @@ export default function MensagensEncarregadoPage() {
         if (erroMarcar) {
           showError('Não foi possível marcar as mensagens como lidas: ' + erroMarcar.message);
         } else if (marcadas) {
-          const porId = new Map(marcadas.map((m) => [m.id, m as Mensagem]));
-          lista = lista.map((m) => porId.get(m.id) ?? m);
+          const porId = new Map(marcadas.map((m) => [m.id, m]));
+          lista = lista.map((m) => (porId.has(m.id) ? { ...m, ...porId.get(m.id) } : m));
         }
       }
 
@@ -240,7 +313,7 @@ export default function MensagensEncarregadoPage() {
       const maisAntiga = atuais[0];
       const { data, error } = await supabase
         .from('mensagens')
-        .select('*')
+        .select(SELECT_MENSAGEM)
         .eq('aluno_id', uid)
         .lt('criada_em', maisAntiga.criada_em)
         .order('criada_em', { ascending: false })
@@ -268,6 +341,7 @@ export default function MensagensEncarregadoPage() {
         userIdRef.current = user.id;
 
         const centro_id = user.app_metadata?.centro_id ?? null;
+        centroIdRef.current = centro_id;
         const [{ data: alunoData }, { data: subjectsData }] = await Promise.all([
           supabase.from('alunos').select('ano_escolar').eq('id', user.id).maybeSingle(),
           centro_id ? supabase.from('subjects').select('id, name, anos_aplicaveis').eq('centro_id', centro_id).order('name') : Promise.resolve({ data: [] as any[] }),
@@ -329,29 +403,122 @@ export default function MensagensEncarregadoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
+  const handleEscolherFicheiros = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const livres = MAX_ANEXOS_POR_MENSAGEM - anexosEscolhidos.length;
+    if (livres <= 0) {
+      showError(`Só podes anexar até ${MAX_ANEXOS_POR_MENSAGEM} ficheiros por mensagem.`);
+      return;
+    }
+    const escolhidos: AnexoEscolhido[] = [];
+    for (const file of Array.from(files)) {
+      if (escolhidos.length >= livres) {
+        showError(`Só podes anexar até ${MAX_ANEXOS_POR_MENSAGEM} ficheiros por mensagem.`);
+        break;
+      }
+      const erro = validarAnexo(file);
+      if (erro) { showError(`${file.name}: ${erro}`); continue; }
+      escolhidos.push({ id: crypto.randomUUID(), file, estado: 'pendente' });
+    }
+    if (escolhidos.length > 0) setAnexosEscolhidos((atual) => [...atual, ...escolhidos]);
+  };
+
+  const handleRemoverAnexo = (id: string) => {
+    setAnexosEscolhidos((atual) => atual.filter((a) => a.id !== id));
+  };
+
+  // Envia os anexos que ainda não foram enviados (pendentes ou com erro de
+  // uma tentativa anterior) — nunca os que já têm estado "enviado". Se o
+  // upload falhar, fica marcado como erro; se a linha em mensagens_anexos
+  // falhar depois do upload ter corrido bem, apaga o ficheiro órfão do
+  // bucket antes de marcar erro, para não deixar lixo sem dono.
+  const enviarAnexosPendentes = async (mensagemId: string, lista: AnexoEscolhido[]): Promise<AnexoEscolhido[]> => {
+    const resultado: AnexoEscolhido[] = [];
+    for (const anexo of lista) {
+      if (anexo.estado === 'enviado') { resultado.push(anexo); continue; }
+
+      const caminho = construirCaminhoAnexo(centroIdRef.current || '', userIdRef.current || '', anexo.file.name);
+      const { error: erroUpload } = await supabase.storage.from(BUCKET_ANEXOS).upload(caminho, anexo.file, { contentType: anexo.file.type });
+      if (erroUpload) {
+        resultado.push({ ...anexo, estado: 'erro', erro: erroUpload.message });
+        continue;
+      }
+
+      const { data: linha, error: erroLinha } = await supabase
+        .from('mensagens_anexos')
+        .insert({
+          mensagem_id: mensagemId,
+          caminho,
+          nome_original: higienizarNomeFicheiro(anexo.file.name),
+          mime: anexo.file.type,
+          tamanho: anexo.file.size,
+        })
+        .select()
+        .single();
+
+      if (erroLinha) {
+        await supabase.storage.from(BUCKET_ANEXOS).remove([caminho]);
+        resultado.push({ ...anexo, estado: 'erro', erro: erroLinha.message });
+        continue;
+      }
+
+      setMensagens((atual) => (atual || []).map((m) => (m.id === mensagemId ? { ...m, anexos: [...(m.anexos || []), linha as Anexo] } : m)));
+      resultado.push({ ...anexo, estado: 'enviado' });
+    }
+    return resultado;
+  };
+
   const handleEnviar = async () => {
     if (enviandoRef.current) return;
     const limpo = texto.trim();
-    if (!limpo || limpo.length > TEXTO_MAX || !userIdRef.current) return;
+    if (!limpo && anexosEscolhidos.length === 0) return;
+    if (limpo.length > TEXTO_MAX || !userIdRef.current) return;
 
     enviandoRef.current = true;
     setEnviando(true);
     touch();
     try {
-      const { data, error } = await supabase
-        .from('mensagens')
-        .insert({ aluno_id: userIdRef.current, tipo: 'texto', texto: limpo })
-        .select()
-        .single();
+      let mensagemId = mensagemCriadaIdRef.current;
 
-      if (error) {
-        showError('Não foi possível enviar a mensagem: ' + error.message);
-        return;
+      // A mensagem só se cria UMA vez — se já existe (retry de anexos), o
+      // texto nunca é reenviado nem recriado.
+      if (!mensagemId) {
+        const textoFinal = limpo || (
+          anexosEscolhidos.length === 1
+            ? `Anexo: ${higienizarNomeFicheiro(anexosEscolhidos[0].file.name)}`
+            : `${anexosEscolhidos.length} anexos`
+        );
+
+        const { data, error } = await supabase
+          .from('mensagens')
+          .insert({ aluno_id: userIdRef.current, tipo: 'texto', texto: textoFinal })
+          .select(SELECT_MENSAGEM)
+          .single();
+
+        if (error) {
+          showError('Não foi possível enviar a mensagem: ' + error.message);
+          return;
+        }
+
+        mensagemId = data.id;
+        mensagemCriadaIdRef.current = mensagemId;
+        setMensagens((atual) => [...(atual || []), data as Mensagem]);
+        setTexto('');
+        scrollParaFim(true);
       }
 
-      setMensagens((atual) => [...(atual || []), data as Mensagem]);
-      setTexto('');
-      scrollParaFim(true);
+      if (anexosEscolhidos.length > 0) {
+        const atualizados = await enviarAnexosPendentes(mensagemId!, anexosEscolhidos);
+        setAnexosEscolhidos(atualizados);
+        const falhas = atualizados.filter((a) => a.estado === 'erro').length;
+        if (falhas > 0) {
+          showError(`Mensagem enviada, mas ${falhas} anexo(s) falharam — toca em enviar para tentar outra vez.`);
+          return; // mantém mensagemCriadaIdRef para só repetir os anexos em falta
+        }
+      }
+
+      mensagemCriadaIdRef.current = null;
+      setAnexosEscolhidos([]);
     } finally {
       enviandoRef.current = false;
       setEnviando(false);
@@ -407,7 +574,7 @@ export default function MensagensEncarregadoPage() {
                   </span>
                 </div>
               ) : (
-                <CartaoMensagem key={it.chave} msg={it.item} />
+                <CartaoMensagem key={it.chave} msg={it.item} showError={showError} />
               )
             )}
           </>
@@ -415,8 +582,46 @@ export default function MensagensEncarregadoPage() {
         <div ref={fimRef} />
       </div>
 
-      <div className="p-4 border-t border-border bg-page">
+      <div className="p-4 border-t border-border bg-page space-y-2">
+        {anexosEscolhidos.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {anexosEscolhidos.map((a) => (
+              <span
+                key={a.id}
+                className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-full border ${
+                  a.estado === 'erro' ? 'bg-danger-bg text-danger border-danger/30'
+                    : a.estado === 'enviado' ? 'bg-success-bg text-success border-success/30'
+                    : 'bg-surface text-muted border-border'
+                }`}
+              >
+                <Paperclip size={10} />
+                {higienizarNomeFicheiro(a.file.name)} · {formatarTamanhoFicheiro(a.file.size)}
+                {a.estado !== 'enviado' && (
+                  <button onClick={() => handleRemoverAnexo(a.id)} className="hover:text-danger" title="Remover">
+                    <X size={10} />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="application/pdf,image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => { handleEscolherFicheiros(e.target.files); e.target.value = ''; }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={enviando || anexosEscolhidos.length >= MAX_ANEXOS_POR_MENSAGEM}
+            title="Anexar ficheiro"
+            className="bg-surface border border-border text-muted hover:text-primary p-3 rounded-2xl shrink-0 flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
+          >
+            <Paperclip size={18} />
+          </button>
           <textarea
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
@@ -431,7 +636,7 @@ export default function MensagensEncarregadoPage() {
           />
           <button
             onClick={handleEnviar}
-            disabled={enviando || !texto.trim()}
+            disabled={enviando || (!texto.trim() && anexosEscolhidos.length === 0)}
             aria-label="Enviar mensagem"
             className="bg-accent hover:bg-accent-hover text-on-accent p-3 rounded-2xl shrink-0 flex items-center justify-center transition-all active:scale-95 disabled:opacity-50"
           >
