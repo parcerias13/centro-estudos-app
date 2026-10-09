@@ -268,7 +268,7 @@ export default function DisciplinasEMateriais() {
 
     if (matType === 'pdf' && matFile) {
       const fileExt = matFile.name.split('.').pop();
-      const filePath = `uploads/${Math.random()}.${fileExt}`;
+      const filePath = `${centro_id}/uploads/${Math.random()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage
         .from('materiais')
         .upload(filePath, matFile);

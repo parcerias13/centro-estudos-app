@@ -114,8 +114,11 @@ export default function LabAI() {
 
     try {
       if (currentFile?.isPdf && currentFile.file) {
+        const { data: { user } } = await supabase.auth.getUser();
+        const centro_id = user?.app_metadata?.centro_id;
+        if (!centro_id) throw new Error('Não foi possível identificar o centro.');
         const safeName = currentFile.file.name.replace(/[^a-zA-Z0-9.]/g, '_');
-        const filePath = `${Date.now()}_${safeName}`;
+        const filePath = `${centro_id}/${Date.now()}_${safeName}`;
         const { error: uploadError } = await supabase.storage.from('lab_pdfs').upload(filePath, currentFile.file);
         if (uploadError) throw new Error("Erro a gravar PDF: " + uploadError.message);
         const { data: publicData } = supabase.storage.from('lab_pdfs').getPublicUrl(filePath);

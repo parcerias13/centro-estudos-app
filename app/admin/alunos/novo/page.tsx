@@ -69,8 +69,11 @@ export default function NovoAluno() {
       setErro('');
       if (!e.target.files || e.target.files.length === 0) return;
       const file = e.target.files[0];
+      const { data: { user } } = await supabase.auth.getUser();
+      const centro_id = user?.app_metadata?.centro_id;
+      if (!centro_id) throw new Error('Não foi possível identificar o centro.');
       const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
+      const fileName = `${centro_id}/${Math.random()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage.from('avatares').upload(fileName, file);
       if (uploadError) throw uploadError;
       const { data } = supabase.storage.from('avatares').getPublicUrl(fileName);
