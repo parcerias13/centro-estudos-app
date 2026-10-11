@@ -33,7 +33,7 @@ type Conta = { email: string; password: string; authId: string };
 let centroId: string;
 let professor: Conta;
 let aluno: Conta;
-const limpeza: Array<() => Promise<unknown>> = [];
+const limpeza: Array<() => unknown> = [];
 
 async function criarUtilizadorAuth(email: string, password: string, appMetadata: Record<string, unknown>) {
   const { data, error } = await supabaseAdmin.auth.admin.createUser({ email, password, email_confirm: true });

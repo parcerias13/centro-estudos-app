@@ -47,9 +47,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Campos obrigatórios em falta.' }, { status: 400 })
   }
 
-  // Este endpoint nunca cria outro admin — só professor ou secretaria.
   const roleNormalizado = String(roleRecebido).toLowerCase()
-  if (roleNormalizado !== 'professor' && roleNormalizado !== 'secretaria') {
+  if (roleNormalizado !== 'admin' && roleNormalizado !== 'professor' && roleNormalizado !== 'secretaria') {
     return NextResponse.json({ error: 'Cargo inválido.' }, { status: 400 })
   }
   const role = roleNormalizado
