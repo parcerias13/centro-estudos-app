@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabase';
 import { X, Loader2, UploadCloud, AlertTriangle, CheckCircle2, Copy, KeyRound } from 'lucide-react';
 import { mapearLinha, emailLoginDoAluno, LinhaImportacao } from './importAlunosConfig';
@@ -44,6 +43,7 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
   useEffect(() => {
     const ler = async () => {
       try {
+        const XLSX = await import('xlsx');
         const buffer = await file.arrayBuffer();
         const workbook = XLSX.read(buffer, { cellDates: true });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];

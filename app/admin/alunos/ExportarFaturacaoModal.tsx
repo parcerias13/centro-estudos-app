@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import ExcelJS from 'exceljs';
 import { supabase } from '@/lib/supabase';
 import { X, Receipt, Users, UserCheck, Loader2 } from 'lucide-react';
 
@@ -92,6 +91,8 @@ export default function ExportarFaturacaoModal({ alunos, onClose }: Props) {
       });
 
       const mesReferencia = `${NOMES_MESES[mes - 1]} ${ano}`;
+
+      const { default: ExcelJS } = await import('exceljs');
 
       const linhas = alunosAlvo.map((a) => {
         const mensalidade = Number(a.mensalidade_base) || 0;

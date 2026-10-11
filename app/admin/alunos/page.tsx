@@ -3,12 +3,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import ExcelJS from 'exceljs';
+import dynamic from 'next/dynamic';
 import { UserPlus, Search, FileBarChart, Edit, ClipboardList, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter, FileText, FileSpreadsheet, UploadCloud, Receipt, KeyRound } from 'lucide-react';
 import { CABECALHOS, LINHA_EXEMPLO } from './importAlunosConfig';
-import ImportarAlunosModal from './ImportarAlunosModal';
-import ExportarFaturacaoModal from './ExportarFaturacaoModal';
 import GerarCodigosModal from './GerarCodigosModal';
+
+// Carregadas só quando o modal respetivo abre — cada uma arrasta consigo
+// xlsx ou exceljs, que só fazem sentido no momento de importar/exportar.
+const ImportarAlunosModal = dynamic(() => import('./ImportarAlunosModal'), { ssr: false });
+const ExportarFaturacaoModal = dynamic(() => import('./ExportarFaturacaoModal'), { ssr: false });
 
 
 export default function ListaAlunos() {
@@ -81,6 +84,7 @@ export default function ListaAlunos() {
   };
 
   const handleDownloadTemplate = async () => {
+    const { default: ExcelJS } = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Alunos');
 
