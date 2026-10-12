@@ -5,11 +5,10 @@ import dotenv from 'dotenv';
 
 dotenv.config({ path: '.env.local' });
 
-// /api/send-report e /api/admin/criar-staff só podem ser chamadas por admin
-// (e, no caso do send-report, também secretaria) — nunca por professor nem
-// por aluno. Isto cria um professor e um aluno descartáveis, autentica-os a
-// sério (sessão por cookies via /login, exatamente como o browser faz) e
-// confirma que as duas rotas respondem sempre 403 a ambos.
+// /api/admin/criar-staff só pode ser chamada por admin — nunca por
+// professor nem por aluno. Isto cria um professor e um aluno descartáveis,
+// autentica-os a sério (sessão por cookies via /login, exatamente como o
+// browser faz) e confirma que a rota responde sempre 403 a ambos.
 //
 // Precisa de NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY no
 // .env.local (os mesmos que a app usa) e do servidor a correr — ver
@@ -57,7 +56,7 @@ async function login(context: BrowserContext, email: string, password: string) {
   await page.close();
 }
 
-test.describe('Rotas sensíveis exigem admin (ou secretaria, no send-report)', () => {
+test.describe('Rotas sensíveis exigem admin', () => {
   test.beforeAll(async () => {
     const sufixo = Date.now();
 
@@ -117,18 +116,16 @@ test.describe('Rotas sensíveis exigem admin (ou secretaria, no send-report)', (
     expect(resposta.status(), `${path} devia devolver 403`).toBe(403);
   }
 
-  test('professor: send-report e criar-staff → 403', async ({ browser }: { browser: Browser }) => {
+  test('professor: criar-staff → 403', async ({ browser }: { browser: Browser }) => {
     const context = await browser.newContext();
     await login(context, professor.email, professor.password);
-    await esperar403(context, '/api/send-report', { studentId: 'dummy', reportHtml: '<p>x</p>' });
     await esperar403(context, '/api/admin/criar-staff', { email: 'x@example.invalid', password: 'x', name: 'x', role: 'professor' });
     await context.close();
   });
 
-  test('aluno: send-report e criar-staff → 403', async ({ browser }: { browser: Browser }) => {
+  test('aluno: criar-staff → 403', async ({ browser }: { browser: Browser }) => {
     const context = await browser.newContext();
     await login(context, aluno.email, aluno.password);
-    await esperar403(context, '/api/send-report', { studentId: 'dummy', reportHtml: '<p>x</p>' });
     await esperar403(context, '/api/admin/criar-staff', { email: 'x@example.invalid', password: 'x', name: 'x', role: 'professor' });
     await context.close();
   });

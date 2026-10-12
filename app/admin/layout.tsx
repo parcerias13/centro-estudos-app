@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { subscreverMensagensLidas } from '@/lib/eventoMensagensAdmin'
-import { LayoutDashboard, Users, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle } from 'lucide-react'
+import { LayoutDashboard, Users, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle, FileBarChart } from 'lucide-react'
 
 const ROLE_ALLOWED_MENU: Record<string, string[]> = {
   professor: ['Dashboard', 'Alunos', 'Agenda', 'Disciplinas e Materiais', 'Explicações'],
@@ -104,6 +104,7 @@ export default function AdminLayout({
     { name: 'Explicações', href: '/admin/explicacoes', icon: GraduationCap },
     { name: 'Performance', href: '/admin/performance', icon: BarChart3 },
     { name: 'Pagamentos', href: '/admin/pagamentos', icon: Wallet },
+    { name: 'Relatório Mensal', href: '/admin/relatorio-mensal', icon: FileBarChart },
     { name: 'Equipa', href: '/admin/equipa', icon: Shield },
     { name: 'Gestão', href: '/admin/gestao', icon: Settings },
   ]

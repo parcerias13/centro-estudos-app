@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, FileText, User, Clock, BookOpen, Calendar, ShieldAlert, Download, Mail, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Loader2, FileText, User, Clock, BookOpen, Calendar, ShieldAlert, Download } from 'lucide-react';
+import { getHojeLisboa } from '@/lib/dataLisboa';
+import { calcularMetricasMes, intervaloDoMes } from '@/lib/relatorio';
 
 function RelatorioContent() {
   const searchParams = useSearchParams();
@@ -13,11 +15,6 @@ function RelatorioContent() {
   const [student, setStudent] = useState<any>(null);
   const [stats, setStats] = useState<any>({ totalVisits: 0, totalHours: 0, topSubject: '-' });
   const [history, setHistory] = useState<any[]>([]);
-
-  const [isSending, setIsSending] = useState(false);
-  const [sentStatus, setSentStatus] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
-
 
   const fetchData = useCallback(async () => {
     if (!studentId) return;
@@ -31,95 +28,36 @@ function RelatorioContent() {
       .single();
     setStudent(alunoData);
 
-    // LÓGICA DE DATA BLINDADA (Fuso Horário Local)
-    const agora = new Date();
-    const primeiroDiaMes = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-01T00:00:00`;
+    // Mês atual sempre via getHojeLisboa() — nunca new Date() local.
+    const [anoAtual, mesAtual] = getHojeLisboa().split('-').map(Number);
 
-    // 2. Buscar TUDO do mês (mesmo sessões sem saída ainda para estatísticas "vivas")
+    // 2. Histórico do mês para a Linha do Tempo (mesmo intervalo da lib).
+    const { inicioISO, fimISO } = intervaloDoMes(anoAtual, mesAtual);
     const { data: entries } = await supabase
       .from('diario_bordo')
       .select('*')
       .eq('aluno_id', studentId)
-      .gte('entrada', primeiroDiaMes)
+      .gte('entrada', inicioISO)
+      .lte('entrada', fimISO)
       .order('entrada', { ascending: false });
 
-    if (entries) {
-        setHistory(entries);
+    if (entries) setHistory(entries);
 
-        let totalMs = 0;
-        const subjects: Record<string, number> = {};
-        
-        entries.forEach(e => {
-            if (e.entrada) {
-              // Se não tiver saída (sessão ativa), calculamos o tempo até "agora"
-              const horaFim = e.saida ? new Date(e.saida).getTime() : new Date().getTime();
-              const horaInicio = new Date(e.entrada).getTime();
-              
-              totalMs += (horaFim - horaInicio);
-              
-              if (e.subject_name) {
-                subjects[e.subject_name] = (subjects[e.subject_name] || 0) + 1;
-              }
-            }
-        });
+    // 3. Métricas do mês — mesmo cálculo que o envio em lote usa, para os
+    // números nunca divergirem.
+    const metricas = await calcularMetricasMes(supabase, studentId, anoAtual, mesAtual);
+    setStats({
+      totalVisits: metricas.totalSessoes,
+      totalHours: metricas.totalHoras,
+      topSubject: metricas.disciplinaPrincipal,
+    });
 
-        const topSubjectEntry = Object.entries(subjects).sort((a, b) => b[1] - a[1])[0];
-
-        setStats({
-            totalVisits: entries.length,
-            totalHours: Math.round(totalMs / (1000 * 60 * 60)),
-            topSubject: topSubjectEntry ? `${topSubjectEntry[0]} (${topSubjectEntry[1]}x)` : '-'
-        });
-    }
     setLoading(false);
-  }, [supabase, studentId]);
+  }, [studentId]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  const handleSendEmail = async () => {
-    setSendError(null);
-    if (!student?.email_encarregado) {
-      setSendError('Este aluno não tem um e-mail de encarregado registado.');
-      return;
-    }
-    setIsSending(true);
-    const reportHtml = `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; background: #ffffff; padding: 40px; border-radius: 20px; border: 1px solid #e2e8f0;">
-        <h1 style="color: #2563eb; font-size: 24px; font-weight: 900; text-transform: uppercase; margin-bottom: 20px;">Relatório de Performance CogniLab</h1>
-        <p>Resumo mensal de <strong>${student.nome}</strong>.</p>
-        <div style="background: #f8fafc; padding: 25px; border-radius: 15px; border: 1px solid #e2e8f0; margin: 20px 0;">
-          <p><strong>Volume:</strong> ${stats.totalHours} horas</p>
-          <p><strong>Sessões:</strong> ${stats.totalVisits}</p>
-          <p><strong>Foco:</strong> ${stats.topSubject}</p>
-        </div>
-      </div>
-    `;
-    try {
-      const response = await fetch('/api/send-report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentId: student.id,
-          targetEmail: student.email_encarregado,
-          studentName: student.nome,
-          reportHtml: reportHtml
-        }),
-      });
-      if (response.ok) {
-        setSentStatus(true);
-        setTimeout(() => setSentStatus(false), 5000);
-      } else {
-        const body = await response.json().catch(() => ({}));
-        setSendError(body?.error || `Falha no envio (${response.status}). Tenta novamente.`);
-      }
-    } catch (err: any) {
-      setSendError(err?.message || 'Erro inesperado. Verifica a ligação e tenta novamente.');
-    } finally {
-      setIsSending(false);
-    }
-  };
 
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={32} /></div>;
   if (!student) return <div className="p-8 text-primary">Aluno não encontrado.</div>;
@@ -215,20 +153,9 @@ function RelatorioContent() {
                 <Link href="/admin/alunos" className="flex items-center gap-2 text-secondary hover:text-slate-900 font-bold transition-colors text-sm">
                     <ArrowLeft size={16} /> Painel de Gestão
                 </Link>
-                <div className="flex flex-col items-end gap-2">
-                    <div className="flex gap-4">
-                    <button onClick={handleSendEmail} disabled={isSending} className={`flex items-center gap-3 px-8 py-4 rounded-2xl font-black transition-all ${sentStatus ? 'bg-success text-on-success' : 'bg-surface text-primary hover:bg-raised'}`}>
-                        {isSending ? <Loader2 className="animate-spin" size={20} /> : sentStatus ? <CheckCircle2 size={20} /> : <Mail size={20} />}
-                        {isSending ? 'A ENVIAR...' : sentStatus ? 'RELATÓRIO ENVIADO' : 'ENVIAR EMAIL'}
-                    </button>
-                    <button onClick={() => window.print()} className="bg-accent hover:bg-accent-hover text-on-accent px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-lg shadow-accent/20">
-                        <Download size={20} /> PDF
-                    </button>
-                    </div>
-                    {sendError && (
-                      <p className="text-danger text-xs font-bold">{sendError}</p>
-                    )}
-                </div>
+                <button onClick={() => window.print()} className="bg-accent hover:bg-accent-hover text-on-accent px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-lg shadow-accent/20">
+                    <Download size={20} /> PDF
+                </button>
             </div>
         </div>
       </div>
