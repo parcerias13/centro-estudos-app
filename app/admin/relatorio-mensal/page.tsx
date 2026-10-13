@@ -377,7 +377,7 @@ export default function RelatorioMensalPage() {
             <p className="text-[10px] font-black uppercase text-muted tracking-widest mb-3">Pré-visualização do cartão</p>
             {carregandoPreview ? (
               <Loader2 className="animate-spin text-accent" size={20} />
-            ) : previewMetricas ? (
+            ) : previewMetricas && previewMetricas.totalSessoes > 0 ? (
               <div className="bg-accent text-on-accent rounded-2xl p-4 shadow-lg space-y-2 max-w-[260px]">
                 <div className="flex items-center gap-2"><FileBarChart size={16} /><p className="font-black text-xs uppercase tracking-widest">Relatório Mensal</p></div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
@@ -390,7 +390,7 @@ export default function RelatorioMensalPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-muted text-sm italic">Sem dados para pré-visualizar.</p>
+              <p className="text-muted text-sm italic">Sem dados neste mês.</p>
             )}
           </div>
         )}

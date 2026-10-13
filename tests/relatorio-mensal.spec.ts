@@ -184,6 +184,10 @@ test.describe('Relatório Mensal em lote', () => {
     await expect(linhaAluno5Real).toContainText('Já enviado');
     await expect(linhaAluno5Real.locator('input[type="checkbox"]')).toBeDisabled();
 
+    // Pré-visualização de um aluno sem dados no mês: nunca um cartão vazio.
+    await linhaAluno4Real.getByTitle('Pré-visualizar cartão').click();
+    await expect(page.getByText('Sem dados neste mês.')).toBeVisible({ timeout: 10_000 });
+
     await expect(page.getByRole('button', { name: /enviar a 3 família/i })).toBeVisible();
     await page.getByRole('button', { name: /enviar a 3 família/i }).click();
     await page.getByRole('button', { name: /confirmar envio/i }).click();
