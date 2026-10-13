@@ -8,6 +8,7 @@ import {
   ArrowLeft, Loader2, Calendar,
   Utensils, Printer, CheckCircle2, DollarSign, AlertTriangle
 } from 'lucide-react';
+import { calcularResumoExtrato, intervaloDoMesExtrato } from '@/lib/extrato';
 
 function ExtratoDetalhadoContent() {
   const searchParams = useSearchParams();
@@ -24,8 +25,7 @@ function ExtratoDetalhadoContent() {
     if (!studentId) return;
     setLoading(true);
 
-    const primeiroDia = new Date(ano, mes - 1, 1).toISOString();
-    const ultimoDia = new Date(ano, mes, 0, 23, 59, 59).toISOString();
+    const { primeiroDiaISO: primeiroDia, ultimoDiaISO: ultimoDia, primeiroDiaData, ultimoDiaData } = intervaloDoMesExtrato(ano, mes);
 
     // 1. Buscar Aluno (Agora com mensalidade_base)
     const { data: aluno } = await supabase
@@ -46,29 +46,21 @@ function ExtratoDetalhadoContent() {
       supabase.from('consumos_diarios')
         .select('*, servicos(nome)')
         .eq('aluno_id', studentId)
-        .gte('data_consumo', primeiroDia.split('T')[0])
-        .lte('data_consumo', ultimoDia.split('T')[0]),
+        .gte('data_consumo', primeiroDiaData)
+        .lte('data_consumo', ultimoDiaData),
       supabase.from('explicacoes_alunos')
         .select('valor_cobrado_familia, explicacoes!inner(data, dado, subjects(name), staff(name))')
         .eq('aluno_id', studentId)
         .eq('explicacoes.dado', true)
-        .gte('explicacoes.data', primeiroDia.split('T')[0])
-        .lte('explicacoes.data', ultimoDia.split('T')[0])
+        .gte('explicacoes.data', primeiroDiaData)
+        .lte('explicacoes.data', ultimoDiaData)
     ]);
 
-    // 3. NOVO MOTOR DE CÁLCULO (SOMA DIRETA: FIXO + EXTRAS + EXPLICAÇÕES)
-    const mensalidadeFixa = Number(aluno?.mensalidade_base) || 0;
-    const totalExtras = extras?.reduce((acc, curr) => acc + (Number(curr.preco_aplicado) || 0), 0) || 0;
+    // 3. MOTOR DE CÁLCULO (lib/extrato.ts — partilhado com a exportação de faturação)
+    const { mensalidadeFixa, totalExtras, totalExplicacoes, explicacoesSemPreco, totalGeral } =
+      calcularResumoExtrato(aluno?.mensalidade_base, extras || [], explicacoesData || []);
     const datasUnicas = new Set(presencas?.map(p => p.entrada.split('T')[0]));
     const totalSessoes = datasUnicas.size;
-
-    // Só soma sessões com preço definido; conta as que não têm, para o aviso.
-    let totalExplicacoes = 0;
-    let explicacoesSemPreco = 0;
-    explicacoesData?.forEach(ea => {
-      if (ea.valor_cobrado_familia != null) totalExplicacoes += Number(ea.valor_cobrado_familia);
-      else explicacoesSemPreco += 1;
-    });
 
     // 4. AGRUPAMENTO DIÁRIO PARA O HISTÓRICO
     const mapaDias: Record<string, any> = {};
@@ -105,7 +97,7 @@ function ExtratoDetalhadoContent() {
       totalExtras,
       totalExplicacoes,
       explicacoesSemPreco,
-      totalGeral: mensalidadeFixa + totalExtras + totalExplicacoes
+      totalGeral
     });
 
     setLoading(false);

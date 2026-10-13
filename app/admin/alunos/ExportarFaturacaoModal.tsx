@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { X, Receipt, Users, UserCheck, Loader2 } from 'lucide-react';
+import { calcularResumoExtrato } from '@/lib/extrato';
 
 const NOMES_MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -15,9 +16,11 @@ const CABECALHOS = [
   'Morada Encarregado',
   'Email Encarregado',
   'Telefone Encarregado',
-  'Mensalidade Base',
-  'Total Extras',
-  'Total a Pagar',
+  'Mensalidade',
+  'Extras',
+  'Explicações',
+  'Total',
+  'Aviso',
   'Mês de Referência',
 ];
 
@@ -76,18 +79,36 @@ export default function ExportarFaturacaoModal({ alunos, onClose }: Props) {
 
       const idsAlvo = alunosAlvo.map((a) => a.id);
 
-      const { data: consumos, error: consumosError } = await supabase
-        .from('consumos_diarios')
-        .select('aluno_id, preco_aplicado')
-        .in('aluno_id', idsAlvo)
-        .gte('data_consumo', primeiroDia)
-        .lte('data_consumo', ultimoDia);
+      const [{ data: consumos, error: consumosError }, { data: explicacoes, error: explicacoesError }] = await Promise.all([
+        supabase
+          .from('consumos_diarios')
+          .select('aluno_id, preco_aplicado')
+          .in('aluno_id', idsAlvo)
+          .gte('data_consumo', primeiroDia)
+          .lte('data_consumo', ultimoDia),
+        // Mesmo filtro do extrato individual (explicações.dado = true, dentro
+        // do mês) — nunca 0€ em silêncio: valor_cobrado_familia nulo conta
+        // para o aviso, não para o total.
+        supabase
+          .from('explicacoes_alunos')
+          .select('aluno_id, valor_cobrado_familia, explicacoes!inner(data, dado)')
+          .in('aluno_id', idsAlvo)
+          .eq('explicacoes.dado', true)
+          .gte('explicacoes.data', primeiroDia)
+          .lte('explicacoes.data', ultimoDia),
+      ]);
 
       if (consumosError) throw consumosError;
+      if (explicacoesError) throw explicacoesError;
 
-      const totalExtrasPorAluno: Record<string, number> = {};
+      const extrasPorAluno: Record<string, { preco_aplicado: number | string | null }[]> = {};
       consumos?.forEach((c) => {
-        totalExtrasPorAluno[c.aluno_id] = (totalExtrasPorAluno[c.aluno_id] || 0) + (Number(c.preco_aplicado) || 0);
+        (extrasPorAluno[c.aluno_id] ??= []).push({ preco_aplicado: c.preco_aplicado });
+      });
+
+      const explicacoesPorAluno: Record<string, { valor_cobrado_familia: number | string | null }[]> = {};
+      explicacoes?.forEach((e) => {
+        (explicacoesPorAluno[e.aluno_id] ??= []).push({ valor_cobrado_familia: e.valor_cobrado_familia });
       });
 
       const mesReferencia = `${NOMES_MESES[mes - 1]} ${ano}`;
@@ -95,17 +116,21 @@ export default function ExportarFaturacaoModal({ alunos, onClose }: Props) {
       const { default: ExcelJS } = await import('exceljs');
 
       const linhas = alunosAlvo.map((a) => {
-        const mensalidade = Number(a.mensalidade_base) || 0;
-        const extras = totalExtrasPorAluno[a.id] || 0;
+        const resumo = calcularResumoExtrato(a.mensalidade_base, extrasPorAluno[a.id] || [], explicacoesPorAluno[a.id] || []);
+        const aviso = resumo.explicacoesSemPreco > 0
+          ? `${resumo.explicacoesSemPreco} sessão(ões) sem preço`
+          : '';
         return [
           a.nome || '',
           a.nif_encarregado || '',
           a.morada_encarregado || '',
           a.email_encarregado || '',
           a.telefone_encarregado || '',
-          mensalidade,
-          extras,
-          mensalidade + extras,
+          resumo.mensalidadeFixa,
+          resumo.totalExtras,
+          resumo.totalExplicacoes,
+          resumo.totalGeral,
+          aviso,
           mesReferencia,
         ];
       });
@@ -128,10 +153,11 @@ export default function ExportarFaturacaoModal({ alunos, onClose }: Props) {
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
           });
         }
-        row.getCell(6).numFmt = '0.00';
-        row.getCell(7).numFmt = '0.00';
-        row.getCell(8).numFmt = '0.00';
-        row.getCell(8).font = { bold: true };
+        row.getCell(6).numFmt = '0.00'; // Mensalidade
+        row.getCell(7).numFmt = '0.00'; // Extras
+        row.getCell(8).numFmt = '0.00'; // Explicações
+        row.getCell(9).numFmt = '0.00'; // Total
+        row.getCell(9).font = { bold: true };
       }
 
       sheet.columns.forEach((coluna, i) => {
