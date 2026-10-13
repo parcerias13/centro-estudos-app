@@ -5,19 +5,54 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { disciplinasComuns } from '@/lib/disciplinas';
-import { sanitizarPedidoExplicacao } from '@/lib/formatoMensagens';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Plus, X, GraduationCap, Loader2,
   Clock, Trash2, Save, Search, Users, AlertTriangle, HelpCircle,
 } from 'lucide-react';
-import { startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, format, isSameDay } from 'date-fns';
+import { startOfWeek, endOfWeek, addWeeks, addDays, eachDayOfInterval, format, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
+import { getHojeLisboa } from '@/lib/dataLisboa';
+import { sanitizarPedidoExplicacao, type PedidoExplicacaoSeguro } from '@/lib/formatoMensagens';
+
+// «Nome · 7.º ano» — mesmo rótulo em toda a página (lista de alunos da
+// modal, banners de pedidos, e os nomes mostrados no detalhe da sessão).
+const rotuloAluno = (nome: string, anoEscolar: number | null | undefined) =>
+  anoEscolar ? `${nome} · ${anoEscolar}.º ano` : nome;
 
 const getNomeAluno = (ea: any) => {
   const aluno = Array.isArray(ea.alunos) ? ea.alunos[0] : ea.alunos;
-  return aluno?.nome || 'Desconhecido';
+  if (!aluno?.nome) return 'Desconhecido';
+  return rotuloAluno(aluno.nome, aluno.ano_escolar);
 };
+
+const DIAS_SEMANA_EXTENSO: Record<number, string> = {
+  1: 'Segunda-feira', 2: 'Terça-feira', 3: 'Quarta-feira', 4: 'Quinta-feira',
+  5: 'Sexta-feira', 6: 'Sábado', 7: 'Domingo',
+};
+
+// Próxima data (hoje incluído) em que cai o dia da semana pedido —
+// convenção 1=Segunda...7=Domingo, igual ao payload do pedido. Sempre a
+// partir de getHojeLisboa(), nunca new Date() local.
+function proximaOcorrencia(diaSemana1a7: number, hojeISO: string = getHojeLisboa()): string {
+  const hoje = new Date(`${hojeISO}T00:00:00`);
+  const diaSemanaHoje = hoje.getDay() === 0 ? 7 : hoje.getDay();
+  let diferenca = diaSemana1a7 - diaSemanaHoje;
+  if (diferenca < 0) diferenca += 7;
+  return format(addDays(hoje, diferenca), 'yyyy-MM-dd');
+}
+
+// Extrai uma hora legível de texto livre ("17:00", "17h", "17h30", "depois
+// das 18h") — sem correspondência clara, deixa em branco para a pessoa
+// preencher à mão.
+function extrairHoraDoPedido(horario: string | null): string {
+  if (!horario) return '';
+  const match = horario.match(/\b([01]?\d|2[0-3])[h:]([0-5]\d)?\b/i);
+  if (!match) return '';
+  const hora = match[1].padStart(2, '0');
+  const minuto = match[2] ?? '00';
+  return `${hora}:${minuto}`;
+}
 
 const getEstadoSessao = (sessao: any) => {
   if (sessao.dado) return { label: 'Dada', classes: 'bg-success-bg text-success border-success/30' };
@@ -47,7 +82,7 @@ function ExplicacoesPageContent() {
 
   const [detalheSessao, setDetalheSessao] = useState<any | null>(null);
   const [novaModalOpen, setNovaModalOpen] = useState(false);
-  const [pedidoPreSelecionado, setPedidoPreSelecionado] = useState<{ id: string; alunoId: string; disciplinaId: string | null } | null>(null);
+  const [pedidoPreSelecionado, setPedidoPreSelecionado] = useState<{ id: string; alunoId: string; disciplinaId: string | null; detalhe: PedidoExplicacaoSeguro } | null>(null);
 
   // Banner "N pedidos por marcar" — só para admin. Um professor também abre
   // esta página (para a sua própria agenda) e não tem acesso de leitura a
@@ -88,8 +123,8 @@ function ExplicacoesPageContent() {
       } else if (data.estado !== 'pendente') {
         showError('Este pedido já foi tratado.');
       } else {
-        const disciplinaId = sanitizarPedidoExplicacao(data.payload).disciplinaId;
-        setPedidoPreSelecionado({ id: data.id, alunoId: data.aluno_id, disciplinaId: disciplinaId != null ? String(disciplinaId) : null });
+        const detalhe = sanitizarPedidoExplicacao(data.payload);
+        setPedidoPreSelecionado({ id: data.id, alunoId: data.aluno_id, disciplinaId: detalhe.disciplinaId != null ? String(detalhe.disciplinaId) : null, detalhe });
         setNovaModalOpen(true);
       }
       router.replace('/admin/explicacoes');
@@ -160,7 +195,7 @@ function ExplicacoesPageContent() {
 
       const { data, error } = await supabase
         .from('explicacoes')
-        .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, alunos(nome)), subjects(name)')
+        .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, alunos(nome, ano_escolar)), subjects(name)')
         .eq('professor_id', selectedProfessorId)
         .gte('data', format(currentWeekStart, 'yyyy-MM-dd'))
         .lte('data', format(weekEnd, 'yyyy-MM-dd'))
@@ -268,7 +303,7 @@ function ExplicacoesPageContent() {
                 className="flex items-center justify-between gap-2 bg-page/60 hover:bg-page rounded-xl px-3 py-2 text-sm transition-colors"
               >
                 <span className="font-bold text-primary truncate">
-                  {p.alunos?.nome ?? 'Aluno'}{p.alunos?.ano_escolar ? ` · ${p.alunos.ano_escolar}º` : ''} — {sanitizarPedidoExplicacao(p.payload).disciplina ?? 'Disciplina'}
+                  {rotuloAluno(p.alunos?.nome ?? 'Aluno', p.alunos?.ano_escolar)} — {sanitizarPedidoExplicacao(p.payload).disciplina ?? 'Disciplina'}
                 </span>
                 <span className="text-[10px] font-black uppercase text-warning shrink-0">Marcar</span>
               </Link>
@@ -280,7 +315,10 @@ function ExplicacoesPageContent() {
       {pedidoPreSelecionado && !selectedProfessorId && (
         <div className="bg-warning-bg border border-warning/20 rounded-2xl p-4 mb-8">
           <p className="font-bold text-sm text-warning">
-            Escolhe o professor para marcar o pedido de {alunosAtivos.find((a: any) => a.id === pedidoPreSelecionado.alunoId)?.nome ?? 'aluno'}.
+            Escolhe o professor para marcar o pedido de {(() => {
+              const a = alunosAtivos.find((a: any) => a.id === pedidoPreSelecionado.alunoId);
+              return a ? rotuloAluno(a.nome, a.ano_escolar) : 'aluno';
+            })()}.
           </p>
         </div>
       )}
@@ -363,6 +401,7 @@ function ExplicacoesPageContent() {
           initialDisciplinaId={pedidoPreSelecionado?.disciplinaId ?? undefined}
           pedidoMensagemId={pedidoPreSelecionado?.id}
           pedidoAlunoId={pedidoPreSelecionado?.alunoId}
+          pedidoDetalhe={pedidoPreSelecionado?.detalhe}
           onClose={() => { setNovaModalOpen(false); setPedidoPreSelecionado(null); }}
           onCreated={() => {
             setNovaModalOpen(false);
@@ -426,7 +465,7 @@ function DetalheExplicacaoModal({ sessao, onClose, onSaved, onDeleted, showError
     // escrever na tabela relacionada (fica null até um pedido novo).
     const { data, error: fetchError } = await supabase
       .from('explicacoes')
-      .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, alunos(nome)), subjects(name)')
+      .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, alunos(nome, ano_escolar)), subjects(name)')
       .eq('id', sessao.id)
       .single();
 
@@ -510,7 +549,7 @@ function DetalheExplicacaoModal({ sessao, onClose, onSaved, onDeleted, showError
               <p className="text-[9px] font-black uppercase text-muted tracking-widest">Cobrado à família</p>
               {sessao.explicacoes_alunos.map((ea: any) => (
                 <div key={ea.id} className="flex items-center justify-between text-xs">
-                  <span className="text-secondary font-bold">{ea.alunos?.nome}</span>
+                  <span className="text-secondary font-bold">{ea.alunos?.nome ? rotuloAluno(ea.alunos.nome, ea.alunos.ano_escolar) : ''}</span>
                   {ea.valor_cobrado_familia != null ? (
                     <span className="font-bold text-primary">{Number(ea.valor_cobrado_familia).toFixed(2)}€</span>
                   ) : (
@@ -553,12 +592,20 @@ type EtapaExplicacao = 'nova' | 'alunos' | 'rpc';
 
 function NovaExplicacaoModal({
   professorId, centroId, subjects, alunosAtivos, initialAlunoIds, initialDisciplinaId, pedidoMensagemId, pedidoAlunoId,
+  pedidoDetalhe,
   onClose, onCreated, showError, showSuccess,
 }: any) {
   const [alunoIds, setAlunoIds] = useState<string[]>(initialAlunoIds || []);
   const [buscaAluno, setBuscaAluno] = useState('');
-  const [data, setData] = useState('');
-  const [horaInicio, setHoraInicio] = useState('');
+  // Pré-preenchidos a partir do pedido da família quando existe — a próxima
+  // ocorrência do primeiro dia pedido, e a hora só se o texto livre do
+  // horário tiver uma hora legível. Tudo continua editável a seguir.
+  const [data, setData] = useState<string>(() =>
+    pedidoDetalhe?.dias?.length > 0 ? proximaOcorrencia(pedidoDetalhe.dias[0]) : ''
+  );
+  const [horaInicio, setHoraInicio] = useState<string>(() =>
+    pedidoDetalhe ? extrairHoraDoPedido(pedidoDetalhe.horario) : ''
+  );
   const [disciplinaId, setDisciplinaId] = useState(initialDisciplinaId || '');
   const [saving, setSaving] = useState(false);
   // Fluxo em etapas, cada uma com repetição própria: 'nova' (nada criado
@@ -708,7 +755,24 @@ function NovaExplicacaoModal({
             <X size={20} />
           </button>
         </div>
-        {pedidoMensagemId && (
+        {pedidoMensagemId && pedidoDetalhe && (
+          <div className="bg-accent-soft border border-accent/20 rounded-2xl p-4 mb-4 space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-widest text-accent mb-1.5">Pedido da família</p>
+            {pedidoDetalhe.disciplina && (
+              <p className="text-xs text-primary"><span className="font-bold">Disciplina:</span> {pedidoDetalhe.disciplina}</p>
+            )}
+            {pedidoDetalhe.dias.length > 0 && (
+              <p className="text-xs text-primary"><span className="font-bold">Dias:</span> {pedidoDetalhe.dias.map((d: number) => DIAS_SEMANA_EXTENSO[d] ?? d).join(', ')}</p>
+            )}
+            {pedidoDetalhe.horario && (
+              <p className="text-xs text-primary"><span className="font-bold">Horário:</span> {pedidoDetalhe.horario}</p>
+            )}
+            {pedidoDetalhe.nota && (
+              <p className="text-xs text-primary italic">"{pedidoDetalhe.nota}"</p>
+            )}
+          </div>
+        )}
+        {pedidoMensagemId && !pedidoDetalhe && (
           <p className="text-xs text-accent font-bold mb-4">A marcar um pedido de explicação da família.</p>
         )}
         {etapa === 'alunos' && (
@@ -750,7 +814,7 @@ function NovaExplicacaoModal({
                         selecionado ? 'bg-accent text-on-accent' : 'bg-page text-primary hover:bg-raised'
                       }`}
                     >
-                      {aluno.nome}
+                      {rotuloAluno(aluno.nome, aluno.ano_escolar)}
                     </button>
                   );
                 })
