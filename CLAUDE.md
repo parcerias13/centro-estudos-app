@@ -2,7 +2,7 @@
 
 ## Visão Geral
 Sistema de gestão operacional para centros de estudo em Portugal.
-Marca: **CogniLab**.
+Marca: **StudyCloud**.
 Atualmente em fase de testes num centro real no Porto ("Lígia").
 **Objetivo: lançamento no mercado em setembro 2026.**
 
@@ -88,7 +88,7 @@ app/
 - API key do Resend movida para API Route server-side (segurança)
 - `centro_id` da Lígia corrigido na página de Gestão e na `api/config-centro`
 - Soft-delete (`deleted_at`) removido completamente do código e da base de dados
-- Marca unificada para "CogniLab" em `app/layout.tsx` e `app/admin/layout.tsx`
+- Marca unificada para "StudyCloud" em `app/layout.tsx` e `app/admin/layout.tsx`
 - `student_id` duplicado removido do `diario_bordo` — mantido apenas `aluno_id`
 - Primeira passagem de unificação do Supabase client singleton (ficheiros admin core)
 
@@ -155,7 +155,7 @@ app/
 
 ## Contexto de Negócio
 
-- **Marca:** CogniLab
+- **Marca:** StudyCloud
 - **Cliente atual:** Centro de estudo "Lígia", Porto
 - **Modelo:** SaaS B2B para centros de estudo em Portugal
 - **Monetização futura:** mensalidade por centro + fee por transação (Stripe) + LabAI (3€/aluno/mês)

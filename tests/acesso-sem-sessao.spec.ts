@@ -77,7 +77,7 @@ test.describe('Acesso sem sessão', () => {
       await page.goto(`${BASE_URL}${caminho}`, { waitUntil: 'networkidle' });
       expect(page.url(), `${caminho} devia redirecionar para /login`).toContain('/login');
       const texto = await page.evaluate(() => document.body.innerText);
-      expect(texto, `${caminho} não devia mostrar o menu`).not.toMatch(/CogniLab|Gerir Alunos|Dashboard/);
+      expect(texto, `${caminho} não devia mostrar o menu`).not.toMatch(/StudyCloud|CogniLab|Gerir Alunos|Dashboard/);
     }
     await context.close();
   });

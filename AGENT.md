@@ -1,4 +1,4 @@
-# AGENT.md — CogniLab
+# AGENT.md — StudyCloud
 
 Instruções para o Claude Code trabalhar neste projeto.
 Lê este ficheiro inteiro antes de fazer qualquer alteração.
@@ -7,7 +7,7 @@ Lê este ficheiro inteiro antes de fazer qualquer alteração.
 
 ## O que é este projeto
 
-**CogniLab** — SaaS de gestão para centros de estudo em Portugal.
+**StudyCloud** — SaaS de gestão para centros de estudo em Portugal.
 - Cliente atual: centro "Lígia" (Porto)
 - Objetivo: lançamento no mercado em setembro 2026
 - Stack: Next.js 14 + TypeScript + Supabase (PostgreSQL + PostgREST)

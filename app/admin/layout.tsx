@@ -135,7 +135,7 @@ export default function AdminLayout({
         <div className="p-6 border-b border-white/10 flex justify-between items-center">
           <div>
             <h2 className="text-xl font-black text-sidebar-text tracking-tighter italic">
-              Cogni<span className="text-sidebar-accent">Lab</span>
+              Study<span className="text-sidebar-accent">Cloud</span>
             </h2>
           </div>
           <button onClick={() => setIsMenuOpen(false)} className="md:hidden text-sidebar-text"><X size={24} /></button>
@@ -186,7 +186,7 @@ export default function AdminLayout({
         {/* Header Mobile */}
         <header className="md:hidden bg-raised p-4 border-b border-border flex justify-between items-center sticky top-0 z-30">
           <h2 className="text-lg font-black text-primary italic">
-            Cogni<span className="text-accent">Lab</span>
+            Study<span className="text-accent">Cloud</span>
           </h2>
           <button
             onClick={() => setIsMenuOpen(true)}
