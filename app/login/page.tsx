@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
+import { RECUPERAR_POR_EMAIL_ATIVO } from '@/lib/features';
 
 // Mesmos três roles que o middleware reconhece (middleware.ts). Se o
 // app_metadata.role da conta não for nenhum destes, o middleware devolve
@@ -114,7 +115,7 @@ export default function LoginPage() {
                   }}
                   className="text-xs font-bold text-accent hover:text-accent hover:underline transition-colors cursor-pointer bg-transparent border-none p-0"
                 >
-                    Esqueci-me da password
+                    {RECUPERAR_POR_EMAIL_ATIVO ? 'Esqueci-me da password' : 'Peça ao centro que reponha a sua palavra-passe'}
                 </button>
             </div>
             <input

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { ArrowLeft, Mail, Loader2, CheckCircle, KeyRound } from 'lucide-react';
+import { RECUPERAR_POR_EMAIL_ATIVO } from '@/lib/features';
 
 export default function RecoverPage() {
   const [email, setEmail] = useState('');
@@ -41,7 +42,19 @@ export default function RecoverPage() {
           <ArrowLeft size={16} /> Voltar ao Login
         </Link>
 
-        {success ? (
+        {!RECUPERAR_POR_EMAIL_ATIVO ? (
+          // Sem SMTP próprio, o email do Supabase do projeto nunca chega a
+          // alunos/encarregados (só entrega a membros da equipa do projeto,
+          // e está limitado a 2/hora) — nem se pede o email nem se chama o
+          // Supabase Auth, para nunca repetir a falha silenciosa de antes.
+          <div className="text-center py-8">
+            <div className="bg-warning-bg text-warning w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border border-warning/20">
+              <KeyRound size={32} />
+            </div>
+            <h1 className="text-2xl font-black mb-2">Recuperar Conta</h1>
+            <p className="text-secondary text-sm">Peça ao centro que reponha a sua palavra-passe.</p>
+          </div>
+        ) : success ? (
           <div className="text-center py-8">
             <div className="bg-success-bg text-success w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border border-success/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
               <CheckCircle size={32} />
