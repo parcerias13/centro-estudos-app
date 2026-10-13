@@ -479,16 +479,46 @@ function DetalheExplicacaoModal({ sessao, onClose, onSaved, onDeleted, showError
   };
 
   const handleApagar = async () => {
-    if (!confirm('Apagar esta sessão? Esta ação não pode ser desfeita.')) return;
+    const mensagemConfirmacao = sessao.dado
+      ? 'Esta sessão já foi dada e tem valores calculados. Apagar remove-os. Continuar?'
+      : 'Apagar esta sessão? Esta ação não pode ser desfeita.';
+    if (!confirm(mensagemConfirmacao)) return;
+
     setDeleting(true);
-    const { error } = await supabase.from('explicacoes').delete().eq('id', sessao.id);
-    setDeleting(false);
-    if (error) {
-      showError('Erro ao apagar: ' + error.message);
-      return;
+    try {
+      // Só sessões já dadas têm valores a proteger — uma sessão não dada
+      // apaga-se sempre, sem olhar a pagamentos.
+      if (sessao.dado) {
+        const [anoSessao, mesSessao] = sessao.data.split('-').map(Number);
+        const alunoIds = (sessao.explicacoes_alunos || []).map((ea: any) => ea.aluno_id);
+
+        const [{ data: pagProf, error: erroPagProf }, { data: pagFam, error: erroPagFam }] = await Promise.all([
+          supabase.from('pagamentos_professores').select('id').eq('professor_id', sessao.professor_id).eq('ano', anoSessao).eq('mes', mesSessao).eq('pago', true).limit(1),
+          alunoIds.length > 0
+            ? supabase.from('pagamentos_explicacoes_familia').select('id').in('aluno_id', alunoIds).eq('ano', anoSessao).eq('mes', mesSessao).eq('pago', true).limit(1)
+            : Promise.resolve({ data: [] as any[], error: null }),
+        ]);
+
+        if (erroPagProf || erroPagFam) {
+          showError('Não foi possível verificar os pagamentos: ' + (erroPagProf || erroPagFam)!.message);
+          return;
+        }
+        if ((pagProf && pagProf.length > 0) || (pagFam && pagFam.length > 0)) {
+          showError('O mês já está marcado como pago. Desmarca o pagamento primeiro.');
+          return;
+        }
+      }
+
+      const { error } = await supabase.from('explicacoes').delete().eq('id', sessao.id);
+      if (error) {
+        showError('Erro ao apagar: ' + error.message);
+        return;
+      }
+      showSuccess('Sessão apagada.');
+      onDeleted(sessao.id);
+    } finally {
+      setDeleting(false);
     }
-    showSuccess('Sessão apagada.');
-    onDeleted(sessao.id);
   };
 
   return (
@@ -564,15 +594,13 @@ function DetalheExplicacaoModal({ sessao, onClose, onSaved, onDeleted, showError
         </div>
 
         <div className="flex gap-3 mt-6">
-          {!sessao.dado && (
-            <button
-              onClick={handleApagar}
-              disabled={deleting || saving}
-              className="p-4 bg-page border border-border text-danger hover:bg-danger-bg rounded-2xl transition-all active:scale-95 disabled:opacity-50"
-            >
-              {deleting ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
-            </button>
-          )}
+          <button
+            onClick={handleApagar}
+            disabled={deleting || saving}
+            className="p-4 bg-page border border-border text-danger hover:bg-danger-bg rounded-2xl transition-all active:scale-95 disabled:opacity-50"
+          >
+            {deleting ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
+          </button>
           <button
             onClick={handleGuardar}
             disabled={saving || deleting}
