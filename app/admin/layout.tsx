@@ -172,9 +172,12 @@ export default function AdminLayout({
         </nav>
 
         <div className="p-4 border-t border-white/10">
-          <Link href="/login" className="flex items-center gap-2 text-xs text-sidebar-text-secondary hover:text-danger transition font-bold uppercase tracking-tighter">
+          <button
+            onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login'; }}
+            className="flex items-center gap-2 text-xs text-sidebar-text-secondary hover:text-danger transition font-bold uppercase tracking-tighter"
+          >
             <LogOut size={14} /> Terminar Sessão
-          </Link>
+          </button>
         </div>
       </aside>
 
