@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
-  Building2, Mail, Save, Loader2, DollarSign,
-  Plus, Trash2, RefreshCw, ShieldAlert, Key, Receipt, GraduationCap, Pencil
+  Building2, Save, Loader2, DollarSign,
+  Plus, Trash2, RefreshCw, ShieldAlert, Receipt, GraduationCap, Pencil
 } from 'lucide-react';
 
 const CATEGORIAS_DESPESA = ['Professores', 'Materiais', 'Comida', 'Outros'];
@@ -34,8 +34,6 @@ export default function GestaoTotalPage() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   const [nomeCentro, setNomeCentro] = useState('');
-  const [emailRemetente, setEmailRemetente] = useState('');
-  const [resendKey, setResendKey] = useState('');
 
   const [servicos, setServicos] = useState<any[]>([]);
 
@@ -118,8 +116,6 @@ export default function GestaoTotalPage() {
 
         const config = await configRes.json();
         setNomeCentro(config.nome_centro || '');
-        setEmailRemetente(config.email_remetente || '');
-        setResendKey(config.resend_api_key || '');
       }
     } catch (error) {
       console.error("Erro no load:", error);
@@ -137,7 +133,7 @@ export default function GestaoTotalPage() {
     const res = await fetch('/api/config-centro', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome_centro: nomeCentro, email_remetente: emailRemetente, resend_api_key: resendKey }),
+      body: JSON.stringify({ nome_centro: nomeCentro }),
     });
 
     if (res.ok) {
@@ -683,32 +679,7 @@ export default function GestaoTotalPage() {
                 className="w-full bg-page/50 border border-border p-4 rounded-2xl font-bold text-sm focus:border-accent outline-none transition-all" 
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-muted uppercase ml-1">Email de Suporte/Faturação</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={18} />
-                <input 
-                  type="email" 
-                  value={emailRemetente} 
-                  onChange={e => setEmailRemetente(e.target.value)} 
-                  className="w-full bg-page/50 border border-border p-4 pl-12 rounded-2xl font-bold text-sm focus:border-accent outline-none transition-all" 
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-warning uppercase ml-1">Resend API Key (Automação de Emails)</label>
-              <div className="relative">
-                <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-warning/50" size={18} />
-                <input 
-                  type="password" 
-                  value={resendKey} 
-                  onChange={e => setResendKey(e.target.value)} 
-                  className="w-full bg-page/50 border border-border p-4 pl-12 rounded-2xl font-mono text-xs focus:border-warning outline-none transition-all" 
-                />
-              </div>
-            </div>
-            
-            <button 
+            <button
               type="submit" 
               disabled={submitting} 
               className={`w-full p-5 rounded-[1.5rem] font-black flex items-center justify-center gap-3 transition-all active:scale-95 ${success ? 'bg-success text-on-success shadow-lg shadow-success/20' : 'bg-accent hover:bg-accent-hover text-on-accent shadow-lg shadow-accent/20'}`}

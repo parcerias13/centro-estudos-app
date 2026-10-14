@@ -8,9 +8,15 @@ import { LAB_AI_ATIVO } from '@/lib/features';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Instanciado só quando pedido (nunca ao carregar o módulo) — o SDK da
+// OpenAI valida a apiKey no construtor, e isso rebentava a recolha de
+// dados do build sempre que OPENAI_API_KEY não estivesse definida (LabAI
+// está desativado por lib/features.ts, não precisa da chave para nada).
+let openaiClient: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!openaiClient) openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return openaiClient;
+}
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 // --- UTILITÁRIOS DE PERFORMANCE E CUSTO ---
@@ -24,7 +30,7 @@ function chunkText(text: string, size: number = 800): string[] {
 
 async function getRelevantContext(query: string, pdfText: string) {
   const chunks = chunkText(pdfText);
-  const embeddingsResponse = await openai.embeddings.create({
+  const embeddingsResponse = await getOpenAI().embeddings.create({
     model: "text-embedding-3-small",
     input: [query, ...chunks],
   });
@@ -161,7 +167,7 @@ export async function POST(req: Request) {
     ];
 
     // --- 7. CHAMADA À API COM STREAMING ---
-    const stream = await openai.chat.completions.create({
+    const stream = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       messages: messages as any,
       temperature: 0.7,

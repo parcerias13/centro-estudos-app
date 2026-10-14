@@ -14,11 +14,18 @@ const supabaseAdmin = createClient(
 const REGEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const TAMANHO_LOTE = 5
 const PAUSA_ENTRE_LOTES_MS = 300
+const REMETENTE_PADRAO = 'avisos@mail.studycloud.pt'
+const NOMES_ERRO_LIMITE = new Set(['daily_quota_exceeded', 'rate_limit_exceeded'])
 
 // Aviso curto — SEM dados do aluno — de que há uma mensagem nova na Área
 // dos Encarregados. É sempre um passo à parte, depois de a mensagem
 // 'relatorio_mensal' já estar criada: uma falha aqui nunca desfaz nem
 // bloqueia essa mensagem.
+//
+// Chave do Resend é da PLATAFORMA (process.env.RESEND_API_KEY), nunca por
+// centro — só pode enviar do domínio mail.studycloud.pt, e só os centros
+// em EMAIL_CENTROS_AUTORIZADOS (allowlist explícita, vazia = ninguém)
+// podem usar esta rota enquanto o envio não está aberto a todos.
 export async function POST(req: Request) {
   const cookieStore = await cookies()
   const supabase = createServerClient(
@@ -54,6 +61,17 @@ export async function POST(req: Request) {
   const centroAdmin = user.app_metadata?.centro_id
   if (!centroAdmin) {
     return NextResponse.json({ error: 'Centro do administrador não identificado.' }, { status: 403 })
+  }
+
+  // Allowlist explícita por centro_id — nunca ligado por omissão. Lida a
+  // cada pedido (não cacheada), para nunca exigir reiniciar o servidor
+  // depois de mudar a variável de ambiente.
+  const centrosAutorizados = (process.env.EMAIL_CENTROS_AUTORIZADOS ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+  if (!centrosAutorizados.includes(centroAdmin)) {
+    return NextResponse.json({ error: 'Este centro não está autorizado a enviar este aviso.' }, { status: 403 })
   }
 
   const body = await req.json().catch(() => ({}))
@@ -107,17 +125,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'URL da aplicação não configurado.' }, { status: 500 })
   }
 
+  // Chave da PLATAFORMA — nunca lida de config_centro, nunca registada nem
+  // devolvida em nenhuma resposta.
+  const RESEND_API_KEY = process.env.RESEND_API_KEY
+  if (!RESEND_API_KEY) {
+    console.error('relatorio-mensal/avisar: RESEND_API_KEY não definida — a recusar o envio.')
+    return NextResponse.json({ error: 'Envio de email não configurado.' }, { status: 500 })
+  }
+
   const { data: config } = await supabaseAdmin
     .from('config_centro')
-    .select('resend_api_key, email_remetente, nome_centro')
+    .select('nome_centro')
     .eq('id', centroAdmin)
     .maybeSingle()
 
-  if (!config?.resend_api_key || !config?.email_remetente) {
-    return NextResponse.json({ error: 'Centro sem email configurado.' }, { status: 400 })
+  if (!config?.nome_centro) {
+    return NextResponse.json({ error: 'Centro não encontrado.' }, { status: 404 })
   }
 
-  const resend = new Resend(config.resend_api_key)
+  const resend = new Resend(RESEND_API_KEY)
+  const remetente = process.env.EMAIL_REMETENTE ?? REMETENTE_PADRAO
   const assunto = `Nova mensagem — ${config.nome_centro}`
   const texto = `Tem uma nova mensagem do ${config.nome_centro} na Área dos Encarregados. Entre em ${APP_URL}.`
 
@@ -130,32 +157,45 @@ export async function POST(req: Request) {
   }
 
   // Lotes pequenos com pausa entre eles — nunca os 100 pedidos de uma vez.
-  for (let i = 0; i < comEmail.length; i += TAMANHO_LOTE) {
+  // Se o Resend devolver erro de limite (plano com limite diário), pára o
+  // lote já: os que ainda não foram tentados contam como "por enviar",
+  // nunca marcados como enviados.
+  let limiteAtingido = false
+  for (let i = 0; i < comEmail.length && !limiteAtingido; i += TAMANHO_LOTE) {
     const lote = comEmail.slice(i, i + TAMANHO_LOTE)
     const resultados = await Promise.all(
       lote.map(async (a) => {
         try {
           const { error } = await resend.emails.send({
-            from: `${config.nome_centro} <${config.email_remetente}>`,
+            from: `${config.nome_centro} <${remetente}>`,
             to: [a.email_encarregado!],
             subject: assunto,
             text: texto,
           })
           if (error) {
             console.error('relatorio-mensal/avisar: falha ao enviar', error)
-            return { alunoId: a.id, ok: false }
+            return { alunoId: a.id, ok: false, limite: NOMES_ERRO_LIMITE.has(error.name) }
           }
-          return { alunoId: a.id, ok: true }
+          return { alunoId: a.id, ok: true, limite: false }
         } catch (e) {
           console.error('relatorio-mensal/avisar: erro inesperado', e)
-          return { alunoId: a.id, ok: false }
+          return { alunoId: a.id, ok: false, limite: false }
         }
       })
     )
     for (const r of resultados) {
       if (r.ok) enviados += 1
       // Nunca expor o erro cru do Resend ao cliente — só um motivo genérico.
-      else falhas.push({ alunoId: r.alunoId, motivo: 'Não foi possível enviar o email.' })
+      else falhas.push({ alunoId: r.alunoId, motivo: r.limite ? 'Limite diário de envio atingido.' : 'Não foi possível enviar o email.' })
+      if (r.limite) limiteAtingido = true
+    }
+    if (limiteAtingido) {
+      // O resto do lote (ainda nem tentado) fica também "por enviar".
+      const tentados = new Set([...resultados.map((r) => r.alunoId), ...falhas.map((f) => f.alunoId)])
+      for (const a of comEmail.slice(i + TAMANHO_LOTE)) {
+        if (!tentados.has(a.id)) falhas.push({ alunoId: a.id, motivo: 'Limite diário de envio atingido.' })
+      }
+      break
     }
     if (i + TAMANHO_LOTE < comEmail.length) {
       await new Promise((resolve) => setTimeout(resolve, PAUSA_ENTRE_LOTES_MS))

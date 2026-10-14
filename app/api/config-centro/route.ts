@@ -41,9 +41,12 @@ export async function GET() {
   const centroId = await getAdminCentroId()
   if (!centroId) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
+  // resend_api_key e email_remetente nunca são devolvidos — a chave do
+  // Resend passou a ser da plataforma (process.env.RESEND_API_KEY), nunca
+  // por centro, para não a pôr nas mãos de cada admin.
   const { data: config, error } = await supabaseAdmin
     .from('config_centro')
-    .select('nome_centro, email_remetente, resend_api_key')
+    .select('nome_centro')
     .eq('id', centroId)
     .maybeSingle()
 
@@ -55,11 +58,13 @@ export async function PATCH(req: Request) {
   const centroId = await getAdminCentroId()
   if (!centroId) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
-  const { nome_centro, email_remetente, resend_api_key } = await req.json()
+  const { nome_centro } = await req.json()
 
+  // email_remetente e resend_api_key deixaram de ser aceites aqui — a
+  // chave é da plataforma, nunca por centro.
   const { error } = await supabaseAdmin
     .from('config_centro')
-    .update({ nome_centro, email_remetente, resend_api_key })
+    .update({ nome_centro })
     .eq('id', centroId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
