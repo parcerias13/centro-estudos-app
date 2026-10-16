@@ -348,7 +348,6 @@ export default function StudentHome() {
                             <p className="text-[10px] text-white/80 font-bold uppercase tracking-widest">Testes e Notas de Período</p>
                           </div>
                         </div>
-                        <span className="bg-white/20 text-on-accent text-[10px] font-black px-3 py-1 rounded-full uppercase">Novo</span>
                     </Link>
                     <Link href="/encarregados" className="col-span-2 bg-surface border border-border p-5 rounded-3xl flex items-center justify-between">
                         <div className="flex items-center gap-4">
