@@ -392,7 +392,7 @@ export default function AdminTeam() {
                 onChange={(e) => setRole(e.target.value)}
                 className="w-full bg-page border border-border text-primary p-3 rounded-xl outline-none focus:border-indigo-500"
               >
-                <option value="professor">Explicador</option>
+                <option value="professor">Professor</option>
                 <option value="Secretaria">Secretaria</option>
                 <option value="Admin">Admin</option>
               </select>
