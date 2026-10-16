@@ -6,7 +6,10 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { getAnoLetivoAtual } from '@/lib/anoLetivo';
-import { calcularEstadoNota, getEscalaTeste, getEscalaPeriodo } from '@/lib/notas';
+import {
+  calcularEstadoNota, getEscalaTeste, getEscalaPeriodo,
+  confirmarNotaTeste, confirmarNotaPeriodo, corrigirNotaTeste, corrigirNotaPeriodoExistente,
+} from '@/lib/notas';
 import { disciplinasParaAno, foraDoAno } from '@/lib/disciplinas';
 import {
   ArrowLeft, Loader2, ClipboardList, School, Users2, GraduationCap,
@@ -75,52 +78,25 @@ function FichaAlunoContent() {
 
   // --- NOTAS DE TESTES (exams) ---
   const handleSalvarNotaTeste = async (exam: any, valorStr: string) => {
-    const bruto = valorStr.trim();
-    const valor = bruto === '' ? null : parseFloat(bruto);
-    if (bruto !== '' && (valor === null || isNaN(valor))) {
-      showError('Valor de nota inválido.');
+    const confirmaAutomaticamente = role === 'admin' || role === 'professor';
+    const resultado = await corrigirNotaTeste(supabase, exam, valorStr, aluno.ano_escolar, confirmaAutomaticamente, userId);
+    if (!resultado.ok) {
+      if (resultado.motivo === 'invalido') { showError('Valor de nota inválido.'); return; }
+      if (resultado.motivo === 'fora_da_escala') { showError(`A nota tem de estar entre ${resultado.min} e ${resultado.max} (escala /${resultado.escala}).`); return; }
+      showError('Erro ao guardar nota: ' + resultado.mensagem);
       return;
     }
-
-    // Escala já não é escolha do utilizador — snapshot do ano_escolar do
-    // aluno no momento da escrita.
-    const { escala, min, max } = getEscalaTeste(aluno.ano_escolar);
-    if (valor !== null && (valor < min || valor > max)) {
-      showError(`A nota tem de estar entre ${min} e ${max} (escala /${escala}).`);
-      return;
-    }
-
-    const payload: Record<string, any> = {
-      nota_valor: valor,
-      nota_escala: valor === null ? exam.nota_escala : escala,
-      nota_reportada_por: userId,
-    };
-    if (valor === null) {
-      // Sem valor, não há nada para confirmar.
-      payload.nota_confirmada = false;
-      payload.nota_confirmada_por = null;
-      payload.nota_confirmada_em = null;
-    } else {
-      Object.assign(payload, calcularEstadoNota(role, userId));
-    }
-
-    const { error } = await supabase.from('exams').update(payload).eq('id', exam.id);
-    if (error) {
-      showError('Erro ao guardar nota: ' + error.message);
-      return;
-    }
-    setExams((prev) => prev.map((e) => (e.id === exam.id ? { ...e, ...payload } : e)));
+    setExams((prev) => prev.map((e) => (e.id === exam.id ? resultado.data[0] : e)));
     showSuccess('Nota atualizada.');
   };
 
   const handleConfirmarNotaTeste = async (exam: any) => {
-    const payload = { nota_confirmada: true, nota_confirmada_por: userId, nota_confirmada_em: new Date().toISOString() };
-    const { error } = await supabase.from('exams').update(payload).eq('id', exam.id);
-    if (error) {
-      showError('Erro ao confirmar: ' + error.message);
+    const resultado = await confirmarNotaTeste(supabase, exam.id);
+    if (!resultado.ok) {
+      showError('Erro ao confirmar: ' + (resultado.motivo === 'erro_servidor' ? resultado.mensagem : 'não foi possível confirmar.'));
       return;
     }
-    setExams((prev) => prev.map((e) => (e.id === exam.id ? { ...e, ...payload } : e)));
+    setExams((prev) => prev.map((e) => (e.id === exam.id ? resultado.data[0] : e)));
     showSuccess('Nota confirmada.');
   };
 
@@ -147,6 +123,25 @@ function FichaAlunoContent() {
       }
       setNotasPeriodo((prev) => prev.filter((n) => n.id !== linhaExistente.id));
       showSuccess('Nota removida.');
+      return;
+    }
+
+    // Linha já existe: corrige o valor através da função partilhada com a
+    // página Notas. Sem linha existente, cai para o upsert abaixo (cria).
+    if (linhaExistente) {
+      const confirmaAutomaticamente = role === 'admin' || role === 'professor';
+      const resultado = await corrigirNotaPeriodoExistente(supabase, linhaExistente, valorStr, aluno.ano_escolar, confirmaAutomaticamente, userId);
+      if (!resultado.ok) {
+        if (resultado.motivo === 'invalido') { showError('Valor de nota inválido.'); return; }
+        if (resultado.motivo === 'fora_da_escala') { showError(`A nota tem de estar entre ${resultado.min} e ${resultado.max} (escala /${resultado.escala}).`); return; }
+        showError('Erro ao guardar nota de período: ' + resultado.mensagem);
+        return;
+      }
+      setNotasPeriodo((prev) => {
+        const semAntiga = prev.filter((n) => !(n.disciplina_id === disciplinaId && n.periodo === periodo));
+        return [...semAntiga, resultado.data[0]];
+      });
+      showSuccess('Nota de período atualizada.');
       return;
     }
 
@@ -199,13 +194,12 @@ function FichaAlunoContent() {
   };
 
   const handleConfirmarNotaPeriodo = async (linha: any) => {
-    const payload = { nota_confirmada: true, nota_confirmada_por: userId, nota_confirmada_em: new Date().toISOString() };
-    const { error } = await supabase.from('notas_periodo').update(payload).eq('id', linha.id);
-    if (error) {
-      showError('Erro ao confirmar: ' + error.message);
+    const resultado = await confirmarNotaPeriodo(supabase, linha.id);
+    if (!resultado.ok) {
+      showError('Erro ao confirmar: ' + (resultado.motivo === 'erro_servidor' ? resultado.mensagem : 'não foi possível confirmar.'));
       return;
     }
-    setNotasPeriodo((prev) => prev.map((n) => (n.id === linha.id ? { ...n, ...payload } : n)));
+    setNotasPeriodo((prev) => prev.map((n) => (n.id === linha.id ? resultado.data[0] : n)));
     showSuccess('Nota confirmada.');
   };
 

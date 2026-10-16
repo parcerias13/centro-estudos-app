@@ -5,11 +5,13 @@ import { usePathname } from 'next/navigation'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { subscreverMensagensLidas } from '@/lib/eventoMensagensAdmin'
-import { LayoutDashboard, Users, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle, FileBarChart } from 'lucide-react'
+import { subscreverNotasConfirmadas } from '@/lib/eventoNotasAdmin'
+import { contarNotasPendentes } from '@/lib/notas'
+import { LayoutDashboard, Users, ClipboardCheck, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle, FileBarChart } from 'lucide-react'
 
 const ROLE_ALLOWED_MENU: Record<string, string[]> = {
-  professor: ['Dashboard', 'Alunos', 'Agenda', 'Disciplinas e Materiais', 'Explicações'],
-  secretaria: ['Dashboard', 'Alunos', 'Agenda', 'Refeitório', 'Histórico', 'Mensagens'],
+  professor: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Disciplinas e Materiais', 'Explicações'],
+  secretaria: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Refeitório', 'Histórico', 'Mensagens'],
 }
 
 export default function AdminLayout({
@@ -76,26 +78,50 @@ export default function AdminLayout({
     }
   }, [role, centroId, carregarBadgeMensagens])
 
-  // Aviso "N por confirmar" junto a Alunos — só quem pode confirmar (admin,
-  // professor) precisa de ver isto. Fica fora da Agenda por decisão: notas
-  // vivem só na Ficha do Aluno.
+  // Badge "Notas" na sidebar — só quem pode confirmar (admin, professor)
+  // precisa de ver isto; a secretária vê a página mas nunca o selo. Sempre
+  // filtrado por centro_id do utilizador (nunca conta de outro centro).
+  // Mesmo padrão de atualização do badge de Mensagens: foco, 30s enquanto
+  // visível, e imediatamente a seguir a confirmar notas (evento partilhado).
+  const carregarBadgeNotas = useCallback(async (centro_id: string) => {
+    setPendentesNotas(await contarNotasPendentes(supabase, centro_id))
+  }, [])
+
   useEffect(() => {
-    if (role !== 'admin' && role !== 'professor') return
-    let cancelado = false
-    ;(async () => {
-      const [{ count: examsCount }, { count: periodoCount }] = await Promise.all([
-        supabase.from('exams').select('id', { count: 'exact', head: true }).eq('nota_confirmada', false).not('nota_valor', 'is', null),
-        supabase.from('notas_periodo').select('id', { count: 'exact', head: true }).eq('nota_confirmada', false),
-      ])
-      if (!cancelado) setPendentesNotas((examsCount || 0) + (periodoCount || 0))
-    })()
-    return () => { cancelado = true }
-  }, [role])
+    if ((role !== 'admin' && role !== 'professor') || !centroId) return
+
+    carregarBadgeNotas(centroId)
+
+    const aoFocar = () => carregarBadgeNotas(centroId)
+    window.addEventListener('focus', aoFocar)
+
+    let intervalo: ReturnType<typeof setInterval> | null = null
+    const geriIntervalo = () => {
+      if (document.visibilityState === 'visible') {
+        if (!intervalo) intervalo = setInterval(() => carregarBadgeNotas(centroId), 30000)
+      } else if (intervalo) {
+        clearInterval(intervalo)
+        intervalo = null
+      }
+    }
+    geriIntervalo()
+    document.addEventListener('visibilitychange', geriIntervalo)
+
+    const cancelarEvento = subscreverNotasConfirmadas(() => carregarBadgeNotas(centroId))
+
+    return () => {
+      window.removeEventListener('focus', aoFocar)
+      document.removeEventListener('visibilitychange', geriIntervalo)
+      if (intervalo) clearInterval(intervalo)
+      cancelarEvento()
+    }
+  }, [role, centroId, carregarBadgeNotas])
 
   // Lista de items atualizada com Refeitório
   const menuItems = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
     { name: 'Alunos', href: '/admin/alunos', icon: Users },
+    { name: 'Notas', href: '/admin/notas', icon: ClipboardCheck },
     { name: 'Agenda', href: '/admin/agenda', icon: Calendar },
     { name: 'Refeitório', href: '/admin/refeitorio', icon: Utensils }, // Novo item
     { name: 'Histórico', href: '/admin/historico', icon: History },
@@ -144,7 +170,7 @@ export default function AdminLayout({
         <nav className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
           {visibleMenuItems.map((item) => {
             const isActive = pathname === item.href || (item.href !== '/admin' && pathname?.startsWith(item.href + '/'))
-            const badge = item.name === 'Alunos' && pendentesNotas > 0
+            const badge = item.name === 'Notas' && pendentesNotas > 0
               ? pendentesNotas
               : item.name === 'Mensagens' && mensagensNaoLidas > 0
                 ? mensagensNaoLidas

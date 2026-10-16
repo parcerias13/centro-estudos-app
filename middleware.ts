@@ -2,8 +2,8 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 const ROLE_ALLOWED_PATHS: Record<string, string[]> = {
-  professor: ['/admin/alunos', '/admin/agenda', '/admin/disciplinas', '/admin/explicacoes'],
-  secretaria: ['/admin/alunos', '/admin/agenda', '/admin/refeitorio', '/admin/historico', '/admin/relatorio', '/admin/mensagens'],
+  professor: ['/admin/alunos', '/admin/notas', '/admin/agenda', '/admin/disciplinas', '/admin/explicacoes'],
+  secretaria: ['/admin/alunos', '/admin/notas', '/admin/agenda', '/admin/refeitorio', '/admin/historico', '/admin/relatorio', '/admin/mensagens'],
 }
 
 function isPathAllowed(pathname: string, allowedPaths: string[]) {
