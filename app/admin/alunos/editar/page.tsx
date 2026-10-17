@@ -5,9 +5,11 @@ import { supabase } from '@/lib/supabase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
+import { useBloqueioProfessor } from '@/lib/bloqueioProfessor';
 import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign, KeyRound, Eye, EyeOff, RefreshCw, FileText, MapPin, School, Users2, Trash2, Copy } from 'lucide-react';
 
 function EditarAlunoContent() {
+  const bloqueadoParaProfessor = useBloqueioProfessor();
   const router = useRouter();
   const searchParams = useSearchParams();
   const studentId = searchParams.get('id');
@@ -316,7 +318,7 @@ function EditarAlunoContent() {
     }
   };
 
-  if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={32} /></div>;
+  if (bloqueadoParaProfessor || loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={32} /></div>;
 
   return (
     <main className={`min-h-screen bg-page text-primary p-6 max-w-4xl mx-auto pb-20 transition-all ${isSubmitting ? 'pointer-events-none opacity-60' : ''}`}>

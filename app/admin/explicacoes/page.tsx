@@ -533,6 +533,7 @@ function ExplicacoesPageContent() {
       {detalheSessao && (
         <DetalheExplicacaoModal
           sessao={detalheSessao}
+          role={role}
           onClose={() => setDetalheSessao(null)}
           onSaved={handleSessaoAtualizada}
           onDeleted={handleSessaoApagada}
@@ -578,7 +579,7 @@ export default function ExplicacoesPage() {
 }
 
 // --- PAINEL DE DETALHE: toggle dado, horas, notas, apagar (só se ainda não dada) ---
-function DetalheExplicacaoModal({ sessao, onClose, onSaved, onDeleted, showError, showSuccess }: any) {
+function DetalheExplicacaoModal({ sessao, role, onClose, onSaved, onDeleted, showError, showSuccess }: any) {
   const [dado, setDado] = useState<boolean>(sessao.dado);
   const [horasDadas, setHorasDadas] = useState(sessao.horas_dadas?.toString() || '');
   const [notas, setNotas] = useState(sessao.notas || '');
@@ -724,7 +725,9 @@ function DetalheExplicacaoModal({ sessao, onClose, onSaved, onDeleted, showError
             </p>
           )}
 
-          {sessao.dado && sessao.explicacoes_alunos?.length > 0 && (
+          {/* Preço cobrado à família — nunca para o professor, só o seu
+              próprio valor_calculado acima fica visível a ele. */}
+          {role !== 'professor' && sessao.dado && sessao.explicacoes_alunos?.length > 0 && (
             <div className="bg-page p-3 rounded-xl border border-border space-y-1.5">
               <p className="text-[9px] font-black uppercase text-muted tracking-widest">Cobrado à família</p>
               {sessao.explicacoes_alunos.map((ea: any) => (

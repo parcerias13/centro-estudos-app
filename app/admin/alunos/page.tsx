@@ -151,33 +151,37 @@ export default function ListaAlunos() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={handleDownloadTemplate}
-            className="bg-surface hover:bg-raised text-secondary px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-border transition-all active:scale-95"
-          >
-            <FileSpreadsheet size={18} /> TEMPLATE
-          </button>
+          {role !== 'professor' && (
+            <>
+              <button
+                onClick={handleDownloadTemplate}
+                className="bg-surface hover:bg-raised text-secondary px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-border transition-all active:scale-95"
+              >
+                <FileSpreadsheet size={18} /> TEMPLATE
+              </button>
 
-          <button
-            onClick={() => inputImportacaoRef.current?.click()}
-            className="bg-surface hover:bg-raised text-secondary px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-border transition-all active:scale-95"
-          >
-            <UploadCloud size={18} /> IMPORTAR EXCEL
-          </button>
-          <input
-            ref={inputImportacaoRef}
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={handleFileSelecionado}
-            className="hidden"
-          />
+              <button
+                onClick={() => inputImportacaoRef.current?.click()}
+                className="bg-surface hover:bg-raised text-secondary px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-border transition-all active:scale-95"
+              >
+                <UploadCloud size={18} /> IMPORTAR EXCEL
+              </button>
+              <input
+                ref={inputImportacaoRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleFileSelecionado}
+                className="hidden"
+              />
 
-          <button
-            onClick={() => setMostrarExportarFaturacao(true)}
-            className="bg-surface hover:bg-raised text-secondary px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-border transition-all active:scale-95"
-          >
-            <Receipt size={18} /> EXPORTAR FATURAÇÃO
-          </button>
+              <button
+                onClick={() => setMostrarExportarFaturacao(true)}
+                className="bg-surface hover:bg-raised text-secondary px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-border transition-all active:scale-95"
+              >
+                <Receipt size={18} /> EXPORTAR FATURAÇÃO
+              </button>
+            </>
+          )}
 
           {role === 'admin' && (
             <button
@@ -188,9 +192,11 @@ export default function ListaAlunos() {
             </button>
           )}
 
-          <Link href="/admin/alunos/novo" className="bg-accent hover:bg-accent-hover text-on-accent px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-accent/20 transition-all active:scale-95">
-            <UserPlus size={20} /> NOVA MATRÍCULA
-          </Link>
+          {role !== 'professor' && (
+            <Link href="/admin/alunos/novo" className="bg-accent hover:bg-accent-hover text-on-accent px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-accent/20 transition-all active:scale-95">
+              <UserPlus size={20} /> NOVA MATRÍCULA
+            </Link>
+          )}
         </div>
       </header>
 
@@ -275,30 +281,34 @@ export default function ListaAlunos() {
               </div>
 
               <div className="flex items-center gap-2 mt-3 sm:mt-0 sm:ml-4 shrink-0">
-                {/* BOTÃO DO EXTRATO INDIVIDUAL (DOSSIER) */}
-                <Link 
-                  href={`/admin/alunos/extrato?id=${aluno.id}`} 
-                  className="p-3 bg-raised text-accent hover:bg-accent hover:text-on-accent rounded-xl transition-all border border-border hover:border-accent shadow-xl"
-                  title="Extrato Detalhado por Dia"
-                >
-                  <FileText size={20} />
-                </Link>
+                {/* BOTÃO DO EXTRATO INDIVIDUAL (DOSSIER) — mensalidade/preços, nunca para o professor */}
+                {role !== 'professor' && (
+                  <Link
+                    href={`/admin/alunos/extrato?id=${aluno.id}`}
+                    className="p-3 bg-raised text-accent hover:bg-accent hover:text-on-accent rounded-xl transition-all border border-border hover:border-accent shadow-xl"
+                    title="Extrato Detalhado por Dia"
+                  >
+                    <FileText size={20} />
+                  </Link>
+                )}
 
-                <Link 
-                  href={`/admin/relatorio?id=${aluno.id}`} 
+                <Link
+                  href={`/admin/relatorio?id=${aluno.id}`}
                   className="p-3 bg-raised text-secondary hover:bg-accent hover:text-on-accent rounded-xl transition-all border border-border hover:border-accent shadow-xl"
                   title="Ver Relatório de Performance"
                 >
                   <FileBarChart size={20} />
                 </Link>
 
-                <Link 
-                  href={`/admin/alunos/editar?id=${aluno.id}`} 
-                  className="p-3 bg-raised text-secondary hover:bg-accent hover:text-on-accent rounded-xl transition-all border border-border hover:border-accent shadow-xl"
-                  title="Editar Aluno"
-                >
-                  <Edit size={20} />
-                </Link>
+                {role !== 'professor' && (
+                  <Link
+                    href={`/admin/alunos/editar?id=${aluno.id}`}
+                    className="p-3 bg-raised text-secondary hover:bg-accent hover:text-on-accent rounded-xl transition-all border border-border hover:border-accent shadow-xl"
+                    title="Editar Aluno"
+                  >
+                    <Edit size={20} />
+                  </Link>
+                )}
 
                 <Link
                   href={`/admin/alunos/ficha?id=${aluno.id}`}

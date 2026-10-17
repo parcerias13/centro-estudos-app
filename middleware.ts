@@ -2,13 +2,22 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 const ROLE_ALLOWED_PATHS: Record<string, string[]> = {
-  professor: ['/admin/alunos', '/admin/notas', '/admin/agenda', '/admin/disciplinas', '/admin/explicacoes'],
+  professor: ['/admin/notas', '/admin/agenda', '/admin/disciplinas', '/admin/explicacoes'],
   secretaria: ['/admin/alunos', '/admin/notas', '/admin/agenda', '/admin/refeitorio', '/admin/historico', '/admin/relatorio', '/admin/mensagens'],
 }
 
-function isPathAllowed(pathname: string, allowedPaths: string[]) {
+// Caminhos que um papel só pode ver exatamente (nunca subcaminhos) — para o
+// professor não arrastar /admin/alunos/editar, /extrato ou /novo só por
+// partilharem o prefixo de /admin/alunos. Mensalidade, preços e contactos do
+// encarregado vivem todos fora destes três.
+const ROLE_ALLOWED_EXACT_PATHS: Record<string, string[]> = {
+  professor: ['/admin/alunos', '/admin/alunos/ficha', '/admin/relatorio'],
+}
+
+function isPathAllowed(pathname: string, allowedPaths: string[], allowedExactPaths: string[] = []) {
   // "/admin" (raiz, dashboard) é sempre permitido a qualquer role reconhecido
   if (pathname === '/admin') return true
+  if (allowedExactPaths.includes(pathname)) return true
   return allowedPaths.some(
     (allowed) => pathname === allowed || pathname.startsWith(allowed + '/')
   )
@@ -73,8 +82,11 @@ export async function middleware(request: NextRequest) {
     if (role === 'admin') {
       // acesso total
     } else if (role === 'professor' || role === 'secretaria') {
-      if (!isPathAllowed(request.nextUrl.pathname, ROLE_ALLOWED_PATHS[role])) {
-        return NextResponse.redirect(new URL('/admin', request.url))
+      if (!isPathAllowed(request.nextUrl.pathname, ROLE_ALLOWED_PATHS[role], ROLE_ALLOWED_EXACT_PATHS[role])) {
+        // Um subcaminho bloqueado de /admin/alunos (editar, extrato, novo)
+        // volta para a lista, não para o dashboard — é de lá que se chegou.
+        const destino = request.nextUrl.pathname.startsWith('/admin/alunos/') ? '/admin/alunos' : '/admin'
+        return NextResponse.redirect(new URL(destino, request.url))
       }
     } else {
       return NextResponse.redirect(new URL('/login', request.url))

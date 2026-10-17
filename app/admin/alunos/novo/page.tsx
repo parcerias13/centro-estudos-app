@@ -5,9 +5,11 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
+import { useBloqueioProfessor } from '@/lib/bloqueioProfessor';
 import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap, Mail, DollarSign, Copy, CheckCircle2, KeyRound, FileText, MapPin } from 'lucide-react';
 
 export default function NovoAluno() {
+  const bloqueadoParaProfessor = useBloqueioProfessor();
   const router = useRouter();
   const { toast, showError, showSuccess } = useStatusToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -162,6 +164,8 @@ export default function NovoAluno() {
     router.push('/admin/alunos');
     router.refresh();
   };
+
+  if (bloqueadoParaProfessor) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={32} /></div>;
 
   if (resultado) {
     return (

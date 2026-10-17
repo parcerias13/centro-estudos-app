@@ -9,8 +9,10 @@ import {
   Utensils, Printer, CheckCircle2, DollarSign, AlertTriangle
 } from 'lucide-react';
 import { calcularResumoExtrato, intervaloDoMesExtrato } from '@/lib/extrato';
+import { useBloqueioProfessor } from '@/lib/bloqueioProfessor';
 
 function ExtratoDetalhadoContent() {
+  const bloqueadoParaProfessor = useBloqueioProfessor();
   const searchParams = useSearchParams();
   const studentId = searchParams.get('id');
   const [loading, setLoading] = useState(true);
@@ -105,7 +107,7 @@ function ExtratoDetalhadoContent() {
 
   useEffect(() => { carregarDados(); }, [carregarDados]);
 
-  if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={40} /></div>;
+  if (bloqueadoParaProfessor || loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={40} /></div>;
 
   return (
     <main className="min-h-screen bg-page p-4 md:p-8 text-primary">
