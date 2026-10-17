@@ -7,8 +7,8 @@ import { supabase } from '@/lib/supabase';
 import { disciplinasComuns } from '@/lib/disciplinas';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
-  ArrowLeft, ChevronLeft, ChevronRight, Plus, X, GraduationCap, Loader2,
-  Clock, Trash2, Save, Search, Users, AlertTriangle, HelpCircle,
+  ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GraduationCap, Loader2,
+  Clock, Trash2, Save, Search, Users, AlertTriangle, HelpCircle, CalendarDays,
 } from 'lucide-react';
 import { startOfWeek, endOfWeek, addWeeks, addDays, eachDayOfInterval, format, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -54,14 +54,45 @@ function extrairHoraDoPedido(horario: string | null): string {
   return `${hora}:${minuto}`;
 }
 
-const getEstadoSessao = (sessao: any) => {
-  if (sessao.dado) return { label: 'Dada', classes: 'bg-success-bg text-success border-success/30' };
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const dataSessao = new Date(sessao.data + 'T00:00:00');
-  if (dataSessao < hoje) return { label: 'Não Dada', classes: 'bg-danger-bg text-danger border-danger/30' };
-  return { label: 'Agendada', classes: 'bg-accent-soft text-accent border-accent/30' };
-};
+// Só apresentação: "Dada" vem direto de sessao.dado, sem comparar datas —
+// por isso não precisa de getHojeLisboa() nenhuma (nem de new Date()).
+const getEstadoSessaoResumido = (dado: boolean) =>
+  dado
+    ? { label: 'Dada', classes: 'bg-success-bg text-success border-success/30' }
+    : { label: 'Por dar', classes: 'bg-page text-muted border-border' };
+
+// Nomes separados por vírgula (sem o "· N.º ano" por nome, que rotuloAluno/
+// getNomeAluno sempre acrescentam — usados tal e qual nas modais) + o ano
+// escolar do grupo UMA vez só, à parte, tal como o desenho pede. Uma sessão
+// em grupo é sempre do mesmo ano (validado em toggleAluno), por isso o ano
+// do primeiro aluno já representa o grupo todo.
+function nomesEAnoDaSessao(sessao: any): { nomes: string; anoEscolar: number | null } {
+  const alunos = (sessao.explicacoes_alunos || [])
+    .map((ea: any) => (Array.isArray(ea.alunos) ? ea.alunos[0] : ea.alunos))
+    .filter(Boolean);
+  return {
+    nomes: alunos.map((a: any) => a?.nome || 'Desconhecido').join(', '),
+    anoEscolar: alunos[0]?.ano_escolar ?? null,
+  };
+}
+
+// "12 a 18 Out" — ou "29 Set a 5 Out" quando a semana atravessa dois meses.
+function intervaloSemanaLabel(inicio: Date, fim: Date): string {
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const mesInicio = cap(format(inicio, 'MMM', { locale: pt }));
+  const mesFim = cap(format(fim, 'MMM', { locale: pt }));
+  if (mesInicio === mesFim) return `${format(inicio, 'd')} a ${format(fim, 'd')} ${mesFim}`;
+  return `${format(inicio, 'd')} ${mesInicio} a ${format(fim, 'd')} ${mesFim}`;
+}
+
+// Soma horas_dadas já carregadas na semana (mesmo campo e mesma soma que
+// app/admin/pagamentos/page.tsx usa) — "3 h 30", nunca em euros.
+function formatarHorasResumo(totalHoras: number): string {
+  const totalMinutos = Math.round(totalHoras * 60);
+  const h = Math.floor(totalMinutos / 60);
+  const m = totalMinutos % 60;
+  return m > 0 ? `${h} h ${m}` : `${h} h`;
+}
 
 function ExplicacoesPageContent() {
   const { toast, showError, showSuccess } = useStatusToast();
@@ -88,6 +119,12 @@ function ExplicacoesPageContent() {
   // esta página (para a sua própria agenda) e não tem acesso de leitura a
   // mensagens (RLS); nunca pede nem mostra nada para ele, e nunca dá erro.
   const [pedidosPendentes, setPedidosPendentes] = useState<any[]>([]);
+  const [pedidosAbertos, setPedidosAbertos] = useState(false);
+
+  // Só apresentação: qual dia está em foco na faixa da semana (fundo de
+  // destaque + scroll até ao grupo) — nunca decide o que é "hoje" (isso
+  // continua a ser calculado com getHojeLisboa(), mais abaixo).
+  const [diaFocoISO, setDiaFocoISO] = useState<string | null>(null);
 
   const carregarPedidosPendentes = useCallback(async (centro_id: string) => {
     const { data, error } = await supabase
@@ -250,12 +287,12 @@ function ExplicacoesPageContent() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
           {role === 'admin' && (
             <select
               value={selectedProfessorId || ''}
               onChange={(e) => setSelectedProfessorId(e.target.value || null)}
-              className="bg-surface border border-border p-3 rounded-2xl text-sm font-bold outline-none focus:border-accent/50 transition-all appearance-none"
+              className="bg-surface border border-border p-3 rounded-2xl text-sm font-bold outline-none focus:border-accent/50 transition-all appearance-none min-w-0"
             >
               {professores.length === 0 && <option value="">Sem professores</option>}
               {professores.map((p) => (
@@ -265,13 +302,13 @@ function ExplicacoesPageContent() {
           )}
 
           {/* SELETOR DE SEMANA */}
-          <div className="flex items-center bg-surface border border-border rounded-2xl overflow-hidden p-1 shadow-xl">
+          <div className="flex items-center bg-surface border border-border rounded-2xl overflow-hidden p-1 shadow-xl shrink-0">
             <button onClick={() => setCurrentWeekStart((prev) => addWeeks(prev, -1))} className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all">
               <ChevronLeft size={20} />
             </button>
-            <div className="px-4 py-1 text-center min-w-40">
-              <p className="text-xs font-black text-primary capitalize">
-                {format(currentWeekStart, 'd MMM', { locale: pt })} – {format(endOfWeek(currentWeekStart, { weekStartsOn: 1 }), 'd MMM', { locale: pt })}
+            <div className="px-3 py-1 text-center">
+              <p className="text-xs font-black text-primary whitespace-nowrap">
+                {intervaloSemanaLabel(currentWeekStart, endOfWeek(currentWeekStart, { weekStartsOn: 1 }))}
               </p>
             </div>
             <button onClick={() => setCurrentWeekStart((prev) => addWeeks(prev, 1))} className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all">
@@ -280,9 +317,16 @@ function ExplicacoesPageContent() {
           </div>
 
           <button
+            onClick={() => setCurrentWeekStart(startOfWeek(new Date(`${getHojeLisboa()}T00:00:00`), { weekStartsOn: 1 }))}
+            className="bg-surface border border-border hover:bg-raised text-primary px-4 py-3 rounded-2xl font-black text-sm transition-all active:scale-95 shrink-0"
+          >
+            Hoje
+          </button>
+
+          <button
             onClick={() => setNovaModalOpen(true)}
             disabled={!selectedProfessorId}
-            className="flex items-center gap-2 bg-accent hover:bg-accent-hover text-on-accent px-4 py-3 rounded-2xl font-black text-sm transition-all active:scale-95 disabled:opacity-40"
+            className="flex items-center gap-2 bg-accent hover:bg-accent-hover text-on-accent px-4 py-3 rounded-2xl font-black text-sm transition-all active:scale-95 disabled:opacity-40 sm:ml-auto shrink-0"
           >
             <Plus size={18} /> Nova Explicação
           </button>
@@ -290,25 +334,34 @@ function ExplicacoesPageContent() {
       </div>
 
       {role === 'admin' && pedidosPendentes.length > 0 && (
-        <div className="bg-warning-bg border border-warning/20 rounded-2xl p-4 mb-8 space-y-3">
-          <div className="flex items-center gap-2 text-warning">
-            <HelpCircle size={18} />
-            <p className="font-black text-sm">{pedidosPendentes.length} pedido{pedidosPendentes.length > 1 ? 's' : ''} por marcar</p>
-          </div>
-          <div className="space-y-1.5">
-            {pedidosPendentes.map((p) => (
-              <Link
-                key={p.id}
-                href={`/admin/explicacoes?pedido=${p.id}`}
-                className="flex items-center justify-between gap-2 bg-page/60 hover:bg-page rounded-xl px-3 py-2 text-sm transition-colors"
-              >
-                <span className="font-bold text-primary truncate">
-                  {rotuloAluno(p.alunos?.nome ?? 'Aluno', p.alunos?.ano_escolar)} — {sanitizarPedidoExplicacao(p.payload).disciplina ?? 'Disciplina'}
-                </span>
-                <span className="text-[10px] font-black uppercase text-warning shrink-0">Marcar</span>
-              </Link>
-            ))}
-          </div>
+        <div className="bg-warning-bg border border-warning/20 rounded-2xl mb-8 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setPedidosAbertos((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 p-4 text-warning"
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <HelpCircle size={18} className="shrink-0" />
+              <span className="font-black text-sm">{pedidosPendentes.length} pedido{pedidosPendentes.length > 1 ? 's' : ''} por marcar</span>
+            </span>
+            {pedidosAbertos ? <ChevronUp size={18} className="shrink-0" /> : <ChevronDown size={18} className="shrink-0" />}
+          </button>
+          {pedidosAbertos && (
+            <div className="space-y-1.5 px-4 pb-4">
+              {pedidosPendentes.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/admin/explicacoes?pedido=${p.id}`}
+                  className="flex items-center justify-between gap-2 bg-page/60 hover:bg-page rounded-xl px-3 py-2 text-sm transition-colors"
+                >
+                  <span className="font-bold text-primary min-w-0 break-words">
+                    {rotuloAluno(p.alunos?.nome ?? 'Aluno', p.alunos?.ano_escolar)} — {sanitizarPedidoExplicacao(p.payload).disciplina ?? 'Disciplina'}
+                  </span>
+                  <span className="text-[10px] font-black uppercase text-warning shrink-0">Marcar</span>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -334,51 +387,148 @@ function ExplicacoesPageContent() {
         <div className="flex items-center justify-center py-24">
           <Loader2 className="animate-spin text-accent" size={32} />
         </div>
-      ) : (
-        <div className="space-y-8">
-          {diasDaSemana.map((dia) => {
-            const sessoesDoDia = sessoes.filter((s) => isSameDay(new Date(s.data + 'T00:00:00'), dia));
-            return (
-              <div key={dia.toISOString()}>
-                <h2 className="text-sm font-black uppercase tracking-widest text-muted mb-3">
-                  {format(dia, "EEEE, d 'de' MMMM", { locale: pt })}
-                </h2>
-                {sessoesDoDia.length === 0 ? (
-                  <p className="text-muted text-sm italic pl-1">Sem sessões.</p>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {sessoesDoDia.map((sessao) => {
-                      const estado = getEstadoSessao(sessao);
-                      const nomes = (sessao.explicacoes_alunos || []).map(getNomeAluno).join(', ');
-                      return (
+      ) : (() => {
+        // Agrupado uma única vez — a faixa da semana e os grupos por dia
+        // usam exatamente a mesma contagem, nunca recalculada em separado.
+        const hojeDate = new Date(`${getHojeLisboa()}T00:00:00`);
+        const sessoesPorDia = diasDaSemana.map((dia) => ({
+          dia,
+          diaISO: format(dia, 'yyyy-MM-dd'),
+          ehHoje: isSameDay(dia, hojeDate),
+          sessoesDoDia: sessoes.filter((s) => isSameDay(new Date(s.data + 'T00:00:00'), dia)),
+        }));
+        const totalSessoesSemana = sessoes.length;
+        const totalHorasSemana = sessoes.reduce((soma, s) => soma + (Number(s.horas_dadas) || 0), 0);
+
+        const irParaDia = (diaISO: string) => {
+          setDiaFocoISO(diaISO);
+          document.getElementById(`dia-grupo-${diaISO}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
+        return (
+          <div className="space-y-6">
+            {/* FAIXA DA SEMANA */}
+            <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+              {sessoesPorDia.map(({ dia, diaISO, ehHoje, sessoesDoDia }) => (
+                <button
+                  key={diaISO}
+                  onClick={() => irParaDia(diaISO)}
+                  className={`min-w-0 flex flex-col items-center gap-0.5 rounded-2xl border px-1 py-2.5 transition-all ${
+                    diaFocoISO === diaISO
+                      ? 'bg-accent-soft border-accent text-accent'
+                      : ehHoje
+                        ? 'bg-accent text-on-accent border-accent'
+                        : 'bg-surface border-border text-secondary hover:border-accent/40'
+                  }`}
+                >
+                  <span className="text-[9px] font-black uppercase tracking-widest opacity-80">{format(dia, 'EEEEE', { locale: pt })}</span>
+                  <span className="text-base font-black leading-none">{format(dia, 'd')}</span>
+                  <span className="text-[9px] font-bold leading-tight text-center break-words">
+                    {sessoesDoDia.length > 0 ? `${sessoesDoDia.length} sess.` : 'livre'}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* GRUPOS POR DIA */}
+            <div className="space-y-5">
+              {sessoesPorDia.map(({ dia, diaISO, ehHoje, sessoesDoDia }) => (
+                <div
+                  key={diaISO}
+                  id={`dia-grupo-${diaISO}`}
+                  className={`rounded-3xl border transition-colors scroll-mt-4 ${
+                    diaFocoISO === diaISO ? 'bg-accent-soft/40 border-accent/40' : 'bg-surface border-border'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4 pb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h2 className="text-sm font-black text-primary capitalize break-words">
+                        {format(dia, 'EEEE, d', { locale: pt })}
+                      </h2>
+                      {ehHoje && (
+                        <span className="shrink-0 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-accent text-on-accent">hoje</span>
+                      )}
+                    </div>
+                    <div className="shrink-0 flex items-center gap-3">
+                      <span className="text-xs font-bold text-muted whitespace-nowrap">
+                        {sessoesDoDia.length > 0 ? `${sessoesDoDia.length} ${sessoesDoDia.length === 1 ? 'sessão' : 'sessões'}` : 'livre'}
+                      </span>
+                      {sessoesDoDia.length === 0 && (
                         <button
-                          key={sessao.id}
-                          onClick={() => setDetalheSessao(sessao)}
-                          className="text-left bg-surface border border-border p-5 rounded-3xl hover:border-accent/50 transition-colors shadow-lg"
+                          onClick={() => setNovaModalOpen(true)}
+                          disabled={!selectedProfessorId}
+                          className="flex items-center gap-1 bg-accent hover:bg-accent-hover text-on-accent px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-40"
                         >
-                          <div className="flex justify-between items-start mb-3">
-                            <div className="flex items-center gap-2 text-accent font-black">
-                              <Clock size={16} />
-                              {sessao.hora_inicio?.slice(0, 5)}
-                            </div>
-                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${estado.classes}`}>
-                              {estado.label}
-                            </span>
-                          </div>
-                          <p className="font-bold text-primary text-sm truncate">{nomes || 'Sem alunos'}</p>
-                          {sessao.subjects?.name && (
-                            <p className="text-xs text-muted mt-1">{sessao.subjects.name}</p>
-                          )}
+                          <Plus size={12} /> Marcar
                         </button>
-                      );
-                    })}
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+
+                  {sessoesDoDia.length > 0 && (
+                    <div className="divide-y divide-border border-t border-border">
+                      {sessoesDoDia.map((sessao) => {
+                        const estado = getEstadoSessaoResumido(sessao.dado);
+                        const { nomes, anoEscolar } = nomesEAnoDaSessao(sessao);
+                        const hora = sessao.hora_inicio?.slice(0, 5);
+                        const duracao = sessao.horas_dadas != null ? formatarHorasResumo(Number(sessao.horas_dadas)) : null;
+                        const disciplina = sessao.subjects?.name || '—';
+                        return (
+                          <button key={sessao.id} data-sessao-linha="1" onClick={() => setDetalheSessao(sessao)} className="w-full text-left px-4 py-3.5 hover:bg-raised/40 transition-colors">
+                            {/* < 768px: hora/disciplina/estado em cima, alunos por baixo */}
+                            <div className="md:hidden space-y-1.5">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-start gap-3 min-w-0 flex-1">
+                                  <div className="shrink-0">
+                                    <p className="font-black text-accent text-sm flex items-center gap-1 whitespace-nowrap"><Clock size={13} />{hora}</p>
+                                    {duracao && <p className="text-[10px] text-muted mt-0.5 whitespace-nowrap">{duracao}</p>}
+                                  </div>
+                                  <p className="min-w-0 break-words text-sm font-bold text-primary">{disciplina}</p>
+                                </div>
+                                <span className={`shrink-0 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border whitespace-nowrap ${estado.classes}`}>
+                                  {estado.label}
+                                </span>
+                              </div>
+                              <p className="min-w-0 break-words text-sm text-secondary">
+                                {nomes || 'Sem alunos'}{anoEscolar && <span className="text-muted"> · {anoEscolar}.º ano</span>}
+                              </p>
+                            </div>
+
+                            {/* >= 768px: hora | disciplina | alunos | estado, uma linha só */}
+                            <div className="hidden md:grid md:grid-cols-4 md:gap-4 md:items-start">
+                              <div className="min-w-0">
+                                <p className="font-black text-accent text-sm flex items-center gap-1 whitespace-nowrap"><Clock size={14} />{hora}</p>
+                                {duracao && <p className="text-[10px] text-muted mt-0.5 whitespace-nowrap">{duracao}</p>}
+                              </div>
+                              <p className="min-w-0 break-words text-sm font-bold text-primary">{disciplina}</p>
+                              <p className="min-w-0 break-words text-sm text-secondary">
+                                {nomes || 'Sem alunos'}{anoEscolar && <span className="text-muted"> · {anoEscolar}.º ano</span>}
+                              </p>
+                              <div className="min-w-0 flex justify-end">
+                                <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border whitespace-nowrap ${estado.classes}`}>
+                                  {estado.label}
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* RESUMO */}
+            <div className="flex items-center gap-2 text-muted px-1">
+              <CalendarDays size={14} className="shrink-0" />
+              <p className="text-xs font-bold break-words">
+                Esta semana: {totalSessoesSemana} {totalSessoesSemana === 1 ? 'sessão' : 'sessões'}, {formatarHorasResumo(totalHorasSemana)}
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       {detalheSessao && (
         <DetalheExplicacaoModal
