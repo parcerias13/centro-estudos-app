@@ -153,6 +153,12 @@ app/
 
 ---
 
+## Credenciais e Testes
+
+- **Regra obrigatória:** Nunca ler, mostrar, copiar, redigir nem processar com `sed`, `grep` ou regex ficheiros de credenciais (`credenciais*.txt`, `.env*`, `ids.json`). As sessões de teste obtêm-se SÓ por `~/Desktop/demo-centro/entrar.mjs`, que lê as palavras-passe sem as imprimir; se faltar uma conta, pede a palavra-passe ao utilizador ou cria uma conta temporária por script em vez de ler o ficheiro.
+
+---
+
 ## Contexto de Negócio
 
 - **Marca:** StudyCloud

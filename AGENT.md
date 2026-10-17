@@ -31,6 +31,7 @@ Lê este ficheiro inteiro antes de fazer qualquer alteração.
 3. **Nunca apagues ficheiros** sem perguntar explicitamente primeiro.
 4. **TypeScript obrigatório** — sem `any` sem justificação, sem `.js` ou `.jsx`.
 5. **Não quebrares o que está a funcionar.** Se uma alteração afeta múltiplos ficheiros, avisa antes de avançar.
+6. **Nunca ler, mostrar, copiar, redigir nem processar com `sed`, `grep` ou regex ficheiros de credenciais** (`credenciais*.txt`, `.env*`, `ids.json`). As sessões de teste obtêm-se SÓ por `~/Desktop/demo-centro/entrar.mjs`, que lê as palavras-passe sem as imprimir; se faltar uma conta, pede a palavra-passe ao utilizador ou cria uma conta temporária por script em vez de ler o ficheiro.
 
 ---
 
