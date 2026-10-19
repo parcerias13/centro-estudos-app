@@ -182,12 +182,17 @@ test.describe('Fluxo completo de Custos — Gestão + Performance (ZZTESTE)', ()
     // Mês seguinte (antes do fim) continua ativo.
     await expect(linha).toContainText('650.00');
 
-    // Mês do fim em diante: terminado, cinzento, sem botões.
+    // Mês do fim em diante: já não conta — sai da lista ativa e passa para a
+    // gaveta "Terminados ou futuros" (ver tests/custos-apagar-terminados.spec.ts
+    // para o detalhe desse ajuste de apresentação).
     await irParaMes(page, mesDepoisDisso);
-    const linhaTerminada = page.locator('[data-custo-fixo-linha="1"]', { hasText: NOME_CUSTO });
-    await expect(linhaTerminada).toContainText('Terminou em');
+    await expect(page.locator('[data-custo-fixo-linha="1"]', { hasText: NOME_CUSTO })).toHaveCount(0);
+    await page.getByRole('button', { name: /Terminados ou futuros/ }).click();
+    const linhaTerminada = page.locator('[data-custo-fixo-inativo-linha="1"]', { hasText: NOME_CUSTO });
+    await expect(linhaTerminada).toBeVisible({ timeout: 10_000 });
     await expect(linhaTerminada.getByText('Alterar valor')).toHaveCount(0);
     await expect(linhaTerminada.getByText('Terminar')).toHaveCount(0);
+    await expect(linhaTerminada.getByText('Apagar')).toBeVisible();
   });
 
   test('acrescentar e apagar um custo variável — os totais do mês batem certo', async ({ page }) => {

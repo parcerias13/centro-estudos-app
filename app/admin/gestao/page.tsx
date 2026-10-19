@@ -6,14 +6,17 @@ import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { getHojeLisboa } from '@/lib/dataLisboa';
 import {
   obterCustosDoMes, obterMesesComDados, listaDeMeses, somarMeses, mesParaData, mensagemErroCusto,
-  type CustosDoMes, type CustoFixoNoMes,
+  estadoCustoFixoNoMes, valorNoMes,
+  type CustosDoMes, type CustoFixoNoMes, type PeriodoCustoFixo,
 } from '@/lib/custos';
 import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import {
-  Building2, Save, Loader2, DollarSign, ChevronLeft, ChevronRight,
+  Building2, Save, Loader2, DollarSign, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Plus, Trash2, RefreshCw, ShieldAlert, Receipt, GraduationCap, Pencil
 } from 'lucide-react';
+
+const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 const CATEGORIAS_DESPESA = ['Professores', 'Materiais', 'Comida', 'Outros'];
 
@@ -59,6 +62,9 @@ export default function GestaoTotalPage() {
   const [novoFixoDesde, setNovoFixoDesde] = useState(() => getHojeLisboa().slice(0, 7));
   const [criandoFixo, setCriandoFixo] = useState(false);
   const [criarFixoError, setCriarFixoError] = useState<string | null>(null);
+
+  // Custos fixos terminados/futuros do mês selecionado — fechado por defeito
+  const [mostrarInativos, setMostrarInativos] = useState(false);
 
   // Alterar valor de um custo fixo ativo
   const [alterandoId, setAlterandoId] = useState<string | null>(null);
@@ -245,6 +251,7 @@ export default function GestaoTotalPage() {
   }, [centroId, mesSelecionado]);
 
   useEffect(() => { recarregarCustos(); }, [recarregarCustos]);
+  useEffect(() => { setMostrarInativos(false); }, [mesSelecionado]);
 
   const mesMaisAntigo = mesesDisponiveis.length > 0 ? mesesDisponiveis[0] : mesSelecionado;
   // Ao contrário da Performance (só olha para trás), aqui um custo fixo pode
@@ -259,6 +266,63 @@ export default function GestaoTotalPage() {
   const mesParaLabel = (mes: string) => {
     const [ano, m] = mes.split('-').map(Number);
     return format(new Date(ano, m - 1, 1), 'MMMM yyyy', { locale: pt });
+  };
+  const mesParaLabelCurto = (mes: string) => {
+    const [ano, m] = mes.split('-').map(Number);
+    return `${MESES_ABREV[m - 1]} ${ano}`;
+  };
+
+  // Separação só de apresentação: a lista principal mostra só os que contam
+  // no mês selecionado (os totais não mudam); os restantes ficam na gaveta
+  // "Terminados ou futuros", fechada por defeito.
+  const fixosAtivos = custosMes.fixos.filter((f) => f.estado === 'ativo');
+  const fixosInativos = custosMes.fixos.filter((f) => f.estado !== 'ativo');
+
+  // Soma, mês a mês (aritmética de lib/custos.ts), de tudo o que um custo
+  // fixo já contou desde o seu início até ao seu fim real — ou até hoje, se
+  // ainda tiver um período em aberto (ate: null). Usada só para o aviso de
+  // "Apagar" de um custo já terminado/já contado; os totais mostrados no
+  // ecrã nunca passam por aqui.
+  const calcularHistoricoCusto = (periodos: PeriodoCustoFixo[]) => {
+    const mesAtual = getHojeLisboa().slice(0, 7);
+    const inicioMes = periodos.reduce((min, p) => (p.de.slice(0, 7) < min ? p.de.slice(0, 7) : min), periodos[0].de.slice(0, 7));
+    const temPeriodoAberto = periodos.some((p) => p.ate === null);
+    const fimMes = temPeriodoAberto
+      ? mesAtual
+      : periodos.reduce((max, p) => {
+          const ate = p.ate ? p.ate.slice(0, 7) : inicioMes;
+          return ate > max ? ate : max;
+        }, inicioMes);
+    let total = 0;
+    for (let m = inicioMes; m <= fimMes; m = somarMeses(m, 1)) {
+      total += valorNoMes(periodos, m) ?? 0;
+    }
+    return { inicioMes, fimMes, total };
+  };
+
+  const handleApagarFixoInativo = async (f: CustoFixoNoMes) => {
+    const mesAtual = getHojeLisboa().slice(0, 7);
+    const futuro = estadoCustoFixoNoMes(f.periodos, mesAtual).estado === 'nao_comecou';
+
+    if (futuro) {
+      if (!confirm(`Apagar o custo fixo "${f.nome}"? Ainda não começou.`)) return;
+    } else {
+      const { inicioMes, fimMes, total } = calcularHistoricoCusto(f.periodos);
+      const aviso = `Este custo contou de ${mesParaLabelCurto(inicioMes)} a ${mesParaLabelCurto(fimMes)}, num total de ${total.toFixed(2)} €. Se o apagares, deixa de contar nesses meses e o lucro desses meses muda. Continuar?`;
+      if (!confirm(aviso)) return;
+    }
+
+    const { data, error } = await supabase.from('custos_fixos').delete().eq('id', f.id).select('id');
+    if (error) {
+      showError('Erro ao apagar custo fixo: ' + mensagemErroCusto(error));
+      return;
+    }
+    if (!data || data.length === 0) {
+      showError('Não foi possível apagar — sem permissão.');
+      return;
+    }
+    showSuccess('Custo fixo apagado.');
+    recarregarCustos();
   };
 
   const handleCriarFixo = async (e: React.FormEvent) => {
@@ -717,28 +781,21 @@ export default function GestaoTotalPage() {
                 )}
 
                 <div className="space-y-3 max-h-[480px] overflow-y-auto pr-2 custom-scrollbar">
-                  {custosMes.fixos.length > 0 ? custosMes.fixos.map(f => {
-                    const inativo = f.estado !== 'ativo';
-                    const podeApagar = f.estado === 'ativo' && f.periodos.length === 1 && f.periodos[0].de.slice(0, 7) === mesSelecionado;
+                  {fixosAtivos.length > 0 ? fixosAtivos.map(f => {
+                    const podeApagar = f.periodos.length === 1 && f.periodos[0].de.slice(0, 7) === mesSelecionado;
                     return (
-                      <div key={f.id} data-custo-fixo-linha="1" className={`border p-5 rounded-3xl transition-all ${inativo ? 'bg-page/20 border-border/30 opacity-60' : 'bg-page/40 border-border/50 hover:border-border'}`}>
+                      <div key={f.id} data-custo-fixo-linha="1" className="border p-5 rounded-3xl transition-all bg-page/40 border-border/50 hover:border-border">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <span className="text-[9px] font-black uppercase text-warning bg-warning-bg border border-warning/20 px-2 py-0.5 rounded-md tracking-tight inline-block break-words">{f.categoria}</span>
                             <span className="font-bold text-sm text-secondary block mt-1 break-words">{f.nome}</span>
-                            {f.estado === 'nao_comecou' && (
-                              <span className="text-[10px] text-muted font-bold mt-0.5 block">Ainda não começou</span>
-                            )}
-                            {f.estado === 'terminado' && (
-                              <span className="text-[10px] text-muted font-bold mt-0.5 block">Terminou em {f.terminouEm ? mesParaLabel(f.terminouEm) : '—'}</span>
-                            )}
                           </div>
-                          <span className={`font-mono font-black text-lg shrink-0 ${inativo ? 'text-muted' : 'text-warning'}`}>
+                          <span className="font-mono font-black text-lg shrink-0 text-warning">
                             {f.valor != null ? `${f.valor.toFixed(2)} €` : '—'}
                           </span>
                         </div>
 
-                        {f.estado === 'ativo' && alterandoId !== f.id && terminandoId !== f.id && (
+                        {alterandoId !== f.id && terminandoId !== f.id && (
                           <div className="flex flex-wrap gap-4 mt-3">
                             <button type="button" onClick={() => abrirAlterarValor(f)} className="text-[10px] text-accent font-bold uppercase hover:underline">
                               Alterar valor
@@ -823,6 +880,51 @@ export default function GestaoTotalPage() {
                     </div>
                   )}
                 </div>
+
+                {fixosInativos.length > 0 && (
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => setMostrarInativos(v => !v)}
+                      className="w-full flex items-center justify-between gap-2 py-2 px-1 text-[10px] font-black uppercase text-muted tracking-widest hover:text-secondary transition-all"
+                    >
+                      <span>Terminados ou futuros ({fixosInativos.length})</span>
+                      {mostrarInativos ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+
+                    {mostrarInativos && (
+                      <div className="space-y-3 mt-2 max-h-[480px] overflow-y-auto pr-2 custom-scrollbar">
+                        {fixosInativos.map(f => {
+                          const periodosOrdenados = [...f.periodos].sort((a, b) => a.de.localeCompare(b.de));
+                          const inicioDe = periodosOrdenados[0]?.de.slice(0, 7);
+                          const ultimoValor = periodosOrdenados[periodosOrdenados.length - 1]?.valor;
+                          const periodoExtenso = f.estado === 'nao_comecou'
+                            ? `a partir de ${inicioDe ? mesParaLabelCurto(inicioDe) : '—'}`
+                            : `de ${inicioDe ? mesParaLabelCurto(inicioDe) : '—'} a ${f.terminouEm ? mesParaLabelCurto(f.terminouEm) : '—'}`;
+                          return (
+                            <div key={f.id} data-custo-fixo-inativo-linha="1" className="border p-5 rounded-3xl bg-page/20 border-border/30">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-[9px] font-black uppercase text-muted bg-page border border-border/40 px-2 py-0.5 rounded-md tracking-tight inline-block break-words">{f.categoria}</span>
+                                  <span className="font-bold text-sm text-secondary block mt-1 break-words">{f.nome}</span>
+                                  <span className="text-[10px] text-muted font-bold mt-0.5 block break-words">{periodoExtenso}</span>
+                                </div>
+                                <span className="font-mono font-black text-lg shrink-0 text-muted">
+                                  {ultimoValor != null ? `${Number(ultimoValor).toFixed(2)} €` : '—'}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-4 mt-3">
+                                <button type="button" onClick={() => handleApagarFixoInativo(f)} className="text-[10px] text-danger/70 font-bold uppercase hover:text-danger hover:underline">
+                                  Apagar
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* CUSTOS VARIÁVEIS */}
