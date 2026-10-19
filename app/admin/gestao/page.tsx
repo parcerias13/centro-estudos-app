@@ -3,20 +3,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
+import { getHojeLisboa } from '@/lib/dataLisboa';
 import {
-  Building2, Save, Loader2, DollarSign,
+  obterCustosDoMes, obterMesesComDados, listaDeMeses, somarMeses, mesParaData, mensagemErroCusto,
+  type CustosDoMes, type CustoFixoNoMes,
+} from '@/lib/custos';
+import { format } from 'date-fns';
+import { pt } from 'date-fns/locale';
+import {
+  Building2, Save, Loader2, DollarSign, ChevronLeft, ChevronRight,
   Plus, Trash2, RefreshCw, ShieldAlert, Receipt, GraduationCap, Pencil
 } from 'lucide-react';
 
 const CATEGORIAS_DESPESA = ['Professores', 'Materiais', 'Comida', 'Outros'];
-
-// A coluna despesas.tipo tem um CHECK que só aceita 'fixa' | 'variavel'
-// (minúsculas, sem acento). Guardamos esses valores; mostramos os rótulos.
-const TIPOS_DESPESA = [
-  { valor: 'fixa', label: 'Fixa' },
-  { valor: 'variavel', label: 'Variável' },
-] as const;
-const TIPO_LABEL: Record<string, string> = { fixa: 'Fixa', variavel: 'Variável' };
 
 // Mesma convenção de tarifa_tipo já usada em tarifas_professor_disciplina (Equipa).
 const TIPOS_PRECO_FAMILIA = [
@@ -44,15 +43,44 @@ export default function GestaoTotalPage() {
   const [criarError, setCriarError] = useState<string | null>(null);
   const [criando, setCriando] = useState(false);
 
-  // Despesas do mês
-  const [despesas, setDespesas] = useState<any[]>([]);
-  const [showNovaDespesa, setShowNovaDespesa] = useState(false);
-  const [despCategoria, setDespCategoria] = useState('Outros');
-  const [despTipo, setDespTipo] = useState<'fixa' | 'variavel'>('variavel');
-  const [despDescricao, setDespDescricao] = useState('');
-  const [despValor, setDespValor] = useState('');
-  const [despData, setDespData] = useState(new Date().toISOString().split('T')[0]);
-  const [criandoDespesa, setCriandoDespesa] = useState(false);
+  // Custos do centro (fixos + variáveis) — lib/custos.ts calcula os números;
+  // aqui só o estado do ecrã, para Gestão e Performance nunca divergirem.
+  const [centroId, setCentroId] = useState<string | null>(null);
+  const [mesSelecionado, setMesSelecionado] = useState(() => getHojeLisboa().slice(0, 7));
+  const [mesesDisponiveis, setMesesDisponiveis] = useState<string[]>([getHojeLisboa().slice(0, 7)]);
+  const [custosMes, setCustosMes] = useState<CustosDoMes>({ fixos: [], variaveis: [], totalFixos: 0, totalVariaveis: 0, totalGeral: 0 });
+  const [loadingCustos, setLoadingCustos] = useState(true);
+
+  // Novo custo fixo
+  const [showNovoFixo, setShowNovoFixo] = useState(false);
+  const [novoFixoDescricao, setNovoFixoDescricao] = useState('');
+  const [novoFixoCategoria, setNovoFixoCategoria] = useState('Outros');
+  const [novoFixoValor, setNovoFixoValor] = useState('');
+  const [novoFixoDesde, setNovoFixoDesde] = useState(() => getHojeLisboa().slice(0, 7));
+  const [criandoFixo, setCriandoFixo] = useState(false);
+  const [criarFixoError, setCriarFixoError] = useState<string | null>(null);
+
+  // Alterar valor de um custo fixo ativo
+  const [alterandoId, setAlterandoId] = useState<string | null>(null);
+  const [alterarValor, setAlterarValor] = useState('');
+  const [alterarDesde, setAlterarDesde] = useState('');
+  const [alterando, setAlterando] = useState(false);
+  const [alterarError, setAlterarError] = useState<string | null>(null);
+
+  // Terminar um custo fixo ativo
+  const [terminandoId, setTerminandoId] = useState<string | null>(null);
+  const [terminarAPartir, setTerminarAPartir] = useState('');
+  const [terminando, setTerminando] = useState(false);
+  const [terminarError, setTerminarError] = useState<string | null>(null);
+
+  // Novo custo variável
+  const [showNovoVariavel, setShowNovoVariavel] = useState(false);
+  const [varCategoria, setVarCategoria] = useState('Outros');
+  const [varDescricao, setVarDescricao] = useState('');
+  const [varValor, setVarValor] = useState('');
+  const [varData, setVarData] = useState(() => getHojeLisboa());
+  const [criandoVariavel, setCriandoVariavel] = useState(false);
+  const [criarVariavelError, setCriarVariavelError] = useState<string | null>(null);
 
   // Preços de explicações à família (precos_explicacoes_familia) — mesma
   // estrutura de estado das exceções de tarifa em Equipa (Fase 2), para as
@@ -82,22 +110,10 @@ export default function GestaoTotalPage() {
         const { data: servicosRes } = await supabase.from('servicos').select('*').order('nome');
         setServicos(servicosRes || []);
 
-        // Despesas do mês corrente (coluna `data` é DATE — comparação por string YYYY-MM-DD)
-        const agora = new Date();
-        const inicioMesStr = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-01`;
-        const fimMes = new Date(agora.getFullYear(), agora.getMonth() + 1, 0);
-        const fimMesStr = `${fimMes.getFullYear()}-${String(fimMes.getMonth() + 1).padStart(2, '0')}-${String(fimMes.getDate()).padStart(2, '0')}`;
-        const { data: despRes } = await supabase
-          .from('despesas')
-          .select('*')
-          .gte('data', inicioMesStr)
-          .lte('data', fimMesStr)
-          .order('data', { ascending: false });
-        setDespesas(despRes || []);
-
         // Disciplinas do centro + preços à família — mesma fonte (subjects)
         // e a mesma lógica de anos_aplicaveis já usada em Equipa (Fase 2).
         const centro_id = user?.app_metadata?.centro_id;
+        setCentroId(centro_id ?? null);
         if (centro_id) {
           const { data: subjectsRes } = await supabase
             .from('subjects')
@@ -207,53 +223,228 @@ export default function GestaoTotalPage() {
     }
   };
 
-  const handleCreateDespesa = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const valorNum = parseFloat(despValor);
-    if (!despCategoria) return showError('Escolhe uma categoria.');
-    if (isNaN(valorNum) || valorNum <= 0) return showError('Valor inválido.');
-    if (!despData) return showError('Escolhe a data.');
-
-    setCriandoDespesa(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    const centro_id = user?.app_metadata?.centro_id;
-    if (!centro_id) {
-      showError('Não foi possível obter o centro. Recarrega a página.');
-      setCriandoDespesa(false);
-      return;
+  // Recarrega a lista de meses disponíveis + os custos do mês selecionado.
+  // Chamada no arranque, quando o mês muda, e depois de qualquer escrita —
+  // é a mesma função usada por Gestão e Performance (via lib/custos.ts),
+  // para os números nunca divergirem.
+  const recarregarCustos = useCallback(async () => {
+    if (!centroId) return;
+    setLoadingCustos(true);
+    try {
+      const [comDados, dadosMes] = await Promise.all([
+        obterMesesComDados(centroId),
+        obterCustosDoMes(centroId, mesSelecionado),
+      ]);
+      setMesesDisponiveis(listaDeMeses(comDados, getHojeLisboa().slice(0, 7)));
+      setCustosMes(dadosMes);
+    } catch (error) {
+      console.error('Erro ao carregar custos:', error);
+    } finally {
+      setLoadingCustos(false);
     }
+  }, [centroId, mesSelecionado]);
 
-    const { error } = await supabase.from('despesas').insert({
-      categoria: despCategoria,
-      tipo: despTipo,
-      descricao: despDescricao.trim() || null,
-      valor: valorNum,
-      data: despData,
-      recorrente: false,
-      centro_id,
-    });
-    if (error) {
-      showError('Erro ao registar despesa: ' + error.message);
-    } else {
-      setDespCategoria('Outros');
-      setDespTipo('variavel');
-      setDespDescricao('');
-      setDespValor('');
-      setDespData(new Date().toISOString().split('T')[0]);
-      setShowNovaDespesa(false);
-      loadTudo();
-    }
-    setCriandoDespesa(false);
+  useEffect(() => { recarregarCustos(); }, [recarregarCustos]);
+
+  const mesMaisAntigo = mesesDisponiveis.length > 0 ? mesesDisponiveis[0] : mesSelecionado;
+  // Ao contrário da Performance (só olha para trás), aqui um custo fixo pode
+  // começar num mês futuro ("a partir de" ao criar) — por isso o avanço não
+  // fica preso ao mês atual real, só a um limite generoso para não navegar
+  // para sempre.
+  const mesLimiteFuturo = somarMeses(getHojeLisboa().slice(0, 7), 24);
+  const podeRecuarMes = mesSelecionado > mesMaisAntigo;
+  const podeAvancarMes = mesSelecionado < mesLimiteFuturo;
+  const handleMesAnterior = () => { if (podeRecuarMes) setMesSelecionado(somarMeses(mesSelecionado, -1)); };
+  const handleMesSeguinte = () => { if (podeAvancarMes) setMesSelecionado(somarMeses(mesSelecionado, 1)); };
+  const mesParaLabel = (mes: string) => {
+    const [ano, m] = mes.split('-').map(Number);
+    return format(new Date(ano, m - 1, 1), 'MMMM yyyy', { locale: pt });
   };
 
-  const handleDeleteDespesa = async (id: string, categoria: string, valor: number) => {
-    if (!confirm(`Remover esta despesa (${categoria} — ${Number(valor).toFixed(2)}€)?`)) return;
-    const { error } = await supabase.from('despesas').delete().eq('id', id);
-    if (error) {
-      showError('Erro ao remover despesa: ' + error.message);
+  const handleCriarFixo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCriarFixoError(null);
+    const nome = novoFixoDescricao.trim();
+    if (!nome) return setCriarFixoError('A descrição é obrigatória.');
+    const valorNum = parseFloat(novoFixoValor);
+    if (isNaN(valorNum) || valorNum <= 0) return setCriarFixoError('Valor inválido.');
+    if (!novoFixoDesde) return setCriarFixoError('Escolhe o mês de início.');
+    if (!centroId) return setCriarFixoError('Não foi possível obter o centro. Recarrega a página.');
+
+    setCriandoFixo(true);
+    const { data: custoNovo, error: errCusto } = await supabase
+      .from('custos_fixos')
+      .insert({ nome, categoria: novoFixoCategoria, centro_id: centroId })
+      .select('id')
+      .single();
+
+    if (errCusto || !custoNovo) {
+      setCriarFixoError(mensagemErroCusto(errCusto || { message: 'Erro ao criar custo fixo.' }));
+      setCriandoFixo(false);
       return;
     }
-    loadTudo();
+
+    const { error: errPeriodo } = await supabase.from('custos_fixos_periodos').insert({
+      custo_id: custoNovo.id,
+      centro_id: centroId,
+      de: mesParaData(novoFixoDesde),
+      ate: null,
+      valor: valorNum,
+    });
+
+    if (errPeriodo) {
+      await supabase.from('custos_fixos').delete().eq('id', custoNovo.id);
+      setCriarFixoError(mensagemErroCusto(errPeriodo));
+      setCriandoFixo(false);
+      return;
+    }
+
+    setNovoFixoDescricao('');
+    setNovoFixoCategoria('Outros');
+    setNovoFixoValor('');
+    setNovoFixoDesde(getHojeLisboa().slice(0, 7));
+    setShowNovoFixo(false);
+    setCriandoFixo(false);
+    showSuccess('Custo fixo criado.');
+    recarregarCustos();
+  };
+
+  const handleApagarFixo = async (id: string, nome: string) => {
+    if (!confirm(`Apagar o custo fixo "${nome}"? Deixa de contar em todos os meses.`)) return;
+    const { error } = await supabase.from('custos_fixos').delete().eq('id', id);
+    if (error) {
+      showError('Erro ao apagar custo fixo: ' + mensagemErroCusto(error));
+      return;
+    }
+    showSuccess('Custo fixo apagado.');
+    recarregarCustos();
+  };
+
+  const abrirAlterarValor = (custo: CustoFixoNoMes) => {
+    setTerminandoId(null);
+    setTerminarError(null);
+    setAlterandoId(custo.id);
+    setAlterarValor(custo.valor != null ? String(custo.valor) : '');
+    setAlterarDesde(mesSelecionado);
+    setAlterarError(null);
+  };
+  const fecharAlterarValor = () => {
+    setAlterandoId(null);
+    setAlterarValor('');
+    setAlterarError(null);
+  };
+
+  const handleConfirmarAlterarValor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAlterarError(null);
+    const valorNum = parseFloat(alterarValor);
+    if (isNaN(valorNum) || valorNum <= 0) return setAlterarError('Valor inválido.');
+    if (!alterarDesde) return setAlterarError('Escolhe o mês.');
+    if (!alterandoId) return;
+
+    setAlterando(true);
+    const { error } = await supabase.rpc('alterar_valor_custo_fixo', {
+      p_custo: alterandoId,
+      p_de: mesParaData(alterarDesde),
+      p_valor: valorNum,
+    });
+    setAlterando(false);
+
+    if (error) {
+      setAlterarError(mensagemErroCusto(error));
+      return;
+    }
+
+    showSuccess('Valor atualizado.');
+    fecharAlterarValor();
+    recarregarCustos();
+  };
+
+  const abrirTerminar = (custo: CustoFixoNoMes) => {
+    setAlterandoId(null);
+    setAlterarError(null);
+    setTerminandoId(custo.id);
+    setTerminarAPartir(mesSelecionado);
+    setTerminarError(null);
+  };
+  const fecharTerminar = () => {
+    setTerminandoId(null);
+    setTerminarAPartir('');
+    setTerminarError(null);
+  };
+
+  const handleConfirmarTerminar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTerminarError(null);
+    if (!terminarAPartir) return setTerminarError('Escolhe o mês.');
+    if (!terminandoId) return;
+
+    setTerminando(true);
+    const { error } = await supabase.rpc('terminar_custo_fixo', {
+      p_custo: terminandoId,
+      p_a_partir_de: mesParaData(terminarAPartir),
+    });
+    setTerminando(false);
+
+    if (error) {
+      setTerminarError(mensagemErroCusto(error));
+      return;
+    }
+
+    showSuccess('Custo fixo terminado.');
+    fecharTerminar();
+    recarregarCustos();
+  };
+
+  const abrirNovoVariavel = () => {
+    const hoje = getHojeLisboa();
+    setVarCategoria('Outros');
+    setVarDescricao('');
+    setVarValor('');
+    setVarData(hoje.slice(0, 7) === mesSelecionado ? hoje : mesParaData(mesSelecionado));
+    setCriarVariavelError(null);
+    setShowNovoVariavel(true);
+  };
+
+  const handleCriarVariavel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCriarVariavelError(null);
+    const valorNum = parseFloat(varValor);
+    if (!varCategoria) return setCriarVariavelError('Escolhe uma categoria.');
+    if (isNaN(valorNum) || valorNum <= 0) return setCriarVariavelError('Valor inválido.');
+    if (!varData) return setCriarVariavelError('Escolhe a data.');
+    if (!centroId) return setCriarVariavelError('Não foi possível obter o centro. Recarrega a página.');
+
+    setCriandoVariavel(true);
+    const { error } = await supabase.from('despesas').insert({
+      categoria: varCategoria,
+      tipo: 'variavel',
+      descricao: varDescricao.trim() || null,
+      valor: valorNum,
+      data: varData,
+      recorrente: false,
+      centro_id: centroId,
+    });
+    setCriandoVariavel(false);
+
+    if (error) {
+      setCriarVariavelError('Erro ao registar custo: ' + error.message);
+      return;
+    }
+
+    setShowNovoVariavel(false);
+    showSuccess('Custo variável registado.');
+    recarregarCustos();
+  };
+
+  const handleApagarVariavel = async (id: string, categoria: string, valor: number) => {
+    if (!confirm(`Remover este custo (${categoria} — ${Number(valor).toFixed(2)}€)?`)) return;
+    const { error } = await supabase.from('despesas').delete().eq('id', id);
+    if (error) {
+      showError('Erro ao remover: ' + error.message);
+      return;
+    }
+    recarregarCustos();
   };
 
   // --- Preços de explicações à família — mesmo padrão das exceções de tarifa em Equipa (Fase 2) ---
@@ -389,149 +580,361 @@ export default function GestaoTotalPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
         
 
-        {/* BLOCO 3: DESPESAS DO MÊS */}
-        <section className="bg-surface border border-border/60 p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm">
-          <div className="flex justify-between items-center mb-8">
+        {/* BLOCO 3: CUSTOS DO CENTRO (fixos + variáveis) */}
+        <section className="bg-surface border border-border/60 p-6 md:p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm lg:col-span-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-warning-bg rounded-2xl text-warning">
+              <div className="p-3 bg-warning-bg rounded-2xl text-warning shrink-0">
                 <Receipt size={24} />
               </div>
-              <h3 className="text-primary font-black uppercase text-sm tracking-widest">Despesas do Mês</h3>
+              <h3 className="text-primary font-black uppercase text-sm tracking-widest">Custos do Centro</h3>
             </div>
-            <button
-              onClick={() => setShowNovaDespesa(v => !v)}
-              className={`p-2 rounded-xl border transition-all active:scale-90 ${showNovaDespesa ? 'bg-border text-primary border-border' : 'bg-warning-bg text-warning border-warning/20 hover:bg-warning hover:text-on-warning'}`}
-            >
-              <Plus size={20} />
-            </button>
+            <div className="flex items-center bg-page border border-border rounded-2xl overflow-hidden p-1 shadow-xl shrink-0 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={handleMesAnterior}
+                disabled={!podeRecuarMes}
+                aria-label="Mês anterior"
+                className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <div className="px-3 py-1 text-center min-w-32" data-mes-selecionado={mesSelecionado}>
+                <p className="text-sm font-black text-primary capitalize">{mesParaLabel(mesSelecionado)}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleMesSeguinte}
+                disabled={!podeAvancarMes}
+                aria-label="Mês seguinte"
+                className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
           </div>
 
-          {showNovaDespesa && (
-            <form onSubmit={handleCreateDespesa} className="mb-6 bg-page/50 border border-border rounded-3xl p-5 space-y-4">
-              <div className="flex gap-3">
-                <div className="flex-1 space-y-1">
-                  <label className="text-[9px] font-black text-muted uppercase ml-1">Categoria</label>
-                  <select
-                    value={despCategoria}
-                    onChange={e => setDespCategoria(e.target.value)}
-                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-warning outline-none transition-all appearance-none"
-                  >
-                    {CATEGORIAS_DESPESA.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div className="w-32 space-y-1">
-                  <label className="text-[9px] font-black text-muted uppercase ml-1">Valor (€)</label>
-                  <input
-                    type="number"
-                    value={despValor}
-                    onChange={e => setDespValor(e.target.value)}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-mono font-black text-warning focus:border-warning outline-none transition-all"
-                  />
-                </div>
-              </div>
+          {/* Totais do mês */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+            <div className="bg-page/50 border border-border rounded-2xl p-4">
+              <p className="text-[9px] font-black uppercase text-muted tracking-widest">Fixos</p>
+              <p className="font-mono font-black text-lg text-warning mt-1">{custosMes.totalFixos.toFixed(2)} €</p>
+            </div>
+            <div className="bg-page/50 border border-border rounded-2xl p-4">
+              <p className="text-[9px] font-black uppercase text-muted tracking-widest">Variáveis</p>
+              <p className="font-mono font-black text-lg text-warning mt-1">{custosMes.totalVariaveis.toFixed(2)} €</p>
+            </div>
+            <div className="bg-page/50 border border-border rounded-2xl p-4">
+              <p className="text-[9px] font-black uppercase text-muted tracking-widest">Total do mês</p>
+              <p className="font-mono font-black text-lg text-primary mt-1">{custosMes.totalGeral.toFixed(2)} €</p>
+            </div>
+          </div>
 
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-muted uppercase ml-1">Tipo</label>
-                <div className="flex gap-2">
-                  {TIPOS_DESPESA.map(t => (
-                    <button
-                      key={t.valor}
-                      type="button"
-                      onClick={() => setDespTipo(t.valor)}
-                      className={`flex-1 py-2 rounded-2xl text-xs font-black uppercase border transition-all ${
-                        despTipo === t.valor
-                          ? 'bg-warning border-warning text-on-warning'
-                          : 'bg-surface border-border text-muted hover:border-warning/40'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <div className="flex-1 space-y-1">
-                  <label className="text-[9px] font-black text-muted uppercase ml-1">Descrição (opcional)</label>
-                  <input
-                    type="text"
-                    value={despDescricao}
-                    onChange={e => setDespDescricao(e.target.value)}
-                    placeholder="ex: salário Set., resma de papel"
-                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-warning outline-none transition-all"
-                  />
-                </div>
-                <div className="w-40 space-y-1">
-                  <label className="text-[9px] font-black text-muted uppercase ml-1">Data</label>
-                  <input
-                    type="date"
-                    value={despData}
-                    onChange={e => setDespData(e.target.value)}
-                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-warning outline-none transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  type="submit"
-                  disabled={criandoDespesa}
-                  className="flex-1 py-3 bg-warning hover:bg-warning-hover text-on-warning rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-                >
-                  {criandoDespesa ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                  Registar Despesa
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowNovaDespesa(false)}
-                  className="px-5 py-3 bg-raised hover:bg-border rounded-2xl font-black text-sm transition-all active:scale-95"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          )}
-
-          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-            {despesas.length > 0 ? despesas.map(d => (
-              <div
-                key={d.id}
-                className="bg-page/40 border border-border/50 p-5 rounded-3xl flex items-center justify-between group hover:border-border transition-all"
-              >
-                <div className="flex flex-col min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black uppercase text-warning bg-warning-bg border border-warning/20 px-2 py-0.5 rounded-md tracking-tight">{d.categoria}</span>
-                    <span className="text-[9px] font-black uppercase text-muted tracking-tight">{TIPO_LABEL[d.tipo] ?? d.tipo}</span>
-                  </div>
-                  <span className="font-bold text-sm text-secondary truncate mt-1">{d.descricao || '—'}</span>
-                  <span className="text-[10px] text-muted font-bold mt-0.5">{new Date(d.data + 'T00:00:00').toLocaleDateString('pt-PT')}</span>
+          {loadingCustos ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="animate-spin text-accent" size={28} />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* CUSTOS FIXOS */}
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="font-black uppercase text-xs tracking-widest text-secondary">Custos Fixos</h4>
                   <button
-                    onClick={() => handleDeleteDespesa(d.id, d.categoria, d.valor)}
-                    className="text-[9px] text-danger/40 font-bold uppercase mt-1 opacity-0 group-hover:opacity-100 transition-all hover:text-danger text-left"
+                    type="button"
+                    onClick={() => { setShowNovoFixo(v => !v); setCriarFixoError(null); }}
+                    className={`p-2 rounded-xl border transition-all active:scale-90 ${showNovoFixo ? 'bg-border text-primary border-border' : 'bg-warning-bg text-warning border-warning/20 hover:bg-warning hover:text-on-warning'}`}
                   >
-                    Remover
+                    <Plus size={18} />
                   </button>
                 </div>
-                <span className="font-mono font-black text-warning text-lg shrink-0 ml-3">{Number(d.valor).toFixed(2)} €</span>
-              </div>
-            )) : (
-              <div className="text-center py-12 border-2 border-dashed border-border/50 rounded-[2rem]">
-                <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem despesas registadas este mês</p>
-              </div>
-            )}
 
-            {despesas.length > 0 && (
-              <div className="flex justify-between items-center pt-2 px-2">
-                <span className="text-[10px] font-black uppercase text-muted tracking-widest">Total do mês</span>
-                <span className="font-mono font-black text-warning text-lg">
-                  {despesas.reduce((acc, d) => acc + (Number(d.valor) || 0), 0).toFixed(2)} €
-                </span>
+                {showNovoFixo && (
+                  <form onSubmit={handleCriarFixo} className="mb-5 bg-page/50 border border-border rounded-3xl p-5 space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-muted uppercase ml-1">Descrição</label>
+                      <input
+                        type="text"
+                        value={novoFixoDescricao}
+                        onChange={e => setNovoFixoDescricao(e.target.value)}
+                        placeholder="ex: Renda, Salário Professores"
+                        className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-warning outline-none transition-all"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-[9px] font-black text-muted uppercase ml-1">Categoria</label>
+                        <select
+                          value={novoFixoCategoria}
+                          onChange={e => setNovoFixoCategoria(e.target.value)}
+                          className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-warning outline-none transition-all appearance-none"
+                        >
+                          {CATEGORIAS_DESPESA.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div className="w-full sm:w-32 space-y-1">
+                        <label className="text-[9px] font-black text-muted uppercase ml-1">Valor mensal (€)</label>
+                        <input
+                          type="number"
+                          value={novoFixoValor}
+                          onChange={e => setNovoFixoValor(e.target.value)}
+                          placeholder="0.00"
+                          min="0"
+                          step="0.01"
+                          className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-mono font-black text-warning focus:border-warning outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-muted uppercase ml-1">A partir de</label>
+                      <input
+                        type="month"
+                        value={novoFixoDesde}
+                        onChange={e => setNovoFixoDesde(e.target.value)}
+                        className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-warning outline-none transition-all"
+                      />
+                    </div>
+                    {criarFixoError && <p className="text-danger text-[11px] font-bold px-1">{criarFixoError}</p>}
+                    <div className="flex gap-3">
+                      <button
+                        type="submit"
+                        disabled={criandoFixo}
+                        className="flex-1 py-3 bg-warning hover:bg-warning-hover text-on-warning rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                      >
+                        {criandoFixo ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                        Criar Custo Fixo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowNovoFixo(false); setCriarFixoError(null); }}
+                        className="px-5 py-3 bg-raised hover:bg-border rounded-2xl font-black text-sm transition-all active:scale-95"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                <div className="space-y-3 max-h-[480px] overflow-y-auto pr-2 custom-scrollbar">
+                  {custosMes.fixos.length > 0 ? custosMes.fixos.map(f => {
+                    const inativo = f.estado !== 'ativo';
+                    const podeApagar = f.estado === 'ativo' && f.periodos.length === 1 && f.periodos[0].de.slice(0, 7) === mesSelecionado;
+                    return (
+                      <div key={f.id} data-custo-fixo-linha="1" className={`border p-5 rounded-3xl transition-all ${inativo ? 'bg-page/20 border-border/30 opacity-60' : 'bg-page/40 border-border/50 hover:border-border'}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <span className="text-[9px] font-black uppercase text-warning bg-warning-bg border border-warning/20 px-2 py-0.5 rounded-md tracking-tight inline-block break-words">{f.categoria}</span>
+                            <span className="font-bold text-sm text-secondary block mt-1 break-words">{f.nome}</span>
+                            {f.estado === 'nao_comecou' && (
+                              <span className="text-[10px] text-muted font-bold mt-0.5 block">Ainda não começou</span>
+                            )}
+                            {f.estado === 'terminado' && (
+                              <span className="text-[10px] text-muted font-bold mt-0.5 block">Terminou em {f.terminouEm ? mesParaLabel(f.terminouEm) : '—'}</span>
+                            )}
+                          </div>
+                          <span className={`font-mono font-black text-lg shrink-0 ${inativo ? 'text-muted' : 'text-warning'}`}>
+                            {f.valor != null ? `${f.valor.toFixed(2)} €` : '—'}
+                          </span>
+                        </div>
+
+                        {f.estado === 'ativo' && alterandoId !== f.id && terminandoId !== f.id && (
+                          <div className="flex flex-wrap gap-4 mt-3">
+                            <button type="button" onClick={() => abrirAlterarValor(f)} className="text-[10px] text-accent font-bold uppercase hover:underline">
+                              Alterar valor
+                            </button>
+                            {podeApagar ? (
+                              <button type="button" onClick={() => handleApagarFixo(f.id, f.nome)} className="text-[10px] text-danger/70 font-bold uppercase hover:text-danger hover:underline">
+                                Apagar
+                              </button>
+                            ) : (
+                              <button type="button" onClick={() => abrirTerminar(f)} className="text-[10px] text-danger/70 font-bold uppercase hover:text-danger hover:underline">
+                                Terminar
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {alterandoId === f.id && (
+                          <form onSubmit={handleConfirmarAlterarValor} className="mt-4 bg-surface border border-border rounded-2xl p-4 space-y-3">
+                            <div className="flex flex-col sm:flex-row gap-3">
+                              <div className="flex-1 space-y-1">
+                                <label className="text-[9px] font-black text-muted uppercase ml-1">Novo valor (€)</label>
+                                <input
+                                  type="number"
+                                  value={alterarValor}
+                                  onChange={e => setAlterarValor(e.target.value)}
+                                  min="0"
+                                  step="0.01"
+                                  className="w-full bg-page border border-border p-2.5 rounded-xl text-sm font-mono font-black text-accent focus:border-accent outline-none transition-all"
+                                  autoFocus
+                                />
+                              </div>
+                              <div className="flex-1 space-y-1">
+                                <label className="text-[9px] font-black text-muted uppercase ml-1">A partir de</label>
+                                <input
+                                  type="month"
+                                  value={alterarDesde}
+                                  onChange={e => setAlterarDesde(e.target.value)}
+                                  className="w-full bg-page border border-border p-2.5 rounded-xl text-sm font-bold focus:border-accent outline-none transition-all"
+                                />
+                              </div>
+                            </div>
+                            {alterarError && <p className="text-danger text-[11px] font-bold px-1">{alterarError}</p>}
+                            <div className="flex gap-2">
+                              <button type="submit" disabled={alterando} className="flex-1 py-2.5 bg-accent hover:bg-accent-hover text-on-accent rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50">
+                                {alterando ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Guardar
+                              </button>
+                              <button type="button" onClick={fecharAlterarValor} className="px-4 py-2.5 bg-raised hover:bg-border rounded-xl font-black text-xs transition-all active:scale-95">
+                                Cancelar
+                              </button>
+                            </div>
+                          </form>
+                        )}
+
+                        {terminandoId === f.id && (
+                          <form onSubmit={handleConfirmarTerminar} className="mt-4 bg-surface border border-border rounded-2xl p-4 space-y-3">
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-black text-muted uppercase ml-1">Terminar a partir de</label>
+                              <input
+                                type="month"
+                                value={terminarAPartir}
+                                onChange={e => setTerminarAPartir(e.target.value)}
+                                className="w-full bg-page border border-border p-2.5 rounded-xl text-sm font-bold focus:border-danger outline-none transition-all"
+                                autoFocus
+                              />
+                            </div>
+                            {terminarError && <p className="text-danger text-[11px] font-bold px-1">{terminarError}</p>}
+                            <div className="flex gap-2">
+                              <button type="submit" disabled={terminando} className="flex-1 py-2.5 bg-danger hover:bg-danger-hover text-on-danger rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50">
+                                {terminando ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Confirmar
+                              </button>
+                              <button type="button" onClick={fecharTerminar} className="px-4 py-2.5 bg-raised hover:bg-border rounded-xl font-black text-xs transition-all active:scale-95">
+                                Cancelar
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                      </div>
+                    );
+                  }) : (
+                    <div className="text-center py-10 border-2 border-dashed border-border/50 rounded-[2rem]">
+                      <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem custos fixos</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
+
+              {/* CUSTOS VARIÁVEIS */}
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="font-black uppercase text-xs tracking-widest text-secondary">Custos Variáveis</h4>
+                  <button
+                    type="button"
+                    onClick={() => (showNovoVariavel ? setShowNovoVariavel(false) : abrirNovoVariavel())}
+                    className={`p-2 rounded-xl border transition-all active:scale-90 ${showNovoVariavel ? 'bg-border text-primary border-border' : 'bg-warning-bg text-warning border-warning/20 hover:bg-warning hover:text-on-warning'}`}
+                  >
+                    <Plus size={18} />
+                  </button>
+                </div>
+
+                {showNovoVariavel && (
+                  <form onSubmit={handleCriarVariavel} className="mb-5 bg-page/50 border border-border rounded-3xl p-5 space-y-4">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-[9px] font-black text-muted uppercase ml-1">Categoria</label>
+                        <select
+                          value={varCategoria}
+                          onChange={e => setVarCategoria(e.target.value)}
+                          className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-warning outline-none transition-all appearance-none"
+                        >
+                          {CATEGORIAS_DESPESA.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div className="w-full sm:w-32 space-y-1">
+                        <label className="text-[9px] font-black text-muted uppercase ml-1">Valor (€)</label>
+                        <input
+                          type="number"
+                          value={varValor}
+                          onChange={e => setVarValor(e.target.value)}
+                          placeholder="0.00"
+                          min="0"
+                          step="0.01"
+                          className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-mono font-black text-warning focus:border-warning outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-[9px] font-black text-muted uppercase ml-1">Descrição (opcional)</label>
+                        <input
+                          type="text"
+                          value={varDescricao}
+                          onChange={e => setVarDescricao(e.target.value)}
+                          placeholder="ex: resma de papel"
+                          className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-warning outline-none transition-all"
+                        />
+                      </div>
+                      <div className="w-full sm:w-40 space-y-1">
+                        <label className="text-[9px] font-black text-muted uppercase ml-1">Data</label>
+                        <input
+                          type="date"
+                          value={varData}
+                          onChange={e => setVarData(e.target.value)}
+                          className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-warning outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+                    {criarVariavelError && <p className="text-danger text-[11px] font-bold px-1">{criarVariavelError}</p>}
+                    <div className="flex gap-3">
+                      <button
+                        type="submit"
+                        disabled={criandoVariavel}
+                        className="flex-1 py-3 bg-warning hover:bg-warning-hover text-on-warning rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                      >
+                        {criandoVariavel ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                        Registar Custo Variável
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowNovoVariavel(false); setCriarVariavelError(null); }}
+                        className="px-5 py-3 bg-raised hover:bg-border rounded-2xl font-black text-sm transition-all active:scale-95"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                <div className="space-y-3 max-h-[480px] overflow-y-auto pr-2 custom-scrollbar">
+                  {custosMes.variaveis.length > 0 ? custosMes.variaveis.map(d => (
+                    <div
+                      key={d.id}
+                      data-custo-variavel-linha="1"
+                      className="bg-page/40 border border-border/50 p-5 rounded-3xl flex items-start justify-between gap-3 group hover:border-border transition-all"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[9px] font-black uppercase text-warning bg-warning-bg border border-warning/20 px-2 py-0.5 rounded-md tracking-tight inline-block break-words">{d.categoria}</span>
+                        <span className="font-bold text-sm text-secondary block mt-1 break-words">{d.descricao || '—'}</span>
+                        <span className="text-[10px] text-muted font-bold mt-0.5 block">{new Date(d.data + 'T00:00:00').toLocaleDateString('pt-PT')}</span>
+                        <button
+                          onClick={() => handleApagarVariavel(d.id, d.categoria, d.valor)}
+                          className="text-[9px] text-danger/40 font-bold uppercase mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all hover:text-danger text-left"
+                        >
+                          Apagar
+                        </button>
+                      </div>
+                      <span className="font-mono font-black text-warning text-lg shrink-0">{Number(d.valor).toFixed(2)} €</span>
+                    </div>
+                  )) : (
+                    <div className="text-center py-10 border-2 border-dashed border-border/50 rounded-[2rem]">
+                      <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem custos variáveis este mês</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* BLOCO 2: SERVIÇOS EXTRA */}

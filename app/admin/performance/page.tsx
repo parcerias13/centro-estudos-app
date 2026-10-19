@@ -4,13 +4,18 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { garantirMesGerado } from '@/lib/mensalidades';
+import { getHojeLisboa } from '@/lib/dataLisboa';
+import { obterCustosDoMes, mesParaData, ultimoDiaDoMes } from '@/lib/custos';
 import { ArrowLeft, Activity, RefreshCw, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { startOfMonth, addMonths, format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 
 export default function AdminStats() {
   const [loading, setLoading] = useState(true);
-  const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const [anoInicial, mesInicial] = getHojeLisboa().split('-').map(Number);
+    return startOfMonth(new Date(anoInicial, mesInicial - 1, 1));
+  });
   const [stats, setStats] = useState<any>({
     accumulatedRevenue: 0,
     projectedRevenue: 0,
@@ -25,11 +30,13 @@ export default function AdminStats() {
 
   const ano = currentMonth.getFullYear();
   const mes = currentMonth.getMonth() + 1;
+  const mesStr = `${ano}-${String(mes).padStart(2, '0')}`;
 
-  const hoje = new Date();
-  const anoRealAtual = hoje.getFullYear();
-  const mesRealAtual = hoje.getMonth() + 1;
-  const isMesAtual = ano === anoRealAtual && mes === mesRealAtual;
+  // "Hoje" e os limites do mês sempre por getHojeLisboa()/aritmética pura —
+  // nunca new Date() local (o fuso do browser do aluno/admin pode não ser
+  // Europe/Lisbon).
+  const mesAtualLisboa = getHojeLisboa().slice(0, 7);
+  const isMesAtual = mesStr === mesAtualLisboa;
 
   // Guarda contra chamadas sobrepostas (mesmo padrão de isFetchingRef/fetchPendingRef
   // já usado em Pagamentos/Explicações): esta página passou a ter navegação por mês,
@@ -45,12 +52,13 @@ export default function AdminStats() {
     isFetchingRef.current = true;
     setLoading(true);
     try {
-      const diaAtual = hoje.getDate();
-      const totalDiasMes = new Date(ano, mes, 0).getDate();
+      const diaAtual = Number(getHojeLisboa().slice(8, 10));
+      const fimMesStrCalc = ultimoDiaDoMes(mesStr);
+      const totalDiasMes = Number(fimMesStrCalc.slice(8, 10));
 
-      // Janela de despesas: mesmas strings YYYY-MM-DD usadas na página de Gestão
-      const inicioMesStr = `${ano}-${String(mes).padStart(2, '0')}-01`;
-      const fimMesStr = `${ano}-${String(mes).padStart(2, '0')}-${String(totalDiasMes).padStart(2, '0')}`;
+      // Janela de consumos/explicações: mesmas strings YYYY-MM-DD usadas na página de Gestão
+      const inicioMesStr = mesParaData(mesStr);
+      const fimMesStr = fimMesStrCalc;
 
       const { data: { user } } = await supabase.auth.getUser();
       const centro_id = user?.app_metadata?.centro_id;
@@ -59,8 +67,8 @@ export default function AdminStats() {
       const [
         { data: extras },
         mensalidadesMes,
-        { data: despesas },
         { data: explicacoesMes },
+        custosDoMes,
       ] = await Promise.all([
         supabase.from('consumos_diarios').select('preco_aplicado').gte('data_consumo', inicioMesStr).lte('data_consumo', fimMesStr),
         // Só gera linhas em falta para o mês corrente real (mesma função partilhada
@@ -70,10 +78,12 @@ export default function AdminStats() {
         isMesAtual
           ? garantirMesGerado(centro_id, ano, mes)
           : supabase.from('mensalidades').select('valor_esperado, valor_pago, pago').eq('ano', ano).eq('mes', mes).then((r) => r.data || []),
-        supabase.from('despesas').select('valor, tipo').gte('data', inicioMesStr).lte('data', fimMesStr),
         // Explicações: só existem quando alguém as cria — ao contrário das mensalidades,
         // não há estado vazio a proteger, por isso soma-se direto, sem garantirMesGerado.
         supabase.from('explicacoes').select('valor_calculado').eq('dado', true).gte('data', inicioMesStr).lte('data', fimMesStr),
+        // Fixos ativos no mês + variáveis do mês — mesma função que a secção
+        // "Custos" de Gestão, para os números nunca divergirem.
+        obterCustosDoMes(centro_id, mesStr),
       ]);
 
       // --- RECEITA ---
@@ -96,9 +106,9 @@ export default function AdminStats() {
       // sair), mas ficam à parte de despesasFixas/despesasVariaveis para o aviso de
       // integridade abaixo continuar válido (compara as três parcelas, não só duas).
       const totalExplicacoesMes = explicacoesMes?.reduce((acc, e) => acc + (Number(e.valor_calculado) || 0), 0) || 0;
-      const totalDespesasBase = despesas?.reduce((acc, d) => acc + (Number(d.valor) || 0), 0) || 0;
-      const despesasFixas = despesas?.filter(d => d.tipo === 'fixa').reduce((acc, d) => acc + (Number(d.valor) || 0), 0) || 0;
-      const despesasVariaveis = despesas?.filter(d => d.tipo === 'variavel').reduce((acc, d) => acc + (Number(d.valor) || 0), 0) || 0;
+      const despesasFixas = custosDoMes.totalFixos;
+      const despesasVariaveis = custosDoMes.totalVariaveis;
+      const totalDespesasBase = custosDoMes.totalGeral;
       const totalDespesasMes = totalDespesasBase + totalExplicacoesMes;
 
       // --- LUCRO ---
@@ -157,10 +167,10 @@ export default function AdminStats() {
         <div className="flex items-center gap-3">
           {/* SELETOR DE MÊS */}
           <div className="flex items-center bg-surface border border-border rounded-2xl overflow-hidden p-1 shadow-xl">
-            <button onClick={() => setCurrentMonth((prev) => addMonths(prev, -1))} className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all">
+            <button onClick={() => setCurrentMonth((prev) => addMonths(prev, -1))} aria-label="Mês anterior" className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all">
               <ChevronLeft size={20} />
             </button>
-            <div className="px-4 py-1 text-center min-w-40">
+            <div className="px-4 py-1 text-center min-w-40" data-mes-selecionado={mesStr}>
               <p className="text-sm font-black text-primary capitalize">
                 {format(currentMonth, 'MMMM yyyy', { locale: pt })}
               </p>
@@ -168,6 +178,7 @@ export default function AdminStats() {
             <button
               onClick={() => setCurrentMonth((prev) => addMonths(prev, 1))}
               disabled={isMesAtual}
+              aria-label="Mês seguinte"
               className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
             >
               <ChevronRight size={20} />
