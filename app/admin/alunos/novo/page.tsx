@@ -17,11 +17,10 @@ export default function NovoAluno() {
   const [erro, setErro] = useState('');
 
   // Acessos gerados pelo servidor, mostrados uma vez só depois de criar o aluno.
-  const [resultado, setResultado] = useState<{ password: string; codigo: string | null; avisoCodigo: string | null; avisoHorarios: string | null } | null>(null);
+  const [resultado, setResultado] = useState<{ nomeUtilizador: string; password: string; codigo: string | null; avisoCodigo: string | null; avisoHorarios: string | null } | null>(null);
 
   // 1. DADOS PESSOAIS
   const [nome, setNome] = useState('');
-  const [email, setEmail] = useState('');
   const [telefone, setTelefone] = useState('');
   const [emailEncarregado, setEmailEncarregado] = useState('');
   const [nifEncarregado, setNifEncarregado] = useState('');
@@ -131,7 +130,6 @@ export default function NovoAluno() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email,
           nome,
           data_nascimento: dataNascimento,
           telefone_encarregado: telefone,
@@ -153,7 +151,7 @@ export default function NovoAluno() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || `Erro (${res.status})`);
 
-      setResultado({ password: body.password, codigo: body.codigo ?? null, avisoCodigo: body.avisoCodigo ?? null, avisoHorarios: body.avisoHorarios ?? null });
+      setResultado({ nomeUtilizador: body.nomeUtilizador, password: body.password, codigo: body.codigo ?? null, avisoCodigo: body.avisoCodigo ?? null, avisoHorarios: body.avisoHorarios ?? null });
     } catch (err: any) {
       setErro(err.message);
       throw err;
@@ -178,6 +176,16 @@ export default function NovoAluno() {
           <p className="text-sm text-secondary">
             Guarda estes acessos agora — só são mostrados uma vez. Comunica-os ao encarregado.
           </p>
+
+          <div className="bg-page border border-border rounded-2xl p-5 space-y-2">
+            <p className="text-[10px] font-black uppercase text-muted tracking-widest">Nome de Utilizador</p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 font-mono text-lg font-bold text-primary bg-surface border border-border rounded-xl px-4 py-3">{resultado.nomeUtilizador}</code>
+              <button type="button" onClick={() => copiar(resultado.nomeUtilizador, 'Nome de utilizador')} className="p-3 bg-raised hover:bg-border border border-border rounded-xl text-secondary hover:text-primary transition-all active:scale-95">
+                <Copy size={18} />
+              </button>
+            </div>
+          </div>
 
           <div className="bg-page border border-border rounded-2xl p-5 space-y-2">
             <p className="text-[10px] font-black uppercase text-muted tracking-widest">Password do Aluno</p>
@@ -263,15 +271,11 @@ export default function NovoAluno() {
             <div className="space-y-2">
               <label className="text-[10px] font-black text-muted uppercase tracking-widest">Nome Completo</label>
               <input type="text" required value={nome} onChange={(e) => setNome(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all" />
+              <p className="text-[10px] text-muted">O nome de utilizador, a password e o código dos encarregados são gerados automaticamente ao finalizar — vais vê-los uma vez só.</p>
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black text-muted uppercase tracking-widest">Data de Nascimento</label>
               <input type="date" required value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all text-primary" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-muted uppercase tracking-widest">Email de Acesso (Aluno)</label>
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all" />
-              <p className="text-[10px] text-muted">A password e o código dos encarregados são gerados automaticamente ao finalizar — vais vê-los uma vez só.</p>
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">

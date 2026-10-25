@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, User, Lock, Save, Loader2, Mail, KeyRound, Clock, ShieldCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { ehEmailFachada, usernameSemSufixo } from '@/lib/username';
 
 export default function StudentProfile() {
   const [loading, setLoading] = useState(true);
@@ -138,7 +139,8 @@ export default function StudentProfile() {
           <div className="relative z-10">
             <h2 className="font-black text-2xl text-primary">{studentData?.nome || 'Aluno'}</h2>
             <p className="text-secondary text-xs font-bold mt-1 flex items-center gap-1.5">
-              <Mail size={12} className="text-muted" /> {user?.email}
+              <Mail size={12} className="text-muted" />
+              {ehEmailFachada(user?.email) ? `Utilizador: ${usernameSemSufixo(user?.email)}` : user?.email}
             </p>
             <div className="flex gap-2 mt-3">
                <span className="bg-page border border-border text-secondary text-[10px] px-3 py-1 rounded-lg uppercase font-black tracking-widest">

@@ -33,7 +33,7 @@ const limpeza: Array<() => unknown> = [];
 
 async function login(page: Page, email: string, password: string) {
   await page.goto(`${BASE_URL}/login`, { waitUntil: 'networkidle' });
-  await page.fill('input[type="email"]', email);
+  await page.fill('input[name="identificador"]', email);
   await page.fill('input[type="password"]', password);
   await page.click('button[type="submit"]');
   await page.waitForFunction(() => !location.pathname.startsWith('/login'), { timeout: 20_000 }).catch(() => {});

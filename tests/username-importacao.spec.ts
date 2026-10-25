@@ -1,0 +1,174 @@
+import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import { createClient } from '@supabase/supabase-js';
+import { randomInt } from 'node:crypto';
+import dotenv from 'dotenv';
+import ExcelJS from 'exceljs';
+import path from 'node:path';
+import os from 'node:os';
+import { gerarUsernameBase } from '@/lib/username';
+
+dotenv.config({ path: '.env.local' });
+
+// Importação de alunos por Excel com nome de utilizador (em vez de email) —
+// com e sem a coluna opcional, e idempotência (duas importações do mesmo
+// ficheiro não duplicam). Isolado num centro ZZTESTE próprio, apagado no fim.
+
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const CHARS_PASSWORD = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+const SUFIXO = String(Date.now());
+
+function gerarPasswordSegura(tamanho = 14) {
+  return Array.from({ length: tamanho }, () => CHARS_PASSWORD[randomInt(0, CHARS_PASSWORD.length)]).join('');
+}
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
+
+const CABECALHOS = [
+  'Nome*', 'Data Nascimento*', 'Ano Escolar*', 'Mensalidade Base*',
+  'Nome de Utilizador do Aluno', 'Email Encarregado', 'Telefone Encarregado',
+  'Telemovel Aluno', 'Dias Semana', 'Saida Autorizada', 'Usa App', 'NIF Encarregado', 'Morada Encarregado',
+];
+
+async function gerarXlsx(linhas: (string | number)[][]): Promise<string> {
+  const wb = new ExcelJS.Workbook();
+  const sheet = wb.addWorksheet('Alunos');
+  sheet.addRow(CABECALHOS);
+  for (const linha of linhas) sheet.addRow(linha);
+  const caminho = path.join(os.tmpdir(), `zzteste-import-${SUFIXO}-${randomInt(0, 1_000_000)}.xlsx`);
+  await wb.xlsx.writeFile(caminho);
+  return caminho;
+}
+
+let centroId: string;
+let admin: { email: string; password: string };
+let context: BrowserContext;
+let page: Page;
+const limpeza: Array<() => unknown> = [];
+
+async function loginUI(p: Page, identificador: string, password: string) {
+  await p.goto(`${BASE_URL}/login`, { waitUntil: 'networkidle' });
+  await p.fill('input[name="identificador"]', identificador);
+  await p.fill('input[type="password"]', password);
+  await p.click('button[type="submit"]');
+  await p.waitForFunction(() => !location.pathname.startsWith('/login'), { timeout: 20_000 }).catch(() => {});
+}
+
+async function importar(ficheiro: string) {
+  await page.goto(`${BASE_URL}/admin/alunos`, { waitUntil: 'networkidle' });
+  await page.setInputFiles('input[type="file"]', ficheiro);
+  await expect(page.getByRole('button', { name: /confirmar importação/i })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: /confirmar importação/i }).click();
+  await expect(page.getByText(/aluno\(s\) criado\(s\) com sucesso/i)).toBeVisible({ timeout: 20_000 });
+  const texto = await page.evaluate(() => document.body.innerText);
+  const matchCriados = texto.match(/(\d+) aluno\(s\) criado\(s\) com sucesso/);
+  const matchIgnoradas = texto.match(/(\d+) linha\(s\) ignorada\(s\)/);
+  await page.getByRole('button', { name: /concluir/i }).click();
+  return {
+    criados: matchCriados ? parseInt(matchCriados[1], 10) : -1,
+    ignoradas: matchIgnoradas ? parseInt(matchIgnoradas[1], 10) : 0,
+    texto,
+  };
+}
+
+test.describe('Importação de alunos por Excel — nome de utilizador', () => {
+  test.beforeAll(async ({ browser }) => {
+    const { data: centro, error: centroError } = await supabaseAdmin
+      .from('config_centro')
+      .insert({ nome_centro: `ZZTESTE Utilizador Importacao ${SUFIXO}`, email_remetente: `zzteste-utilizador-importacao-${SUFIXO}@example.invalid`, resend_api_key: null })
+      .select('id')
+      .single();
+    if (centroError) throw new Error(`criar config_centro: ${centroError.message}`);
+    centroId = centro.id;
+    limpeza.push(() => supabaseAdmin.from('config_centro').delete().eq('id', centroId));
+
+    const email = `zzteste-utilizador-importacao-admin-${SUFIXO}@example.invalid`;
+    const password = gerarPasswordSegura();
+    const { data: userData, error: authError } = await supabaseAdmin.auth.admin.createUser({ email, password, email_confirm: true });
+    if (authError) throw new Error(`criar admin: ${authError.message}`);
+    const id = userData.user.id;
+    limpeza.push(() => supabaseAdmin.auth.admin.deleteUser(id));
+    await supabaseAdmin.auth.admin.updateUserById(id, { app_metadata: { role: 'admin', centro_id: centroId } });
+    const { error: staffError } = await supabaseAdmin.from('staff').insert({ id, email, name: 'ZZTESTE Admin Importação', role: 'admin', centro_id: centroId });
+    if (staffError) throw new Error(`criar staff: ${staffError.message}`);
+    limpeza.push(() => supabaseAdmin.from('staff').delete().eq('id', id));
+    admin = { email, password };
+
+    context = await browser.newContext();
+    page = await context.newPage();
+    page.on('dialog', (dialog) => dialog.accept());
+    await loginUI(page, admin.email, admin.password);
+    expect(page.url()).toContain('/admin');
+  });
+
+  test.afterAll(async () => {
+    // Apaga também os alunos criados pelos próprios testes (via UI, não têm
+    // push individual na limpeza) antes das contas de staff/config_centro.
+    await supabaseAdmin.from('alunos').delete().eq('centro_id', centroId);
+    const { data: alunosRestantes } = await supabaseAdmin.from('alunos').select('id').eq('centro_id', centroId);
+    for (const a of alunosRestantes || []) {
+      await supabaseAdmin.auth.admin.deleteUser(a.id).catch(() => {});
+    }
+    await context?.close();
+    for (const passo of [...limpeza].reverse()) {
+      try {
+        const resultado: any = await Promise.resolve(passo());
+        if (resultado?.error) console.warn('limpeza: passo com erro (não fatal):', resultado.error.message);
+      } catch (err: any) {
+        console.warn('limpeza: passo lançou (não fatal):', err?.message);
+      }
+    }
+  });
+
+  test('importação SEM a coluna de utilizador gera o nome de utilizador a partir do nome', async () => {
+    const nome = `Importacao Sem Coluna ${SUFIXO}`;
+    const ficheiro = await gerarXlsx([[nome, '10/04/2014', 6, 60, '', 'mae.semcoluna@example.invalid', '912000001', '', '', 'sim', 'sim', '', '']]);
+
+    const resultado = await importar(ficheiro);
+    expect(resultado.criados).toBe(1);
+    expect(resultado.ignoradas).toBe(0);
+
+    const { data: aluno } = await supabaseAdmin.from('alunos').select('email').eq('centro_id', centroId).eq('nome', nome).single();
+    expect(aluno?.email).toBe(`${gerarUsernameBase(nome)}@utilizador.invalid`);
+  });
+
+  test('importação COM a coluna de utilizador usa o valor indicado', async () => {
+    const nome = `Importacao Com Coluna ${SUFIXO}`;
+    const utilizadorEscolhido = `zzcustom${SUFIXO}`;
+    const ficheiro = await gerarXlsx([[nome, '11/05/2014', 6, 60, utilizadorEscolhido, 'mae.comcoluna@example.invalid', '912000002', '', '', 'sim', 'sim', '', '']]);
+
+    const resultado = await importar(ficheiro);
+    expect(resultado.criados).toBe(1);
+    expect(resultado.ignoradas).toBe(0);
+
+    const { data: aluno } = await supabaseAdmin.from('alunos').select('email').eq('centro_id', centroId).eq('nome', nome).single();
+    expect(aluno?.email).toBe(`${utilizadorEscolhido}@utilizador.invalid`);
+  });
+
+  test('duas importações seguidas do mesmo ficheiro não duplicam alunos', async () => {
+    const nome1 = `Idempotencia Um ${SUFIXO}`;
+    const nome2 = `Idempotencia Dois ${SUFIXO}`;
+    const ficheiro = await gerarXlsx([
+      [nome1, '01/02/2014', 5, 55, '', 'mae.idempotencia1@example.invalid', '912000003', '', '', 'sim', 'sim', '', ''],
+      [nome2, '02/03/2014', 5, 55, '', 'mae.idempotencia2@example.invalid', '912000004', '', '', 'sim', 'sim', '', ''],
+    ]);
+
+    const primeira = await importar(ficheiro);
+    expect(primeira.criados).toBe(2);
+    expect(primeira.ignoradas).toBe(0);
+
+    const segunda = await importar(ficheiro);
+    expect(segunda.criados).toBe(0);
+    expect(segunda.ignoradas).toBe(2);
+
+    const { count } = await supabaseAdmin
+      .from('alunos')
+      .select('id', { count: 'exact', head: true })
+      .eq('centro_id', centroId)
+      .in('nome', [nome1, nome2]);
+    expect(count).toBe(2);
+  });
+});

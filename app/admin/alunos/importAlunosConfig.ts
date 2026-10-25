@@ -1,11 +1,16 @@
+// Import relativo (não "@/lib/username"): este ficheiro é importado
+// dinamicamente por ~/Desktop/gestao-centros/validar-excel.mjs com Node puro
+// (sem o bundler do Next.js, que é o único sítio que resolve o alias "@/*").
+import { gerarUsernameBase, normalizarUsernameManual } from '../../../lib/username.ts';
+
 export const CABECALHOS = [
   'Nome*',
   'Data Nascimento*',
-  'Email Encarregado*',
-  'Email de Login do Aluno',
-  'Telefone Encarregado*',
   'Ano Escolar*',
   'Mensalidade Base*',
+  'Nome de Utilizador do Aluno',
+  'Email Encarregado',
+  'Telefone Encarregado',
   'Telemovel Aluno',
   'Dias Semana',
   'Saida Autorizada',
@@ -17,11 +22,11 @@ export const CABECALHOS = [
 export const LINHA_EXEMPLO = [
   'Maria Silva',
   '15/03/2015',
-  'mae@gmail.com',
-  '',
-  '912345678',
   '4',
   '79',
+  '',
+  'mae@gmail.com',
+  '912345678',
   '961234567',
   '1,3,5',
   'sim',
@@ -34,10 +39,10 @@ export interface AlunoImportado {
   nome: string;
   data_nascimento: string | null;
   email_encarregado: string | null;
-  // Opcional — só é preciso quando dois irmãos partilham o mesmo email do
-  // encarregado, já que esse é o email de login por defeito (ver
-  // emailLoginDoAluno() abaixo). Sem valor aqui, cai sempre no do encarregado.
-  email_login: string | null;
+  // Opcional — o aluno nunca dá email (proteção de dados); sem valor aqui, o
+  // nome de utilizador é gerado automaticamente a partir do nome (ver
+  // nomeUtilizadorDoAluno() abaixo e lib/username.ts).
+  nome_utilizador: string | null;
   telefone_encarregado: string | null;
   ano_escolar: number | null;
   mensalidade_base: number | null;
@@ -49,8 +54,26 @@ export interface AlunoImportado {
   morada_encarregado: string | null;
 }
 
-export function emailLoginDoAluno(dados: AlunoImportado): string | null {
-  return dados.email_login || dados.email_encarregado;
+// Base do nome de utilizador (antes de qualquer sufixo de desambiguação em
+// colisão, que só o servidor decide com uma tentativa real contra o Auth) —
+// usada na pré-visualização e na deteção de colisões dentro do próprio
+// ficheiro. A criação em si (app/api/admin/criar-aluno) faz exatamente a
+// mesma normalização a partir dos mesmos dados.
+export function nomeUtilizadorDoAluno(dados: AlunoImportado): string {
+  if (dados.nome_utilizador) {
+    const normalizado = normalizarUsernameManual(dados.nome_utilizador);
+    if (normalizado) return normalizado;
+  }
+  return gerarUsernameBase(dados.nome);
+}
+
+// Chave de identidade para idempotência da importação: duas linhas (ou duas
+// importações do mesmo ficheiro) com o mesmo nome e data de nascimento são
+// tratadas como o mesmo aluno — não se cria uma segunda conta. Não usa o
+// nome de utilizador para esta deteção porque esse é só o login, não a
+// identidade da pessoa.
+export function chaveIdentidadeAluno(nome: string, dataNascimento: string | null): string {
+  return `${nome.trim().toLowerCase()}|${dataNascimento ?? ''}`;
 }
 
 export interface LinhaImportacao {
@@ -135,7 +158,7 @@ export function mapearLinha(linhaBruta: Record<string, unknown>, linhaExcel: num
     nome: String(linhaBruta['Nome*'] ?? linhaBruta['Nome'] ?? '').trim(),
     data_nascimento: paraDataNascimento(linhaBruta['Data Nascimento*'] ?? linhaBruta['Data Nascimento']),
     email_encarregado: paraTextoOuNull(linhaBruta['Email Encarregado*'] ?? linhaBruta['Email Encarregado'])?.toLowerCase() ?? null,
-    email_login: paraTextoOuNull(linhaBruta['Email de Login do Aluno'])?.toLowerCase() ?? null,
+    nome_utilizador: paraTextoOuNull(linhaBruta['Nome de Utilizador do Aluno']),
     telefone_encarregado: paraTextoOuNull(linhaBruta['Telefone Encarregado*'] ?? linhaBruta['Telefone Encarregado']),
     ano_escolar: paraAnoEscolarOuNull(linhaBruta['Ano Escolar*'] ?? linhaBruta['Ano Escolar']),
     mensalidade_base: paraNumeroOuNull(linhaBruta['Mensalidade Base*'] ?? linhaBruta['Mensalidade Base']),
@@ -150,10 +173,9 @@ export function mapearLinha(linhaBruta: Record<string, unknown>, linhaExcel: num
   const erros: string[] = [];
   if (!dados.nome) erros.push('Nome em falta');
   if (!dados.data_nascimento) erros.push('Data de Nascimento em falta ou inválida (usa DD/MM/AAAA)');
-  if (!dados.email_encarregado) erros.push('Email do Encarregado em falta');
-  else if (!REGEX_EMAIL.test(dados.email_encarregado)) erros.push('Email do Encarregado inválido');
-  if (dados.email_login && !REGEX_EMAIL.test(dados.email_login)) erros.push('Email de Login do Aluno inválido');
-  if (!dados.telefone_encarregado) erros.push('Telefone do Encarregado em falta');
+  // Email e telefone do encarregado são agora opcionais — só contacto para
+  // extratos, já não servem de login (o aluno nunca dá email).
+  if (dados.email_encarregado && !REGEX_EMAIL.test(dados.email_encarregado)) erros.push('Email do Encarregado inválido');
   if (dados.ano_escolar === null) erros.push('Ano Escolar em falta ou inválido (1 a 12)');
 
   return { linhaExcel, dados, erros };

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { X, Loader2, UploadCloud, AlertTriangle, CheckCircle2, Copy, KeyRound } from 'lucide-react';
-import { mapearLinha, emailLoginDoAluno, LinhaImportacao } from './importAlunosConfig';
+import { mapearLinha, nomeUtilizadorDoAluno, chaveIdentidadeAluno, LinhaImportacao } from './importAlunosConfig';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 
 interface ResultadoImportacao {
@@ -14,7 +14,7 @@ interface ResultadoImportacao {
 
 interface AcessoGerado {
   nome: string;
-  email: string;
+  nomeUtilizador: string;
   password: string;
   codigo: string | null;
 }
@@ -92,49 +92,37 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
         }))
       );
     } else {
-      // Irmãos com o mesmo email do encarregado colidem no login, porque é
-      // esse o email de acesso por defeito — deteta duplicados dentro do
-      // próprio ficheiro e emails já em uso, antes de tentar criar, em vez
-      // de deixar o erro cru da Auth chegar ao admin.
-      const { data: existentes } = await supabase.from('alunos').select('email').eq('centro_id', centro_id);
-      const emailsExistentes = new Set((existentes || []).map((a: any) => a.email?.toLowerCase()));
-
-      const contagemNoFicheiro = new Map<string, number>();
-      linhasValidas.forEach((l) => {
-        const email = emailLoginDoAluno(l.dados);
-        if (email) contagemNoFicheiro.set(email, (contagemNoFicheiro.get(email) || 0) + 1);
-      });
+      // Idempotência: duas importações do mesmo ficheiro (ou duas linhas do
+      // mesmo ficheiro) com o mesmo nome e data de nascimento são o mesmo
+      // aluno — não se cria uma segunda conta. O nome de utilizador já não
+      // serve para esta deteção (colisões de login resolvem-se sozinhas,
+      // com sufixo automático, em app/api/admin/criar-aluno).
+      const { data: existentes } = await supabase.from('alunos').select('nome, data_nascimento').eq('centro_id', centro_id);
+      const chavesExistentes = new Set((existentes || []).map((a: any) => chaveIdentidadeAluno(a.nome, a.data_nascimento)));
+      const chavesVistasNesteFicheiro = new Set<string>();
 
       for (let i = 0; i < linhasValidas.length; i++) {
         const linha = linhasValidas[i];
-        const emailLogin = emailLoginDoAluno(linha.dados)!;
+        const chave = chaveIdentidadeAluno(linha.dados.nome, linha.dados.data_nascimento);
 
-        if ((contagemNoFicheiro.get(emailLogin) || 0) > 1) {
+        if (chavesExistentes.has(chave) || chavesVistasNesteFicheiro.has(chave)) {
           resultadosIgnorados.push({
             linhaExcel: linha.linhaExcel,
             nome: linha.dados.nome,
-            motivo: 'Email de login já usado noutra linha deste ficheiro — indica outro na coluna "Email de Login do Aluno"',
+            motivo: 'Já existe um aluno com este nome e data de nascimento — não foi reimportado.',
           });
           setProgresso(i + 1);
           continue;
         }
-        if (emailsExistentes.has(emailLogin)) {
-          resultadosIgnorados.push({
-            linhaExcel: linha.linhaExcel,
-            nome: linha.dados.nome,
-            motivo: 'Email de login já está em uso por outro aluno — indica outro na coluna "Email de Login do Aluno"',
-          });
-          setProgresso(i + 1);
-          continue;
-        }
+        chavesVistasNesteFicheiro.add(chave);
 
         try {
           const res = await fetch('/api/admin/criar-aluno', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              email: emailLogin,
               nome: linha.dados.nome,
+              nome_utilizador_override: linha.dados.nome_utilizador || undefined,
               data_nascimento: linha.dados.data_nascimento,
               telefone_encarregado: linha.dados.telefone_encarregado,
               email_encarregado: linha.dados.email_encarregado,
@@ -162,7 +150,7 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
             totalCriados++;
             acessos.push({
               nome: linha.dados.nome,
-              email: emailLogin,
+              nomeUtilizador: body.nomeUtilizador,
               password: body.password,
               codigo: body.codigo ?? null,
             });
@@ -186,9 +174,10 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
   };
 
   const handleCopiarTudo = async () => {
-    const texto = acessosGerados
-      .map((a) => `${a.nome}\t${a.email}\t${a.password}\t${a.codigo ?? 'SEM CÓDIGO — gerar na ficha'}`)
-      .join('\n');
+    const texto = [
+      'Aluno\tUtilizador\tPalavra-passe\tCódigo',
+      ...acessosGerados.map((a) => `${a.nome}\t${a.nomeUtilizador}\t${a.password}\t${a.codigo ?? 'SEM CÓDIGO — gerar na ficha'}`),
+    ].join('\n');
     try {
       await navigator.clipboard.writeText(texto);
       setCopiadoTudo(true);
@@ -255,6 +244,7 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
                       <th className="p-3 text-left">Linha</th>
                       <th className="p-3 text-left">Nome</th>
                       <th className="p-3 text-left">Data Nasc.</th>
+                      <th className="p-3 text-left">Utilizador Previsto</th>
                       <th className="p-3 text-left">Email Encarregado</th>
                       <th className="p-3 text-left">Ano</th>
                       <th className="p-3 text-left">Mensalidade</th>
@@ -270,6 +260,7 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
                         <td className="p-3 font-mono">{l.linhaExcel}</td>
                         <td className="p-3 font-bold">{l.dados.nome || '—'}</td>
                         <td className="p-3">{l.dados.data_nascimento || '—'}</td>
+                        <td className="p-3 font-mono">{l.erros.length === 0 ? nomeUtilizadorDoAluno(l.dados) : '—'}</td>
                         <td className="p-3">{l.dados.email_encarregado || '—'}</td>
                         <td className="p-3">{l.dados.ano_escolar ?? 'null'}</td>
                         <td className="p-3">{l.dados.mensalidade_base ?? 'null'}</td>
@@ -313,9 +304,9 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
                     <table className="w-full text-sm">
                       <thead className="bg-page text-muted uppercase text-[10px] font-black tracking-widest">
                         <tr>
-                          <th className="p-3 text-left">Nome</th>
-                          <th className="p-3 text-left">Email de Login</th>
-                          <th className="p-3 text-left">Password</th>
+                          <th className="p-3 text-left">Aluno</th>
+                          <th className="p-3 text-left">Utilizador</th>
+                          <th className="p-3 text-left">Palavra-passe</th>
                           <th className="p-3 text-left">Código</th>
                         </tr>
                       </thead>
@@ -323,7 +314,7 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
                         {acessosGerados.map((a, i) => (
                           <tr key={i} className="border-t border-border text-secondary">
                             <td className="p-3 font-bold">{a.nome}</td>
-                            <td className="p-3">{a.email}</td>
+                            <td className="p-3 font-mono">{a.nomeUtilizador}</td>
                             <td className="p-3 font-mono">{a.password}</td>
                             <td className="p-3 font-mono">
                               {a.codigo ?? <span className="text-warning">sem código — gerar na ficha</span>}

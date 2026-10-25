@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
 import { RECUPERAR_POR_EMAIL_ATIVO } from '@/lib/features';
+import { identificadorParaEmailLogin } from '@/lib/username';
 
 // Mesmos três roles que o middleware reconhece (middleware.ts). Se o
 // app_metadata.role da conta não for nenhum destes, o middleware devolve
@@ -15,7 +16,7 @@ const ROLES_RECONHECIDOS = ['admin', 'professor', 'secretaria'];
 
 export default function LoginPage() {
   const { toast, showError } = useStatusToast();
-  const [email, setEmail] = useState('');
+  const [identificador, setIdentificador] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -26,6 +27,11 @@ export default function LoginPage() {
     setLoading(true);
     setLoginError(null);
 
+    // Alunos/famílias entram com um nome de utilizador (sem "@"), nunca com
+    // email — ganha o sufixo de fachada antes de chegar ao Auth. Staff
+    // continua a escrever o email completo, sem alteração de comportamento.
+    const email = identificadorParaEmailLogin(identificador);
+
     // 1. Tentar Autenticação (Verificar se a password está correta)
     const { data: { user }, error } = await supabase.auth.signInWithPassword({
       email,
@@ -33,7 +39,7 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setLoginError('Credenciais inválidas. Verifica o email e a password.');
+      setLoginError('Credenciais inválidas. Verifica o utilizador/email e a password.');
       setLoading(false);
       return;
     }
@@ -88,15 +94,20 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-xs font-bold text-muted uppercase ml-1">Email</label>
+            <label className="text-xs font-bold text-muted uppercase ml-1">Email ou nome de utilizador</label>
             <div className="relative">
               <Mail className="absolute left-4 top-3.5 text-muted" size={18} />
               <input
-                type="email"
+                type="text"
+                name="identificador"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="exemplo@centro.pt"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={identificador}
+                onChange={(e) => setIdentificador(e.target.value)}
+                placeholder="maria.costa ou exemplo@centro.pt"
                 className="w-full bg-page border border-border focus:border-accent text-primary pl-12 pr-4 py-3 rounded-xl outline-none transition-all"
               />
             </div>

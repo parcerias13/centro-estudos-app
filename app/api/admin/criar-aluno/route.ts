@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { randomInt } from 'node:crypto'
+import { gerarUsernameBase, normalizarUsernameManual, candidatoUsername, emailFachada, MAX_TENTATIVAS_USERNAME } from '@/lib/username'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -63,13 +64,13 @@ export async function POST(req: Request) {
   }
 
   const {
-    email, nome, data_nascimento, telefone_encarregado,
+    nome, nome_utilizador_override, data_nascimento, telefone_encarregado,
     email_encarregado, nif_encarregado, morada_encarregado, telemovel_aluno, ano_escolar, mensalidade_base,
     saida_autorizada, consentimento_ia, usa_app, avatar_url,
     dias_selecionados,
   } = await req.json()
 
-  if (!email || !nome || !data_nascimento) {
+  if (!nome || !data_nascimento) {
     return NextResponse.json({ error: 'Campos obrigatórios em falta.' }, { status: 400 })
   }
 
@@ -83,18 +84,50 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Ano Escolar em falta ou inválido (1 a 12).' }, { status: 400 })
   }
 
-  // Criar utilizador sem enviar email de confirmação e sem afetar a sessão atual
-  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-  })
+  // O aluno nunca dá o email — entra com um nome de utilizador (proteção de
+  // dados). Gera-se aqui a partir do nome (ou do override do admin/import) e
+  // compõe-se um email de fachada (@utilizador.invalid) só para satisfazer o
+  // Supabase Auth, que exige email. Em colisão (nome de utilizador já usado
+  // por qualquer aluno, de qualquer centro, porque o login é global),
+  // tenta-se 2, 3, ... até MAX_TENTATIVAS_USERNAME — nunca confiando num
+  // email vindo do cliente.
+  const baseUsername = nome_utilizador_override
+    ? normalizarUsernameManual(String(nome_utilizador_override))
+    : gerarUsernameBase(nome)
 
-  if (authError) {
-    return NextResponse.json({ error: `Erro Auth: ${authError.message}` }, { status: 500 })
+  if (!baseUsername) {
+    return NextResponse.json({ error: 'Não foi possível gerar um nome de utilizador a partir do nome indicado.' }, { status: 400 })
   }
 
-  const novoId = authData.user.id
+  let novoId: string | null = null
+  let nomeUtilizadorFinal: string | null = null
+  let emailFinal: string | null = null
+
+  for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_USERNAME; tentativa++) {
+    const candidato = candidatoUsername(baseUsername, tentativa)
+    const emailCandidato = emailFachada(candidato)
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email: emailCandidato,
+      password,
+      email_confirm: true,
+    })
+
+    if (!authError) {
+      novoId = authData.user.id
+      nomeUtilizadorFinal = candidato
+      emailFinal = emailCandidato
+      break
+    }
+
+    if (authError.code !== 'email_exists') {
+      return NextResponse.json({ error: `Erro Auth: ${authError.message}` }, { status: 500 })
+    }
+    // email_exists: nome de utilizador já em uso — tenta o próximo candidato.
+  }
+
+  if (!novoId || !nomeUtilizadorFinal || !emailFinal) {
+    return NextResponse.json({ error: 'Não foi possível gerar um nome de utilizador disponível. Tenta um nome de utilizador diferente.' }, { status: 409 })
+  }
 
   const { error: metaError } = await supabaseAdmin.auth.admin.updateUserById(novoId, {
     app_metadata: { centro_id },
@@ -108,7 +141,7 @@ export async function POST(req: Request) {
   const { error: dbError } = await supabaseAdmin.from('alunos').insert({
     id: novoId,
     nome,
-    email,
+    email: emailFinal,
     data_nascimento,
     telefone_encarregado,
     email_encarregado,
@@ -154,6 +187,7 @@ export async function POST(req: Request) {
     {
       ok: true,
       alunoId: novoId,
+      nomeUtilizador: nomeUtilizadorFinal,
       password,
       codigo: codigoError ? null : codigo,
       avisoCodigo: codigoError

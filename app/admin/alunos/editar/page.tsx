@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { useBloqueioProfessor } from '@/lib/bloqueioProfessor';
+import { ehEmailFachada, usernameSemSufixo } from '@/lib/username';
 import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign, KeyRound, Eye, EyeOff, RefreshCw, FileText, MapPin, School, Users2, Trash2, Copy } from 'lucide-react';
 
 function EditarAlunoContent() {
@@ -371,10 +372,17 @@ function EditarAlunoContent() {
               <input type="date" required value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all text-primary" />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase text-muted tracking-widest">Email de Acesso (Aluno)</label>
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all" />
-            </div>
+            {ehEmailFachada(email) ? (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-muted tracking-widest">Nome de Utilizador</label>
+                <p className="w-full bg-page border border-border p-4 rounded-xl text-secondary font-mono">{usernameSemSufixo(email)}</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-muted tracking-widest">Email de Acesso (Aluno)</label>
+                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all" />
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase text-muted tracking-widest">Password</label>
