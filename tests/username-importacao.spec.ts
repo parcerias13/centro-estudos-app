@@ -98,6 +98,7 @@ test.describe('Importação de alunos por Excel — nome de utilizador', () => {
     admin = { email, password };
 
     context = await browser.newContext();
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     page = await context.newPage();
     page.on('dialog', (dialog) => dialog.accept());
     await loginUI(page, admin.email, admin.password);
@@ -107,11 +108,13 @@ test.describe('Importação de alunos por Excel — nome de utilizador', () => {
   test.afterAll(async () => {
     // Apaga também os alunos criados pelos próprios testes (via UI, não têm
     // push individual na limpeza) antes das contas de staff/config_centro.
-    await supabaseAdmin.from('alunos').delete().eq('centro_id', centroId);
-    const { data: alunosRestantes } = await supabaseAdmin.from('alunos').select('id').eq('centro_id', centroId);
-    for (const a of alunosRestantes || []) {
+    // Lê os ids ANTES de apagar a linha de alunos — ao contrário, a conta de
+    // Auth nunca seria apagada (a query por centro_id já não devolve nada).
+    const { data: alunosParaApagar } = await supabaseAdmin.from('alunos').select('id').eq('centro_id', centroId);
+    for (const a of alunosParaApagar || []) {
       await supabaseAdmin.auth.admin.deleteUser(a.id).catch(() => {});
     }
+    await supabaseAdmin.from('alunos').delete().eq('centro_id', centroId);
     await context?.close();
     for (const passo of [...limpeza].reverse()) {
       try {
@@ -170,5 +173,99 @@ test.describe('Importação de alunos por Excel — nome de utilizador', () => {
       .eq('centro_id', centroId)
       .in('nome', [nome1, nome2]);
     expect(count).toBe(2);
+  });
+
+  test('nomes repetidos: aviso na pré-visualização e sufixo automático na criação', async () => {
+    const nomeComum = 'Maria Costa';
+    const data1 = '01/02/2011';
+    const data2 = '15/06/2013';
+    const ficheiro = await gerarXlsx([
+      [nomeComum, data1, 5, 55, '', 'mae.repetido1@example.invalid', '912000005', '', '', 'sim', 'sim', '', ''],
+      [nomeComum, data2, 6, 60, '', 'mae.repetido2@example.invalid', '912000006', '', '', 'sim', 'sim', '', ''],
+    ]);
+
+    await page.goto(`${BASE_URL}/admin/alunos`, { waitUntil: 'networkidle' });
+    await page.setInputFiles('input[type="file"]', ficheiro);
+    await expect(page.getByRole('button', { name: /confirmar importação/i })).toBeVisible({ timeout: 15_000 });
+
+    // Aviso amarelo em cada uma das duas linhas homónimas, não bloqueia.
+    const aviso = page.getByText(/Nome repetido: este aluno ficará com um número no fim/i);
+    await expect(aviso).toHaveCount(2);
+
+    await page.getByRole('button', { name: /confirmar importação/i }).click();
+    await expect(page.getByText(/aluno\(s\) criado\(s\) com sucesso/i)).toBeVisible({ timeout: 20_000 });
+
+    const texto = await page.evaluate(() => document.body.innerText);
+    expect(texto).toMatch(/2 aluno\(s\) criado\(s\) com sucesso/);
+    expect(texto).not.toMatch(/linha\(s\) ignorada\(s\)/);
+
+    // Relatório mostra as 6 colunas (Aluno, Ano, Nascimento, Utilizador,
+    // Palavra-passe, Código — o cabeçalho da tabela é text-transform:
+    // uppercase, e innerText reflete o texto tal como é renderizado) com a
+    // data no formato DD/MM/AAAA.
+    expect(texto).toContain('ALUNO');
+    expect(texto).toContain('NASCIMENTO');
+    expect(texto).toContain(data1);
+    expect(texto).toContain(data2);
+    expect(texto).toContain('maria.costa');
+    expect(texto).toContain('maria.costa2');
+
+    // "Copiar tudo" tem a linha de cabeçalho e as colunas certas, por tabulação.
+    await page.getByRole('button', { name: /copiar tudo/i }).click();
+    const copiado = await page.evaluate(() => navigator.clipboard.readText());
+    const linhasCopiadas = copiado.split('\n');
+    expect(linhasCopiadas[0]).toBe('Aluno\tAno\tNascimento\tUtilizador\tPalavra-passe\tCódigo');
+    expect(linhasCopiadas).toHaveLength(3);
+    expect(linhasCopiadas[1]).toMatch(new RegExp(`^${nomeComum}\\t5\\t${data1}\\tmaria\\.costa\\t`));
+    expect(linhasCopiadas[2]).toMatch(new RegExp(`^${nomeComum}\\t6\\t${data2}\\tmaria\\.costa2\\t`));
+
+    await page.getByRole('button', { name: /concluir/i }).click();
+
+    const { data: alunos } = await supabaseAdmin
+      .from('alunos')
+      .select('email, data_nascimento')
+      .eq('centro_id', centroId)
+      .eq('nome', nomeComum);
+    const porData = new Map((alunos || []).map((a: any) => [a.data_nascimento, a.email]));
+    expect(porData.get('2011-02-01')).toBe('maria.costa@utilizador.invalid');
+    expect(porData.get('2013-06-15')).toBe('maria.costa2@utilizador.invalid');
+  });
+
+  test('coluna de Nome de Utilizador preenchida à mão para os dois: sem aviso, usa os valores indicados', async () => {
+    const nomeComum = 'Maria Costa';
+    // Em minúsculas: o servidor normaliza o override com
+    // normalizarUsernameManual() (lib/username.ts), que inclui toLowerCase().
+    const utilizador1 = `maria.turmaa.${SUFIXO}`;
+    const utilizador2 = `maria.turmab.${SUFIXO}`;
+    const ficheiro = await gerarXlsx([
+      [nomeComum, '03/03/2012', 5, 55, utilizador1, 'mae.manual1@example.invalid', '912000007', '', '', 'sim', 'sim', '', ''],
+      [nomeComum, '04/04/2012', 5, 55, utilizador2, 'mae.manual2@example.invalid', '912000008', '', '', 'sim', 'sim', '', ''],
+    ]);
+
+    await page.goto(`${BASE_URL}/admin/alunos`, { waitUntil: 'networkidle' });
+    await page.setInputFiles('input[type="file"]', ficheiro);
+    await expect(page.getByRole('button', { name: /confirmar importação/i })).toBeVisible({ timeout: 15_000 });
+
+    // Utilizadores já distintos (escolhidos à mão) — sem aviso de repetição.
+    await expect(page.getByText(/Nome repetido: este aluno ficará com um número no fim/i)).toHaveCount(0);
+
+    await page.getByRole('button', { name: /confirmar importação/i }).click();
+    await expect(page.getByText(/aluno\(s\) criado\(s\) com sucesso/i)).toBeVisible({ timeout: 20_000 });
+    const texto = await page.evaluate(() => document.body.innerText);
+    expect(texto).toMatch(/2 aluno\(s\) criado\(s\) com sucesso/);
+    expect(texto).toContain(utilizador1);
+    expect(texto).toContain(utilizador2);
+
+    await page.getByRole('button', { name: /concluir/i }).click();
+
+    const { data: alunos } = await supabaseAdmin
+      .from('alunos')
+      .select('email, data_nascimento')
+      .eq('centro_id', centroId)
+      .eq('nome', nomeComum)
+      .in('data_nascimento', ['2012-03-03', '2012-04-04']);
+    const porData = new Map((alunos || []).map((a: any) => [a.data_nascimento, a.email]));
+    expect(porData.get('2012-03-03')).toBe(`${utilizador1}@utilizador.invalid`);
+    expect(porData.get('2012-04-04')).toBe(`${utilizador2}@utilizador.invalid`);
   });
 });

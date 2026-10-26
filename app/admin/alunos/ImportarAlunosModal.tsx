@@ -14,9 +14,18 @@ interface ResultadoImportacao {
 
 interface AcessoGerado {
   nome: string;
+  anoEscolar: number | null;
+  dataNascimento: string | null;
   nomeUtilizador: string;
   password: string;
   codigo: string | null;
+}
+
+// "2026-03-15" -> "15/03/2026" — só para mostrar (a app guarda sempre ISO).
+function paraDataPT(iso: string | null): string {
+  if (!iso) return '—';
+  const [ano, mes, dia] = iso.split('-');
+  return `${dia}/${mes}/${ano}`;
 }
 
 interface Props {
@@ -150,6 +159,8 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
             totalCriados++;
             acessos.push({
               nome: linha.dados.nome,
+              anoEscolar: linha.dados.ano_escolar,
+              dataNascimento: linha.dados.data_nascimento,
               nomeUtilizador: body.nomeUtilizador,
               password: body.password,
               codigo: body.codigo ?? null,
@@ -175,8 +186,8 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
 
   const handleCopiarTudo = async () => {
     const texto = [
-      'Aluno\tUtilizador\tPalavra-passe\tCódigo',
-      ...acessosGerados.map((a) => `${a.nome}\t${a.nomeUtilizador}\t${a.password}\t${a.codigo ?? 'SEM CÓDIGO — gerar na ficha'}`),
+      'Aluno\tAno\tNascimento\tUtilizador\tPalavra-passe\tCódigo',
+      ...acessosGerados.map((a) => `${a.nome}\t${a.anoEscolar ?? ''}\t${paraDataPT(a.dataNascimento)}\t${a.nomeUtilizador}\t${a.password}\t${a.codigo ?? 'SEM CÓDIGO — gerar na ficha'}`),
     ].join('\n');
     try {
       await navigator.clipboard.writeText(texto);
@@ -237,6 +248,17 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
                 <span className="text-success">{linhasValidas.length} válidas</span>
                 <span className="text-danger">{linhasComErro.length} com erro</span>
               </div>
+              {(() => {
+                // Nomes de utilizador previstos repetidos dentro do próprio
+                // ficheiro — não bloqueia (resolve-se com sufixo automático
+                // em app/api/admin/criar-aluno), mas avisa para não trocar o
+                // utilizador entre dois alunos homónimos.
+                const contagemUtilizadorPrevisto = new Map<string, number>();
+                linhasValidas.forEach((l) => {
+                  const u = nomeUtilizadorDoAluno(l.dados);
+                  contagemUtilizadorPrevisto.set(u, (contagemUtilizadorPrevisto.get(u) || 0) + 1);
+                });
+                return (
               <div className="overflow-x-auto rounded-xl border border-border">
                 <table className="w-full text-sm">
                   <thead className="bg-page text-muted uppercase text-[10px] font-black tracking-widest">
@@ -264,12 +286,22 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
                         <td className="p-3">{l.dados.email_encarregado || '—'}</td>
                         <td className="p-3">{l.dados.ano_escolar ?? 'null'}</td>
                         <td className="p-3">{l.dados.mensalidade_base ?? 'null'}</td>
-                        <td className="p-3 text-xs">{l.erros.join('; ')}</td>
+                        <td className="p-3 text-xs">
+                          {l.erros.length > 0 ? (
+                            l.erros.join('; ')
+                          ) : (contagemUtilizadorPrevisto.get(nomeUtilizadorDoAluno(l.dados)) ?? 0) > 1 ? (
+                            <span className="text-warning">
+                              Nome repetido: este aluno ficará com um número no fim. Se preferires, indica outro na coluna Nome de Utilizador do Aluno
+                            </span>
+                          ) : null}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+                );
+              })()}
             </>
           )}
 
@@ -305,6 +337,8 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
                       <thead className="bg-page text-muted uppercase text-[10px] font-black tracking-widest">
                         <tr>
                           <th className="p-3 text-left">Aluno</th>
+                          <th className="p-3 text-left">Ano</th>
+                          <th className="p-3 text-left">Nascimento</th>
                           <th className="p-3 text-left">Utilizador</th>
                           <th className="p-3 text-left">Palavra-passe</th>
                           <th className="p-3 text-left">Código</th>
@@ -314,6 +348,8 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
                         {acessosGerados.map((a, i) => (
                           <tr key={i} className="border-t border-border text-secondary">
                             <td className="p-3 font-bold">{a.nome}</td>
+                            <td className="p-3">{a.anoEscolar ?? '—'}</td>
+                            <td className="p-3">{paraDataPT(a.dataNascimento)}</td>
                             <td className="p-3 font-mono">{a.nomeUtilizador}</td>
                             <td className="p-3 font-mono">{a.password}</td>
                             <td className="p-3 font-mono">
