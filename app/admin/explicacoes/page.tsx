@@ -13,6 +13,8 @@ import {
 import { startOfWeek, endOfWeek, addWeeks, addDays, eachDayOfInterval, format, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { getHojeLisboa } from '@/lib/dataLisboa';
+import { mesParaData, ultimoDiaDoMes } from '@/lib/custos';
+import { tipoNoMes } from '@/lib/remuneracaoProfessores';
 import { sanitizarPedidoExplicacao, type PedidoExplicacaoSeguro } from '@/lib/formatoMensagens';
 
 // «Nome · 7.º ano» — mesmo rótulo em toda a página (lista de alunos da
@@ -125,6 +127,75 @@ function ExplicacoesPageContent() {
   // destaque + scroll até ao grupo) — nunca decide o que é "hoje" (isso
   // continua a ser calculado com getHojeLisboa(), mais abaixo).
   const [diaFocoISO, setDiaFocoISO] = useState<string | null>(null);
+
+  // Se o PRÓPRIO professor autenticado é de salário no mês civil atual —
+  // via RPC security definer sou_salario_no_mes (nunca lê periodos_valor_
+  // professor diretamente, isso é RLS admin-only). Esconde "Trabalhei Hoje
+  // — Os Meus Dias" (abaixo) e, no detalhe de uma sessão, "Último valor
+  // calculado" (ver DetalheExplicacaoModal). Falha na chamada = assume
+  // variável (não esconde nada) e avisa com o StatusToast — nunca esconde
+  // por causa de um erro de rede.
+  const [souSalarioNoMesAtual, setSouSalarioNoMesAtual] = useState(false);
+
+  const verificarSouSalarioNoMes = useCallback(async () => {
+    if (role !== 'professor') return;
+    const primeiroDiaDoMes = mesParaData(getHojeLisboa().slice(0, 7));
+    const { data, error } = await supabase.rpc('sou_salario_no_mes', { p_mes: primeiroDiaDoMes });
+    if (error) {
+      showError('Erro ao verificar o tipo de remuneração: ' + error.message);
+      setSouSalarioNoMesAtual(false);
+      return;
+    }
+    setSouSalarioNoMesAtual(!!data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
+
+  useEffect(() => { verificarSouSalarioNoMes(); }, [verificarSouSalarioNoMes]);
+
+  // "Os meus dias" (só professor) — dias de trabalho do mês civil atual,
+  // nunca em euros.
+  const [meusDias, setMeusDias] = useState<Record<string, number>>({});
+
+  const carregarMeusDias = useCallback(async () => {
+    if (role !== 'professor' || !selectedProfessorId) return;
+    const mesAtualStr = getHojeLisboa().slice(0, 7);
+    const { data, error } = await supabase
+      .from('dias_trabalho_professor')
+      .select('data, fracao')
+      .eq('professor_id', selectedProfessorId)
+      .gte('data', mesParaData(mesAtualStr))
+      .lte('data', ultimoDiaDoMes(mesAtualStr))
+      .order('data');
+    if (error) {
+      showError('Erro ao carregar os meus dias: ' + error.message);
+      return;
+    }
+    const mapa: Record<string, number> = {};
+    (data || []).forEach((d: any) => { mapa[d.data] = Number(d.fracao); });
+    setMeusDias(mapa);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, selectedProfessorId]);
+
+  useEffect(() => { carregarMeusDias(); }, [carregarMeusDias]);
+
+  const handleMarcarMeuDia = async (dataISO: string, fracao: 0.5 | 1 | null) => {
+    if (!centroId || !selectedProfessorId) return;
+    if (fracao === null) {
+      const { error } = await supabase
+        .from('dias_trabalho_professor')
+        .delete()
+        .eq('professor_id', selectedProfessorId)
+        .eq('data', dataISO);
+      if (error) { showError(error.message); return; }
+    } else {
+      // Nunca enviar marcado_por — o gatilho preenche-o no servidor.
+      const { error } = await supabase
+        .from('dias_trabalho_professor')
+        .upsert({ centro_id: centroId, professor_id: selectedProfessorId, data: dataISO, fracao }, { onConflict: 'professor_id,data' });
+      if (error) { showError(error.message); return; }
+    }
+    carregarMeusDias();
+  };
 
   const carregarPedidosPendentes = useCallback(async (centro_id: string) => {
     const { data, error } = await supabase
@@ -333,6 +404,66 @@ function ExplicacoesPageContent() {
         </div>
       </div>
 
+      {role === 'professor' && !souSalarioNoMesAtual && (() => {
+        const hojeISO = getHojeLisboa();
+        const ontemISO = format(addDays(new Date(`${hojeISO}T00:00:00`), -1), 'yyyy-MM-dd');
+        const somaMeusDias = Object.values(meusDias).reduce((acc, f) => acc + f, 0);
+        const linhaDia = (label: string, dataISO: string) => {
+          const fracao = meusDias[dataISO];
+          return (
+            <div key={dataISO} className="bg-page border border-border rounded-2xl p-4">
+              <p className="text-[10px] font-black uppercase text-muted mb-2">{label}</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleMarcarMeuDia(dataISO, fracao === 0.5 ? null : 0.5)}
+                  className={`flex-1 py-2 rounded-xl text-[11px] font-black uppercase tracking-wide border transition-all ${
+                    fracao === 0.5 ? 'bg-accent text-on-accent border-accent' : 'bg-surface border-border text-secondary hover:border-accent/50'
+                  }`}
+                >
+                  Meio Dia
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMarcarMeuDia(dataISO, fracao === 1 ? null : 1)}
+                  className={`flex-1 py-2 rounded-xl text-[11px] font-black uppercase tracking-wide border transition-all ${
+                    fracao === 1 ? 'bg-accent text-on-accent border-accent' : 'bg-surface border-border text-secondary hover:border-accent/50'
+                  }`}
+                >
+                  Dia Inteiro
+                </button>
+              </div>
+            </div>
+          );
+        };
+        return (
+          <div data-testid="meus-dias-trabalho" className="bg-surface border border-border rounded-3xl p-6 mb-8">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <h2 className="text-xs font-black uppercase tracking-widest text-muted">
+                Trabalhei Hoje — Os Meus Dias ({format(new Date(`${hojeISO}T00:00:00`), 'MMMM yyyy', { locale: pt })})
+              </h2>
+              <span className="text-xs font-bold text-secondary">{somaMeusDias} {somaMeusDias === 1 ? 'dia' : 'dias'} este mês</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              {linhaDia('Hoje', hojeISO)}
+              {linhaDia('Ontem', ontemISO)}
+            </div>
+            {Object.keys(meusDias).length > 0 && (
+              <div className="space-y-1.5">
+                {Object.entries(meusDias)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([data, fracao]) => (
+                    <div key={data} className="flex items-center justify-between text-xs bg-page border border-border/60 rounded-lg px-3 py-2">
+                      <span className="text-secondary font-bold">{format(new Date(`${data}T00:00:00`), "d 'de' MMMM", { locale: pt })}</span>
+                      <span className="font-bold text-primary">{fracao === 1 ? 'Dia inteiro' : 'Meio dia'}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {role === 'admin' && pedidosPendentes.length > 0 && (
         <div className="bg-warning-bg border border-warning/20 rounded-2xl mb-8 overflow-hidden">
           <button
@@ -534,6 +665,7 @@ function ExplicacoesPageContent() {
         <DetalheExplicacaoModal
           sessao={detalheSessao}
           role={role}
+          souSalarioNoMesAtual={souSalarioNoMesAtual}
           onClose={() => setDetalheSessao(null)}
           onSaved={handleSessaoAtualizada}
           onDeleted={handleSessaoApagada}
@@ -579,12 +711,38 @@ export default function ExplicacoesPage() {
 }
 
 // --- PAINEL DE DETALHE: toggle dado, horas, notas, apagar (só se ainda não dada) ---
-function DetalheExplicacaoModal({ sessao, role, onClose, onSaved, onDeleted, showError, showSuccess }: any) {
+function DetalheExplicacaoModal({ sessao, role, souSalarioNoMesAtual, onClose, onSaved, onDeleted, showError, showSuccess }: any) {
   const [dado, setDado] = useState<boolean>(sessao.dado);
   const [horasDadas, setHorasDadas] = useState(sessao.horas_dadas?.toString() || '');
   const [notas, setNotas] = useState(sessao.notas || '');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Para o admin: se o professor desta sessão é de salário no mês da
+  // sessão, esconde "Último valor calculado" (não gera pagamento à parte
+  // para ele) — nada muda aqui, é a mesma consulta de sempre (RLS admin-
+  // only a periodos_valor_professor). Para o professor a ver a sua própria
+  // sessão, quem decide é souSalarioNoMesAtual (RPC sou_salario_no_mes, lido
+  // no componente pai) — esta consulta aqui nem chega a correr para ele.
+  const [professorEhSalario, setProfessorEhSalario] = useState(false);
+  useEffect(() => {
+    if (role === 'professor') return;
+    let ativo = true;
+    supabase
+      .from('periodos_valor_professor')
+      .select('de, ate, valor')
+      .eq('professor_id', sessao.professor_id)
+      .eq('tipo', 'salario')
+      .then(({ data }) => {
+        if (!ativo) return;
+        const periodos = (data || []).map((p: any) => ({ de: p.de, ate: p.ate, valor: Number(p.valor) }));
+        setProfessorEhSalario(tipoNoMes(periodos, sessao.data.slice(0, 7)) === 'salario');
+      });
+    return () => { ativo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, sessao.professor_id, sessao.data]);
+
+  const escondeValorCalculado = role === 'professor' ? souSalarioNoMesAtual : professorEhSalario;
 
   const nomes = (sessao.explicacoes_alunos || []).map(getNomeAluno).join(', ');
 
@@ -719,7 +877,7 @@ function DetalheExplicacaoModal({ sessao, role, onClose, onSaved, onDeleted, sho
             />
           </div>
 
-          {sessao.valor_calculado != null && (
+          {sessao.valor_calculado != null && !escondeValorCalculado && (
             <p className="text-xs text-muted">
               Último valor calculado: <span className="font-bold text-primary">{Number(sessao.valor_calculado).toFixed(2)}€</span>
             </p>
