@@ -110,6 +110,13 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
   const [pagamentosExplicacoes, setPagamentosExplicacoes] = useState<Record<string, { id: string; pago: boolean; data_pagamento: string | null }>>({});
   const [expandedAlunoIds, setExpandedAlunoIds] = useState<Set<string>>(new Set());
 
+  // Definido antes de fetchMes (precisa dele para ordenar as linhas sintéticas
+  // de alunos "só explicações" a par das linhas reais de mensalidade).
+  const getNome = (row: any) => {
+    const aluno = Array.isArray(row.alunos) ? row.alunos[0] : row.alunos;
+    return aluno?.nome || 'Desconhecido';
+  };
+
   const hoje = new Date();
   // Meses futuros não geram linhas — o valor_esperado é um snapshot e não deve
   // ser fixado antes de o mês chegar de verdade (a mensalidade pode mudar entretanto).
@@ -146,14 +153,15 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
       const inicioMes = format(new Date(ano, mes - 1, 1), 'yyyy-MM-dd');
       const fimMes = format(new Date(ano, mes, 0), 'yyyy-MM-dd');
 
-      // Uma query batched para todas as sessões dadas do mês (com alunos,
-      // disciplina e professor embutidos) + uma para os pagamentos de
-      // explicações do mês — nunca uma por aluno.
-      const [{ linhas, criadas }, { data: sessoesData, error: errSessoes }, { data: pagamentosData, error: errPagamentos }] = await Promise.all([
+      // Uma query batched para todas as sessões dadas do mês (com alunos —
+      // nome e ativo, para quem só aparece por esta via —, disciplina e
+      // professor embutidos) + uma para os pagamentos de explicações do mês
+      // — nunca uma por aluno.
+      const [{ linhas: linhasMensalidade, criadas }, { data: sessoesData, error: errSessoes }, { data: pagamentosData, error: errPagamentos }] = await Promise.all([
         garantirMesGeradoComContagem(centro_id, ano, mes),
         supabase
           .from('explicacoes')
-          .select('data, subjects(name), staff(name), explicacoes_alunos(aluno_id, valor_cobrado_familia)')
+          .select('data, subjects(name), staff(name), explicacoes_alunos(aluno_id, valor_cobrado_familia, alunos(nome, ativo))')
           .eq('dado', true)
           .gte('data', inicioMes)
           .lte('data', fimMes),
@@ -164,10 +172,14 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
         showError('Erro ao carregar explicações: ' + (errSessoes || errPagamentos)?.message);
       }
 
-      setRows(linhas);
       setLinhasCriadasNestaAbertura(criadas);
 
       const porAluno: Record<string, { soma: number; semPrecoCount: number; sessoes: any[] }> = {};
+      // Nome (e, incidentalmente, se está ativo) de quem só aparece via
+      // explicações — um aluno "só explicações" nunca tem linha de
+      // mensalidade para dar o nome, por isso vem daqui. Alunos inativos
+      // entram também: a dívida de uma sessão já dada existe, inativo ou não.
+      const nomeAlunoExplicacoes: Record<string, string> = {};
       (sessoesData || []).forEach((exp: any) => {
         const disciplina = exp.subjects?.name || 'Sem disciplina';
         const professor = exp.staff?.name || '—';
@@ -180,6 +192,9 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
             entry.semPrecoCount += 1;
           }
           entry.sessoes.push({ data: exp.data, disciplina, professor, valor: ea.valor_cobrado_familia });
+
+          const alunoInfo = Array.isArray(ea.alunos) ? ea.alunos[0] : ea.alunos;
+          if (alunoInfo?.nome) nomeAlunoExplicacoes[ea.aluno_id] = alunoInfo.nome;
         });
       });
       setExplicacoesPorAluno(porAluno);
@@ -187,6 +202,32 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
       const pagMap: Record<string, { id: string; pago: boolean; data_pagamento: string | null }> = {};
       (pagamentosData || []).forEach((p: any) => { pagMap[p.aluno_id] = { id: p.id, pago: p.pago, data_pagamento: p.data_pagamento }; });
       setPagamentosExplicacoes(pagMap);
+
+      // Linhas da tabela = união dos alunos com mensalidade este mês e dos
+      // alunos com sessões de explicações este mês (qualquer mês, incluindo
+      // passados — explicações são histórico real, nunca se geram). Um
+      // aluno só com explicações ganha uma linha sintética (id nulo): as
+      // colunas da mensalidade mostram "—" e ficam desativadas; a coluna das
+      // Explicações funciona exatamente como para qualquer outra linha.
+      const mensalidadePorAluno = new Map((linhasMensalidade || []).map((r: any) => [r.aluno_id, r]));
+      const idsUnificados = new Set([...mensalidadePorAluno.keys(), ...Object.keys(porAluno)]);
+      const linhasUnificadas = Array.from(idsUnificados)
+        .map((alunoId) => {
+          const existente = mensalidadePorAluno.get(alunoId);
+          if (existente) return existente;
+          return {
+            id: null,
+            aluno_id: alunoId,
+            valor_esperado: null,
+            pago: false,
+            valor_pago: null,
+            data_pagamento: null,
+            alunos: { nome: nomeAlunoExplicacoes[alunoId] || 'Desconhecido' },
+          };
+        })
+        .sort((a, b) => getNome(a).localeCompare(getNome(b)));
+
+      setRows(linhasUnificadas);
     } catch (err: any) {
       showError('Erro ao carregar mensalidades: ' + err.message);
     } finally {
@@ -203,6 +244,10 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
   useEffect(() => { fetchMes(); }, [fetchMes]);
 
   const handleTogglePago = async (row: any) => {
+    // Linha sintética (aluno só com explicações, sem mensalidade este mês)
+    // — nada na BD para alternar. O botão já nem renderiza para dar nisto,
+    // mas a guarda fica aqui também, nunca só no disabled do botão.
+    if (!row.id) return;
     const novoPago = !row.pago;
     const updates: Record<string, any> = { pago: novoPago };
     if (novoPago && (row.valor_pago === null || row.valor_pago === undefined)) {
@@ -222,6 +267,7 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
   };
 
   const handleUpdateValorPago = async (row: any, valorStr: string) => {
+    if (!row.id) return; // linha sintética — ver handleTogglePago
     const bruto = valorStr.trim();
     const valor = bruto === '' ? null : parseFloat(bruto);
     if (bruto !== '' && (valor === null || isNaN(valor))) return;
@@ -236,6 +282,7 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
   };
 
   const handleUpdateData = async (row: any, dataStr: string) => {
+    if (!row.id) return; // linha sintética — ver handleTogglePago
     const valor = dataStr === '' ? null : dataStr;
     const { error } = await supabase.from('mensalidades').update({ data_pagamento: valor }).eq('id', row.id);
     if (error) {
@@ -292,17 +339,15 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
     showSuccess('Data de pagamento atualizada.');
   };
 
-  const getNome = (row: any) => {
-    const aluno = Array.isArray(row.alunos) ? row.alunos[0] : row.alunos;
-    return aluno?.nome || 'Desconhecido';
-  };
-
-  // Esconde (sem apagar da BD) linhas antigas de mensalidade com
-  // valor_esperado <= 0 que ainda estão por pagar — resíduo de antes de
-  // lib/mensalidades.ts deixar de as gerar. Uma linha de 0€ já marcada como
-  // paga (ex. desconto manual) continua visível — só se escondem as
-  // "dívidas fantasma" nunca resolvidas.
-  const rowsVisiveis = rows.filter((r) => Number(r.valor_esperado) > 0 || r.pago);
+  // Esconde (sem apagar da BD) uma linha só quando não tem NEM mensalidade
+  // visível (> 0€ ou já paga) NEM explicações este mês — "dívidas fantasma"
+  // de mensalidade a 0€ continuam escondidas (resíduo de antes de
+  // lib/mensalidades.ts deixar de as gerar), mas uma linha sintética (só
+  // explicações, sem mensalidade) tem sempre explicacoesPorAluno[aluno_id]
+  // preenchido — é por isso que existe — por isso nunca é escondida aqui.
+  const rowsVisiveis = rows.filter(
+    (r) => Number(r.valor_esperado) > 0 || r.pago || !!explicacoesPorAluno[r.aluno_id]
+  );
 
   const rowsFiltradas = rowsVisiveis.filter((r) => getNome(r).toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -403,23 +448,36 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                   const expandido = expandedAlunoIds.has(row.aluno_id);
 
                   return (
-                    <Fragment key={row.id}>
+                    <Fragment key={row.id ?? `sintetica-${row.aluno_id}`}>
                       <tr className="hover:bg-raised/20 transition-colors">
-                        <td className="p-6 font-black text-primary whitespace-nowrap">{getNome(row)}</td>
+                        <td className="p-6 font-black text-primary whitespace-nowrap">
+                          <span className="flex items-center gap-2">
+                            {getNome(row)}
+                            {row.id === null && (
+                              <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-violet-500/10 text-violet-500 border border-violet-500/20 rounded-md">
+                                Só explicações
+                              </span>
+                            )}
+                          </span>
+                        </td>
                         <td className="p-6 text-right font-mono font-bold text-secondary whitespace-nowrap border-l border-border">
-                          {Number(row.valor_esperado).toFixed(2)}€
+                          {row.id === null ? '—' : `${Number(row.valor_esperado).toFixed(2)}€`}
                         </td>
                         <td className="p-6 text-center whitespace-nowrap">
-                          <button
-                            onClick={() => handleTogglePago(row)}
-                            className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
-                              row.pago
-                                ? 'bg-success-bg text-success border-success/30'
-                                : 'bg-danger-bg text-danger border-danger/30'
-                            }`}
-                          >
-                            {row.pago ? 'Pago' : 'Não Pago'}
-                          </button>
+                          {row.id === null ? (
+                            <span className="text-muted font-mono">—</span>
+                          ) : (
+                            <button
+                              onClick={() => handleTogglePago(row)}
+                              className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                                row.pago
+                                  ? 'bg-success-bg text-success border-success/30'
+                                  : 'bg-danger-bg text-danger border-danger/30'
+                              }`}
+                            >
+                              {row.pago ? 'Pago' : 'Não Pago'}
+                            </button>
+                          )}
                         </td>
                         <td className="p-6 text-right whitespace-nowrap">
                           <input
@@ -427,7 +485,7 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                             type="number"
                             step="0.01"
                             defaultValue={row.valor_pago ?? ''}
-                            disabled={!row.pago}
+                            disabled={!row.pago || row.id === null}
                             placeholder="—"
                             onBlur={(e) => handleUpdateValorPago(row, e.target.value)}
                             className="w-24 bg-page border border-border p-2 rounded-lg text-right font-mono font-bold text-primary outline-none focus:border-accent/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
@@ -438,7 +496,7 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                             key={`dp-${row.id}-${row.data_pagamento}`}
                             type="date"
                             defaultValue={row.data_pagamento ?? ''}
-                            disabled={!row.pago}
+                            disabled={!row.pago || row.id === null}
                             onChange={(e) => handleUpdateData(row, e.target.value)}
                             className="bg-page border border-border p-2 rounded-lg text-primary outline-none focus:border-accent/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                           />
