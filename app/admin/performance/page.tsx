@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { garantirMesGerado } from '@/lib/mensalidades';
 import { getHojeLisboa } from '@/lib/dataLisboa';
 import { obterCustosDoMes, mesParaData, ultimoDiaDoMes } from '@/lib/custos';
+import { obterRemuneracaoDoMes } from '@/lib/remuneracaoProfessores';
 import { ArrowLeft, Activity, RefreshCw, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { startOfMonth, addMonths, format } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -67,7 +68,7 @@ export default function AdminStats() {
       const [
         { data: extras },
         mensalidadesMes,
-        { data: explicacoesMes },
+        remuneracaoProfessores,
         custosDoMes,
       ] = await Promise.all([
         supabase.from('consumos_diarios').select('preco_aplicado').gte('data_consumo', inicioMesStr).lte('data_consumo', fimMesStr),
@@ -78,9 +79,11 @@ export default function AdminStats() {
         isMesAtual
           ? garantirMesGerado(centro_id, ano, mes)
           : supabase.from('mensalidades').select('valor_esperado, valor_pago, pago').eq('ano', ano).eq('mes', mes).then((r) => r.data || []),
-        // Explicações: só existem quando alguém as cria — ao contrário das mensalidades,
-        // não há estado vazio a proteger, por isso soma-se direto, sem garantirMesGerado.
-        supabase.from('explicacoes').select('valor_calculado').eq('dado', true).gte('data', inicioMesStr).lte('data', fimMesStr),
+        // Custo dos professores do mês (salário + sessões/dias variáveis + ajustes) —
+        // mesma função partilhada com /admin/pagamentos → A Pagar, para os dois
+        // nunca mostrarem números diferentes. Um professor de salário conta aqui
+        // mesmo sem nenhuma sessão nesse mês.
+        obterRemuneracaoDoMes(centro_id, ano, mes),
         // Fixos ativos no mês + variáveis do mês — mesma função que a secção
         // "Custos" de Gestão, para os números nunca divergirem.
         obterCustosDoMes(centro_id, mesStr),
@@ -102,10 +105,11 @@ export default function AdminStats() {
         : accumulatedRevenue;
 
       // --- DESPESAS DO MÊS ---
-      // Explicações pagas a professores entram no total de despesas (dinheiro real a
-      // sair), mas ficam à parte de despesasFixas/despesasVariaveis para o aviso de
+      // Remuneração de professores (salário dos de salário + sessões/dias dos
+      // variáveis + ajustes) entra no total de despesas (dinheiro real a sair),
+      // mas fica à parte de despesasFixas/despesasVariaveis para o aviso de
       // integridade abaixo continuar válido (compara as três parcelas, não só duas).
-      const totalExplicacoesMes = explicacoesMes?.reduce((acc, e) => acc + (Number(e.valor_calculado) || 0), 0) || 0;
+      const totalExplicacoesMes = remuneracaoProfessores.totalGeral;
       const despesasFixas = custosDoMes.totalFixos;
       const despesasVariaveis = custosDoMes.totalVariaveis;
       const totalDespesasBase = custosDoMes.totalGeral;
@@ -240,7 +244,7 @@ export default function AdminStats() {
           <div>
             <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Despesas Totais</p>
             <p className="text-2xl font-black text-primary tracking-tighter">{stats.totalDespesasMes.toFixed(2)}€</p>
-            <p className="text-sm font-bold text-muted mt-2">Fixas: {stats.despesasFixas.toFixed(2)}€ · Variáveis: {stats.despesasVariaveis.toFixed(2)}€ · Explicações: {stats.totalExplicacoesMes.toFixed(2)}€</p>
+            <p className="text-sm font-bold text-muted mt-2">Fixas: {stats.despesasFixas.toFixed(2)}€ · Variáveis: {stats.despesasVariaveis.toFixed(2)}€ · Professores: {stats.totalExplicacoesMes.toFixed(2)}€</p>
             {!integridadeOk && (
               <p className="text-xs text-danger font-bold uppercase mt-1">Soma não bate com o total</p>
             )}

@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { garantirMesGeradoComContagem } from '@/lib/mensalidades';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
+import { getHojeLisboa } from '@/lib/dataLisboa';
+import { obterRemuneracaoDoMes, type RemuneracaoProfessorNoMes } from '@/lib/remuneracaoProfessores';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Search, Wallet, Loader2, CalendarClock,
-  GraduationCap, AlertTriangle,
+  GraduationCap, AlertTriangle, Plus, Save,
 } from 'lucide-react';
 import { startOfMonth, addMonths, format } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -593,14 +595,18 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
 
 // --- ABA A PAGAR (professores) ---
 function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
-  const [linhas, setLinhas] = useState<any[]>([]);
+  const [linhas, setLinhas] = useState<RemuneracaoProfessorNoMes[]>([]);
+  const [totalGeral, setTotalGeral] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Sessões em bruto por professor, para a expansão de "Sessões Dadas" —
-  // mesmo padrão de explicacoesPorAluno em MensalidadesTab.
-  const [sessoesPorProfessor, setSessoesPorProfessor] = useState<Record<string, any[]>>({});
   const [expandedProfessorIds, setExpandedProfessorIds] = useState<Set<string>>(new Set());
+
+  // Formulário inline de ajuste (valor positivo/negativo + nota obrigatória
+  // se o valor não for zero) — um por professor, aberto dentro do detalhe expandido.
+  const [ajusteAbertoProfessorId, setAjusteAbertoProfessorId] = useState<string | null>(null);
+  const [ajusteValorInput, setAjusteValorInput] = useState('');
+  const [ajusteNotaInput, setAjusteNotaInput] = useState('');
+  const [salvandoAjuste, setSalvandoAjuste] = useState(false);
 
   // Mesmo padrão isFetchingRef/fetchPendingRef usado no Dashboard, em Explicações
   // e na aba Mensalidades — aplicado desde já, sem esperar o problema aparecer.
@@ -608,6 +614,7 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
   const fetchPendingRef = useRef(false);
 
   const fetchAPagar = useCallback(async () => {
+    if (!centroId) return;
     if (isFetchingRef.current) {
       fetchPendingRef.current = true;
       return;
@@ -616,61 +623,11 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
     setLoading(true);
 
     try {
-      const inicioMes = format(new Date(ano, mes - 1, 1), 'yyyy-MM-dd');
-      const fimMes = format(new Date(ano, mes, 0), 'yyyy-MM-dd');
-
-      const [{ data: professoresData, error: errProf }, { data: sessoesData, error: errSess }, { data: pagamentosData, error: errPag }] = await Promise.all([
-        supabase.from('staff').select('id, name, tarifa_tipo').eq('role', 'professor').order('name'),
-        supabase
-          .from('explicacoes')
-          .select('data, professor_id, horas_dadas, valor_calculado, subjects(name), explicacoes_alunos(aluno_id, alunos(nome))')
-          .eq('dado', true)
-          .gte('data', inicioMes)
-          .lte('data', fimMes),
-        supabase.from('pagamentos_professores').select('professor_id, pago').eq('ano', ano).eq('mes', mes),
-      ]);
-
-      if (errProf || errSess || errPag) {
-        showError('Erro ao carregar dados de pagamento: ' + (errProf || errSess || errPag)?.message);
-        return;
-      }
-
-      const pagoMap: Record<string, boolean> = {};
-      (pagamentosData || []).forEach((p: any) => { pagoMap[p.professor_id] = p.pago; });
-
-      const agregados: Record<string, { sessoes: number; horas: number; valor: number }> = {};
-      const sessoesPorProf: Record<string, any[]> = {};
-      (sessoesData || []).forEach((s: any) => {
-        if (!agregados[s.professor_id]) agregados[s.professor_id] = { sessoes: 0, horas: 0, valor: 0 };
-        agregados[s.professor_id].sessoes += 1;
-        agregados[s.professor_id].horas += Number(s.horas_dadas) || 0;
-        agregados[s.professor_id].valor += Number(s.valor_calculado) || 0;
-
-        if (!sessoesPorProf[s.professor_id]) sessoesPorProf[s.professor_id] = [];
-        const alunos = (s.explicacoes_alunos || []).map((ea: any) => ea.alunos?.nome).filter(Boolean).join(', ');
-        sessoesPorProf[s.professor_id].push({
-          data: s.data,
-          disciplina: s.subjects?.name || 'Sem disciplina',
-          alunos: alunos || '—',
-          horas: s.horas_dadas,
-          valor: s.valor_calculado,
-        });
-      });
-      setSessoesPorProfessor(sessoesPorProf);
-
-      const novasLinhas = (professoresData || [])
-        .filter((p: any) => agregados[p.id])
-        .map((p: any) => ({
-          professorId: p.id,
-          nome: p.name,
-          tarifaDefinida: !!p.tarifa_tipo,
-          sessoesDadas: agregados[p.id].sessoes,
-          horasTotais: agregados[p.id].horas,
-          valorAPagar: agregados[p.id].valor,
-          pago: pagoMap[p.id] || false,
-        }));
-
+      const { linhas: novasLinhas, totalGeral: novoTotal } = await obterRemuneracaoDoMes(centroId, ano, mes);
       setLinhas(novasLinhas);
+      setTotalGeral(novoTotal);
+    } catch (e: any) {
+      showError('Erro ao carregar dados de pagamento: ' + e.message);
     } finally {
       setLoading(false);
       isFetchingRef.current = false;
@@ -680,11 +637,11 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ano, mes]);
+  }, [ano, mes, centroId]);
 
   useEffect(() => { fetchAPagar(); }, [fetchAPagar]);
 
-  const handleTogglePago = async (linha: any) => {
+  const handleTogglePago = async (linha: RemuneracaoProfessorNoMes) => {
     if (!centroId) {
       showError('Não foi possível identificar o centro. Recarrega a página e tenta novamente.');
       return;
@@ -697,7 +654,7 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
       mes,
       pago: novoPago,
     };
-    if (novoPago) payload.data_pagamento = new Date().toISOString().split('T')[0];
+    if (novoPago) payload.data_pagamento = getHojeLisboa();
 
     const { error } = await supabase
       .from('pagamentos_professores')
@@ -711,8 +668,6 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
     showSuccess(novoPago ? 'Professor marcado como pago.' : 'Marcado como não pago.');
   };
 
-  // Expansão de "Sessões Dadas" — mesma mecânica de toggleExpandido em MensalidadesTab,
-  // usa os dados já fetched em sessoesPorProfessor (nunca uma query nova ao clicar).
   const toggleExpandidoProfessor = (professorId: string) => {
     setExpandedProfessorIds((prev) => {
       const next = new Set(prev);
@@ -720,14 +675,65 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
       else next.add(professorId);
       return next;
     });
+    setAjusteAbertoProfessorId(null);
   };
 
-  const linhasFiltradas = linhas.filter((l) => l.nome.toLowerCase().includes(searchQuery.toLowerCase()));
+  const abrirAjusteForm = (linha: RemuneracaoProfessorNoMes) => {
+    setAjusteValorInput(linha.ajusteValor ? String(linha.ajusteValor) : '');
+    setAjusteNotaInput(linha.ajusteNota || '');
+    setAjusteAbertoProfessorId(linha.professorId);
+  };
 
-  const totalSessoes = linhas.reduce((acc, l) => acc + l.sessoesDadas, 0);
-  const totalHoras = linhas.reduce((acc, l) => acc + l.horasTotais, 0);
-  const totalAPagar = linhas.reduce((acc, l) => acc + l.valorAPagar, 0);
-  const pendentes = linhas.filter((l) => !l.pago).length;
+  const fecharAjusteForm = () => {
+    setAjusteAbertoProfessorId(null);
+    setAjusteValorInput('');
+    setAjusteNotaInput('');
+  };
+
+  const handleGuardarAjuste = async () => {
+    if (!ajusteAbertoProfessorId || !centroId) return;
+    const valor = ajusteValorInput.trim() === '' ? 0 : parseFloat(ajusteValorInput);
+    if (isNaN(valor)) {
+      showError('Indica um valor de ajuste válido.');
+      return;
+    }
+    const nota = ajusteNotaInput.trim();
+    if (valor !== 0 && !nota) {
+      showError('Um ajuste diferente de zero precisa de uma nota.');
+      return;
+    }
+
+    setSalvandoAjuste(true);
+    const { error } = await supabase
+      .from('pagamentos_professores')
+      .upsert(
+        { centro_id: centroId, professor_id: ajusteAbertoProfessorId, ano, mes, ajuste_valor: valor, ajuste_nota: valor === 0 ? null : nota },
+        { onConflict: 'professor_id,ano,mes' }
+      );
+    setSalvandoAjuste(false);
+
+    if (error) {
+      showError('Erro ao guardar ajuste: ' + error.message);
+      return;
+    }
+    showSuccess('Ajuste guardado.');
+    fecharAjusteForm();
+    fetchAPagar();
+  };
+
+  // Um professor de salário aparece sempre (deve-se-lhe o salário mesmo sem
+  // sessões); um variável só aparece se tiver sessões, dias ou ajuste — igual
+  // ao comportamento de sempre, só que agora decidido pela lib, não por um
+  // filter(agregados[p.id]) local.
+  const linhasExibidas = linhas.filter(
+    (l) => l.tipo === 'salario' || l.sessoesDadas > 0 || l.somaDias > 0 || l.ajusteValor !== 0
+  );
+  const linhasFiltradas = linhasExibidas.filter((l) => l.nome.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const totalSessoes = linhasExibidas.reduce((acc, l) => acc + l.sessoesDadas, 0);
+  const totalHoras = linhasExibidas.reduce((acc, l) => acc + l.horasTotais, 0);
+  const pendentes = linhasExibidas.filter((l) => !l.pago).length;
+  const mesStr = `${ano}-${String(mes).padStart(2, '0')}`;
 
   return (
     <>
@@ -742,13 +748,13 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
           <p className="text-2xl font-black text-primary tracking-tighter">{totalHoras.toFixed(1)}h</p>
         </div>
         <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Total a Pagar</p>
-          <p className="text-2xl font-black text-success tracking-tighter">{totalAPagar.toFixed(2)}€</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Total Acordado</p>
+          <p className={`text-2xl font-black tracking-tighter ${totalGeral < 0 ? 'text-danger' : 'text-success'}`}>{totalGeral.toFixed(2)}€</p>
         </div>
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Pendentes</p>
           <p className={`text-2xl font-black tracking-tighter ${pendentes > 0 ? 'text-danger' : 'text-muted'}`}>
-            {pendentes} de {linhas.length}
+            {pendentes} de {linhasExibidas.length}
           </p>
         </div>
       </div>
@@ -780,7 +786,10 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
                 <th className="p-6 font-black">Professor</th>
                 <th className="p-6 font-black text-center">Sessões Dadas</th>
                 <th className="p-6 font-black text-center">Horas Totais</th>
-                <th className="p-6 font-black text-right">Valor a Pagar</th>
+                <th className="p-6 font-black text-right">
+                  Valor Acordado
+                  <span className="block text-[8px] font-bold text-muted normal-case mt-0.5">não inclui descontos nem Seg. Social</span>
+                </th>
                 <th className="p-6 font-black text-center">Estado</th>
               </tr>
             </thead>
@@ -789,18 +798,28 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
                 <tr>
                   <td colSpan={5} className="p-16 text-center text-muted font-medium italic">
                     <GraduationCap size={48} className="mx-auto mb-4 opacity-20" />
-                    {linhas.length === 0 ? 'Sem sessões dadas neste mês.' : 'Nenhum professor encontrado para a pesquisa.'}
+                    {linhasExibidas.length === 0 ? 'Sem nada a pagar neste mês.' : 'Nenhum professor encontrado para a pesquisa.'}
                   </td>
                 </tr>
               ) : (
                 linhasFiltradas.map((linha) => {
-                  const semTarifa = linha.valorAPagar === 0 && linha.sessoesDadas > 0 && !linha.tarifaDefinida;
-                  const sessoes = sessoesPorProfessor[linha.professorId] || [];
                   const expandido = expandedProfessorIds.has(linha.professorId);
+                  const ajusteFormAberto = ajusteAbertoProfessorId === linha.professorId;
                   return (
                     <Fragment key={linha.professorId}>
                       <tr className="hover:bg-raised/20 transition-colors">
-                        <td className="p-6 font-black text-primary whitespace-nowrap">{linha.nome}</td>
+                        <td className="p-6 font-black text-primary whitespace-nowrap">
+                          <span className="flex items-center gap-2">
+                            {linha.nome}
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                              linha.tipo === 'salario'
+                                ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                                : 'bg-border/40 text-muted border-border'
+                            }`}>
+                              {linha.tipo === 'salario' ? 'Salário' : 'Variável'}
+                            </span>
+                          </span>
+                        </td>
                         <td className="p-6 text-center whitespace-nowrap">
                           <button
                             type="button"
@@ -812,10 +831,15 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
                         </td>
                         <td className="p-6 text-center font-mono font-bold text-secondary whitespace-nowrap">{linha.horasTotais.toFixed(1)}h</td>
                         <td className="p-6 text-right whitespace-nowrap">
-                          <p className="font-mono font-bold text-primary">{linha.valorAPagar.toFixed(2)}€</p>
-                          {semTarifa && (
+                          <p className={`font-mono font-bold ${linha.total < 0 ? 'text-danger' : 'text-primary'}`}>{linha.total.toFixed(2)}€</p>
+                          {linha.semTarifaAviso && (
                             <p className="text-[9px] text-warning font-bold flex items-center gap-1 justify-end mt-1">
                               <AlertTriangle size={10} /> Tarifa não definida
+                            </p>
+                          )}
+                          {linha.total < 0 && (
+                            <p className="text-[9px] text-danger font-bold flex items-center gap-1 justify-end mt-1">
+                              <AlertTriangle size={10} /> Total negativo: confirma o ajuste
                             </p>
                           )}
                         </td>
@@ -834,17 +858,118 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
                       </tr>
                       {expandido && (
                         <tr className="bg-page/30">
-                          <td colSpan={5} className="p-6">
-                            <p className="text-[9px] font-black uppercase text-muted tracking-widest mb-2">Sessões de {linha.nome} este mês</p>
-                            <div className="space-y-1.5">
-                              {sessoes.map((s: any, i: number) => (
-                                <div key={i} className="flex items-center justify-between text-xs bg-surface border border-border/60 rounded-xl px-4 py-2">
-                                  <span className="text-secondary font-bold">
-                                    {new Date(s.data + 'T00:00:00').toLocaleDateString('pt-PT')} · {s.disciplina} · {s.alunos} · {Number(s.horas).toFixed(1)}h
-                                  </span>
-                                  <span className="font-mono font-bold text-primary">{Number(s.valor).toFixed(2)}€</span>
+                          <td colSpan={5} className="p-6 space-y-4">
+                            {linha.tipo === 'salario' ? (
+                              <div className="flex items-center justify-between text-xs bg-surface border border-border/60 rounded-xl px-4 py-2.5">
+                                <span className="text-secondary font-bold">Salário do mês</span>
+                                <span className="font-mono font-bold text-primary">{linha.salarioMes.toFixed(2)}€</span>
+                              </div>
+                            ) : (
+                              <>
+                                <div>
+                                  <p className="text-[9px] font-black uppercase text-muted tracking-widest mb-2">Sessões de {linha.nome} este mês</p>
+                                  {linha.sessoes.length === 0 ? (
+                                    <p className="text-[11px] text-muted italic">Sem sessões dadas.</p>
+                                  ) : (
+                                    <div className="space-y-1.5">
+                                      {linha.sessoes.map((s, i) => (
+                                        <div key={i} className="flex items-center justify-between text-xs bg-surface border border-border/60 rounded-xl px-4 py-2">
+                                          <span className="text-secondary font-bold">
+                                            {new Date(s.data + 'T00:00:00').toLocaleDateString('pt-PT')} · {s.disciplina} · {s.alunos} · {Number(s.horas).toFixed(1)}h
+                                          </span>
+                                          <span className="font-mono font-bold text-primary">{Number(s.valor).toFixed(2)}€</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
-                              ))}
+                                <div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className="text-[9px] font-black uppercase text-muted tracking-widest">Dias de trabalho este mês</p>
+                                    <Link
+                                      href={`/admin/equipa/dias-trabalho?professor=${linha.professorId}&mes=${mesStr}`}
+                                      className="text-[10px] font-black text-accent hover:text-accent-hover"
+                                    >
+                                      Ver dias
+                                    </Link>
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs bg-surface border border-border/60 rounded-xl px-4 py-2.5">
+                                    <span className="text-secondary font-bold">
+                                      {linha.somaDias} {linha.somaDias === 1 ? 'dia' : 'dias'}{linha.valorDiaAtivo != null ? ` × ${linha.valorDiaAtivo.toFixed(2)}€` : ' (sem valor por dia definido)'}
+                                    </span>
+                                    <span className="font-mono font-bold text-primary">{linha.valorDias.toFixed(2)}€</span>
+                                  </div>
+                                </div>
+                              </>
+                            )}
+
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-[9px] font-black uppercase text-muted tracking-widest">Ajuste</p>
+                                {!ajusteFormAberto && (
+                                  <button
+                                    type="button"
+                                    onClick={() => abrirAjusteForm(linha)}
+                                    className="text-[10px] font-black text-accent hover:text-accent-hover flex items-center gap-1"
+                                  >
+                                    <Plus size={12} /> Ajuste
+                                  </button>
+                                )}
+                              </div>
+                              {!ajusteFormAberto && linha.ajusteValor !== 0 && (
+                                <div className="flex items-center justify-between text-xs bg-surface border border-border/60 rounded-xl px-4 py-2.5">
+                                  <span className="text-secondary font-bold">{linha.ajusteNota}</span>
+                                  <span className={`font-mono font-bold ${linha.ajusteValor < 0 ? 'text-danger' : 'text-primary'}`}>
+                                    {linha.ajusteValor > 0 ? '+' : ''}{linha.ajusteValor.toFixed(2)}€
+                                  </span>
+                                </div>
+                              )}
+                              {!ajusteFormAberto && linha.ajusteValor === 0 && (
+                                <p className="text-[11px] text-muted italic">Sem ajuste este mês.</p>
+                              )}
+                              {ajusteFormAberto && (
+                                <div className="bg-surface border border-border p-4 rounded-xl space-y-3">
+                                  <div>
+                                    <label className="text-[10px] font-bold text-muted uppercase ml-1">Valor (€) — positivo ou negativo</label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={ajusteValorInput}
+                                      onChange={(e) => setAjusteValorInput(e.target.value)}
+                                      placeholder="0.00"
+                                      className="w-full bg-page border border-border text-primary p-2.5 rounded-lg outline-none focus:border-accent text-sm mt-1"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-bold text-muted uppercase ml-1">Nota (obrigatória se o valor não for zero)</label>
+                                    <input
+                                      type="text"
+                                      value={ajusteNotaInput}
+                                      onChange={(e) => setAjusteNotaInput(e.target.value)}
+                                      placeholder="Ex: falta não justificada, prémio, início a meio do mês..."
+                                      className="w-full bg-page border border-border text-primary p-2.5 rounded-lg outline-none focus:border-accent text-sm mt-1"
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={handleGuardarAjuste}
+                                      disabled={salvandoAjuste}
+                                      className="flex-1 bg-accent hover:bg-accent-hover text-on-accent text-xs font-black py-2.5 rounded-lg disabled:opacity-50 flex items-center justify-center gap-1.5"
+                                    >
+                                      {salvandoAjuste ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} Guardar
+                                    </button>
+                                    <button type="button" onClick={fecharAjusteForm} disabled={salvandoAjuste} className="px-4 text-xs font-black text-muted hover:text-secondary">
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between pt-3 border-t border-border">
+                              <span className="text-xs font-black uppercase text-secondary">Total acordado</span>
+                              <span className={`text-lg font-mono font-black ${linha.total < 0 ? 'text-danger' : 'text-primary'}`}>{linha.total.toFixed(2)}€</span>
                             </div>
                           </td>
                         </tr>
