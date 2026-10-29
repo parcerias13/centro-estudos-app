@@ -7,12 +7,21 @@
  * fuso do browser do aluno pode não ser Europe/Lisbon.
  */
 export function getHojeLisboa(): string {
+  return dataLisboaDe(new Date());
+}
+
+/**
+ * Mesma conversão de getHojeLisboa(), mas para qualquer instante (não só
+ * "agora") — ex. um `created_at` vindo da BD, para decidir em que dia civil,
+ * em Europe/Lisbon, algo aconteceu.
+ */
+export function dataLisboaDe(instante: Date | string): string {
   const partes = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Europe/Lisbon',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).formatToParts(new Date());
+  }).formatToParts(new Date(instante));
   const obter = (tipo: string) => partes.find((p) => p.type === tipo)?.value ?? '';
   return `${obter('year')}-${obter('month')}-${obter('day')}`;
 }

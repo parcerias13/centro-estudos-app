@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { garantirMesGerado } from '@/lib/mensalidades';
+import { garantirMesGeradoComContagem } from '@/lib/mensalidades';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Search, Wallet, Loader2, CalendarClock,
@@ -100,6 +100,9 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  // Quantas linhas esta abertura em concreto criou — só para o aviso
+  // discreto; nunca persiste entre meses/aberturas (reposto a 0 em cada fetchMes).
+  const [linhasCriadasNestaAbertura, setLinhasCriadasNestaAbertura] = useState(0);
 
   // Explicações (família) — soma de valor_cobrado_familia e lista de sessões
   // do mês, por aluno; e o estado de pago próprio, em pagamentos_explicacoes_familia.
@@ -121,6 +124,7 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
   const fetchMes = useCallback(async () => {
     if (isFuturo) {
       setRows([]);
+      setLinhasCriadasNestaAbertura(0);
       setLoading(false);
       return;
     }
@@ -145,8 +149,8 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
       // Uma query batched para todas as sessões dadas do mês (com alunos,
       // disciplina e professor embutidos) + uma para os pagamentos de
       // explicações do mês — nunca uma por aluno.
-      const [linhas, { data: sessoesData, error: errSessoes }, { data: pagamentosData, error: errPagamentos }] = await Promise.all([
-        garantirMesGerado(centro_id, ano, mes),
+      const [{ linhas, criadas }, { data: sessoesData, error: errSessoes }, { data: pagamentosData, error: errPagamentos }] = await Promise.all([
+        garantirMesGeradoComContagem(centro_id, ano, mes),
         supabase
           .from('explicacoes')
           .select('data, subjects(name), staff(name), explicacoes_alunos(aluno_id, valor_cobrado_familia)')
@@ -161,6 +165,7 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
       }
 
       setRows(linhas);
+      setLinhasCriadasNestaAbertura(criadas);
 
       const porAluno: Record<string, { soma: number; semPrecoCount: number; sessoes: any[] }> = {};
       (sessoesData || []).forEach((exp: any) => {
@@ -320,6 +325,12 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
 
   return (
     <>
+      {linhasCriadasNestaAbertura > 0 && (
+        <p className="text-xs text-muted bg-surface/70 border border-border rounded-xl px-4 py-2 mb-4">
+          Foram criadas {linhasCriadasNestaAbertura} mensalidade{linhasCriadasNestaAbertura === 1 ? '' : 's'} em falta para este mês.
+        </p>
+      )}
+
       {/* BARRA DE RESUMO */}
       <div className="bg-surface border border-border rounded-3xl p-8 mb-8 grid grid-cols-2 md:grid-cols-4 gap-6">
         <div>
