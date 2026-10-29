@@ -237,9 +237,14 @@ test.describe('Importação de alunos por Excel — nome de utilizador', () => {
     // normalizarUsernameManual() (lib/username.ts), que inclui toLowerCase().
     const utilizador1 = `maria.turmaa.${SUFIXO}`;
     const utilizador2 = `maria.turmab.${SUFIXO}`;
+    // Ano 9 (não 5/6, já usados pelo teste anterior de "nomes repetidos") —
+    // a chave de idempotência da importação passou a nome+ano escolar (já
+    // não usa a data de nascimento), por isso dois "Maria Costa" com o
+    // mesmo ano só se distinguem tendo Nome de Utilizador diferente, que é
+    // exatamente o que este teste cobre.
     const ficheiro = await gerarXlsx([
-      [nomeComum, '03/03/2012', 5, 55, utilizador1, 'mae.manual1@example.invalid', '912000007', '', '', 'sim', 'sim', '', ''],
-      [nomeComum, '04/04/2012', 5, 55, utilizador2, 'mae.manual2@example.invalid', '912000008', '', '', 'sim', 'sim', '', ''],
+      [nomeComum, '03/03/2012', 9, 55, utilizador1, 'mae.manual1@example.invalid', '912000007', '', '', 'sim', 'sim', '', ''],
+      [nomeComum, '04/04/2012', 9, 55, utilizador2, 'mae.manual2@example.invalid', '912000008', '', '', 'sim', 'sim', '', ''],
     ]);
 
     await page.goto(`${BASE_URL}/admin/alunos`, { waitUntil: 'networkidle' });

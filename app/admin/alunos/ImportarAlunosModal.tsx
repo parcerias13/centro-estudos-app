@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { X, Loader2, UploadCloud, AlertTriangle, CheckCircle2, Copy, KeyRound } from 'lucide-react';
-import { mapearLinha, nomeUtilizadorDoAluno, chaveIdentidadeAluno, LinhaImportacao } from './importAlunosConfig';
+import {
+  mapearLinha, nomeUtilizadorDoAluno, chaveIdentidadeAluno, detetarHomonimosNoFicheiro,
+  fraseJaExisteComoModalidade, LinhaImportacao,
+} from './importAlunosConfig';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 
 interface ResultadoImportacao {
@@ -22,8 +25,10 @@ interface AcessoGerado {
 }
 
 // "2026-03-15" -> "15/03/2026" — só para mostrar (a app guarda sempre ISO).
+// Sem data (campo opcional): string vazia, nunca '—'/null/NaN — nem na
+// pré-visualização, nem na tabela de acessos, nem no texto do "Copiar tudo".
 function paraDataPT(iso: string | null): string {
-  if (!iso) return '—';
+  if (!iso) return '';
   const [ano, mes, dia] = iso.split('-');
   return `${dia}/${mes}/${ano}`;
 }
@@ -64,7 +69,18 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
         }
 
         const mapeadas = linhasBrutas.map((linha, i) => mapearLinha(linha, i + 2));
-        setLinhas(mapeadas);
+
+        // Homónimos dentro do próprio ficheiro (mesmo nome + ano escolar, sem
+        // Nome de Utilizador que os distinga) — bloqueados já na
+        // pré-visualização, nunca importados em silêncio. Junta-se ao erros
+        // de cada linha para reaproveitar toda a contagem/filtragem existente
+        // (válidas vs. com erro) e a listagem em "ignoradas" no relatório.
+        const bloqueios = detetarHomonimosNoFicheiro(mapeadas.filter((l) => l.erros.length === 0));
+        const comHomonimos = bloqueios.size === 0
+          ? mapeadas
+          : mapeadas.map((l) => (bloqueios.has(l.linhaExcel) ? { ...l, erros: [...l.erros, bloqueios.get(l.linhaExcel)!] } : l));
+
+        setLinhas(comHomonimos);
         setEstado('preview');
       } catch (err: any) {
         setErroLeitura('Não foi possível ler o ficheiro: ' + err.message);
@@ -102,28 +118,30 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
       );
     } else {
       // Idempotência: duas importações do mesmo ficheiro (ou duas linhas do
-      // mesmo ficheiro) com o mesmo nome e data de nascimento são o mesmo
-      // aluno — não se cria uma segunda conta. O nome de utilizador já não
-      // serve para esta deteção (colisões de login resolvem-se sozinhas,
-      // com sufixo automático, em app/api/admin/criar-aluno).
-      const { data: existentes } = await supabase.from('alunos').select('nome, data_nascimento').eq('centro_id', centro_id);
-      const chavesExistentes = new Set((existentes || []).map((a: any) => chaveIdentidadeAluno(a.nome, a.data_nascimento)));
-      const chavesVistasNesteFicheiro = new Set<string>();
+      // mesmo ficheiro) com o mesmo nome e ano escolar são o mesmo aluno —
+      // não se cria uma segunda conta. Os homónimos DENTRO do ficheiro já
+      // foram bloqueados na pré-visualização (ver detetarHomonimosNoFicheiro,
+      // chamado em ler()); linhasValidas aqui já não os inclui. O nome de
+      // utilizador já não serve para esta deteção (colisões de login
+      // resolvem-se sozinhas, com sufixo automático, em
+      // app/api/admin/criar-aluno).
+      const { data: existentes } = await supabase.from('alunos').select('nome, ano_escolar, sala_estudo, faz_explicacoes').eq('centro_id', centro_id);
+      const existentesPorChave = new Map((existentes || []).map((a: any) => [chaveIdentidadeAluno(a.nome, a.ano_escolar), a]));
 
       for (let i = 0; i < linhasValidas.length; i++) {
         const linha = linhasValidas[i];
-        const chave = chaveIdentidadeAluno(linha.dados.nome, linha.dados.data_nascimento);
+        const chave = chaveIdentidadeAluno(linha.dados.nome, linha.dados.ano_escolar);
+        const existente = existentesPorChave.get(chave);
 
-        if (chavesExistentes.has(chave) || chavesVistasNesteFicheiro.has(chave)) {
+        if (existente) {
           resultadosIgnorados.push({
             linhaExcel: linha.linhaExcel,
-            nome: linha.dados.nome,
-            motivo: 'Já existe um aluno com este nome e data de nascimento — não foi reimportado.',
+            nome: `${linha.dados.nome} (${linha.dados.ano_escolar}.º ano)`,
+            motivo: fraseJaExisteComoModalidade(!!existente.sala_estudo, !!existente.faz_explicacoes),
           });
           setProgresso(i + 1);
           continue;
         }
-        chavesVistasNesteFicheiro.add(chave);
 
         try {
           const res = await fetch('/api/admin/criar-aluno', {
@@ -145,6 +163,8 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
               usa_app: linha.dados.usa_app,
               avatar_url: null,
               dias_selecionados: linha.dados.dias_selecionados,
+              sala_estudo: linha.dados.sala_estudo,
+              faz_explicacoes: linha.dados.faz_explicacoes,
             }),
           });
 
@@ -281,7 +301,7 @@ export default function ImportarAlunosModal({ file, onClose, onImported }: Props
                       >
                         <td className="p-3 font-mono">{l.linhaExcel}</td>
                         <td className="p-3 font-bold">{l.dados.nome || '—'}</td>
-                        <td className="p-3">{l.dados.data_nascimento || '—'}</td>
+                        <td className="p-3">{l.dados.data_nascimento || ''}</td>
                         <td className="p-3 font-mono">{l.erros.length === 0 ? nomeUtilizadorDoAluno(l.dados) : '—'}</td>
                         <td className="p-3">{l.dados.email_encarregado || '—'}</td>
                         <td className="p-3">{l.dados.ano_escolar ?? 'null'}</td>

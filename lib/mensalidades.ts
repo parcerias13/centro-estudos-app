@@ -33,10 +33,15 @@ export async function garantirMesGerado(centro_id: string, ano: number, mes: num
   if (errExistentes) throw errExistentes;
   if (existentes && existentes.length > 0) return existentes;
 
+  // gt('mensalidade_base', 0) já exclui null e 0 ao mesmo tempo (comparação
+  // com null é sempre desconhecida em SQL) — alunos "só explicações"
+  // (mensalidade_base <= 0 ou nula) deixam de ganhar uma linha fantasma de
+  // 0€ "Não Pago" em /admin/pagamentos.
   const { data: alunosAtivos, error: errAlunos } = await supabase
     .from('alunos')
     .select('id, mensalidade_base')
-    .eq('ativo', true);
+    .eq('ativo', true)
+    .gt('mensalidade_base', 0);
 
   if (errAlunos) throw errAlunos;
   if (!alunosAtivos || alunosAtivos.length === 0) return [];

@@ -34,8 +34,11 @@ export default function NovoAluno() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   // 2. LÓGICA DE NEGÓCIO (CONTRATO FIXO)
-  const [mensalidadeBase, setMensalidadeBase] = useState(''); 
+  const [mensalidadeBase, setMensalidadeBase] = useState('');
   const [diasSelecionados, setDiasSelecionados] = useState<number[]>([]);
+  // Modalidade: Sala de Estudo por defeito — traduzida em sala_estudo/
+  // faz_explicacoes só no envio (nunca as duas false, a API também valida isto).
+  const [modalidade, setModalidade] = useState<'sala_estudo' | 'so_explicacoes' | 'ambos'>('sala_estudo');
 
   const diasSemana = [
     { id: 1, label: 'Segunda' }, { id: 2, label: 'Terça' }, { id: 3, label: 'Quarta' },
@@ -106,11 +109,6 @@ export default function NovoAluno() {
       return;
     }
 
-    if (!dataNascimento) {
-      setErro('A data de nascimento é obrigatória.');
-      return;
-    }
-
     if (!mensalidadeBase) {
       setErro('Define o valor da mensalidade base.');
       return;
@@ -131,7 +129,7 @@ export default function NovoAluno() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nome,
-          data_nascimento: dataNascimento,
+          data_nascimento: dataNascimento || null,
           telefone_encarregado: telefone,
           email_encarregado: emailEncarregado,
           nif_encarregado: nifEncarregado,
@@ -145,6 +143,8 @@ export default function NovoAluno() {
           avatar_url: avatarUrl,
           centro_id,
           dias_selecionados: diasSelecionados,
+          sala_estudo: modalidade !== 'so_explicacoes',
+          faz_explicacoes: modalidade !== 'sala_estudo',
         }),
       });
 
@@ -274,8 +274,8 @@ export default function NovoAluno() {
               <p className="text-[10px] text-muted">O nome de utilizador, a password e o código dos encarregados são gerados automaticamente ao finalizar — vais vê-los uma vez só.</p>
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-muted uppercase tracking-widest">Data de Nascimento</label>
-              <input type="date" required value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all text-primary" />
+              <label className="text-[10px] font-black text-muted uppercase tracking-widest">Data de Nascimento (opcional)</label>
+              <input type="date" value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all text-primary" />
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
@@ -350,7 +350,27 @@ export default function NovoAluno() {
         {/* 2. PLANO FINANCEIRO E FREQUÊNCIA */}
         <div className="space-y-6">
           <h2 className="text-[10px] font-black uppercase text-accent tracking-[0.2em]">2. Plano Financeiro e Frequência</h2>
-          
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-muted uppercase tracking-widest">Modalidade</label>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { id: 'sala_estudo', label: 'Sala de Estudo' },
+                { id: 'so_explicacoes', label: 'Só Explicações' },
+                { id: 'ambos', label: 'Ambos' },
+              ] as const).map((opcao) => (
+                <button
+                  key={opcao.id}
+                  type="button"
+                  onClick={() => setModalidade(opcao.id)}
+                  className={`flex-1 min-w-32 p-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${modalidade === opcao.id ? 'bg-accent border-accent shadow-lg shadow-accent/20 text-on-accent' : 'bg-page border-border text-muted'}`}
+                >
+                  {opcao.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-success uppercase tracking-widest flex items-center gap-2">

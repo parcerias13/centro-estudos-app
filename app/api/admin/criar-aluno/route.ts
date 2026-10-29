@@ -67,11 +67,22 @@ export async function POST(req: Request) {
     nome, nome_utilizador_override, data_nascimento, telefone_encarregado,
     email_encarregado, nif_encarregado, morada_encarregado, telemovel_aluno, ano_escolar, mensalidade_base,
     saida_autorizada, consentimento_ia, usa_app, avatar_url,
-    dias_selecionados,
+    dias_selecionados, sala_estudo, faz_explicacoes,
   } = await req.json()
 
-  if (!nome || !data_nascimento) {
+  // data_nascimento passou a opcional (muitos centros não a têm) — só o nome
+  // continua obrigatório aqui. ano_escolar é validado em separado a seguir.
+  if (!nome) {
     return NextResponse.json({ error: 'Campos obrigatórios em falta.' }, { status: 400 })
+  }
+
+  // Modalidade: default sala_estudo=true/faz_explicacoes=false quando omitidos
+  // (compatibilidade com chamadas antigas, scripts, e importação sem a coluna
+  // nova), mas nunca as duas false — um aluno tem de ter pelo menos uma.
+  const salaEstudoFinal = sala_estudo === undefined ? true : !!sala_estudo
+  const explicacoesFinal = faz_explicacoes === undefined ? false : !!faz_explicacoes
+  if (!salaEstudoFinal && !explicacoesFinal) {
+    return NextResponse.json({ error: 'Define pelo menos uma modalidade (Sala de Estudo ou Explicações).' }, { status: 400 })
   }
 
   const password = gerarPasswordSegura()
@@ -142,7 +153,7 @@ export async function POST(req: Request) {
     id: novoId,
     nome,
     email: emailFinal,
-    data_nascimento,
+    data_nascimento: data_nascimento || null,
     telefone_encarregado,
     email_encarregado,
     nif_encarregado,
@@ -155,6 +166,8 @@ export async function POST(req: Request) {
     usa_app,
     avatar_url,
     centro_id,
+    sala_estudo: salaEstudoFinal,
+    faz_explicacoes: explicacoesFinal,
   })
 
   if (dbError) {

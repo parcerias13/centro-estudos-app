@@ -5,7 +5,7 @@ import { gerarUsernameBase, normalizarUsernameManual } from '../../../lib/userna
 
 export const CABECALHOS = [
   'Nome*',
-  'Data Nascimento*',
+  'Data Nascimento',
   'Ano Escolar*',
   'Mensalidade Base*',
   'Nome de Utilizador do Aluno',
@@ -17,6 +17,7 @@ export const CABECALHOS = [
   'Usa App',
   'NIF Encarregado',
   'Morada Encarregado',
+  'Modalidade',
 ] as const;
 
 export const LINHA_EXEMPLO = [
@@ -33,6 +34,7 @@ export const LINHA_EXEMPLO = [
   'sim',
   '123456789',
   'Rua Exemplo, 123, Porto',
+  'Sala de Estudo',
 ];
 
 export interface AlunoImportado {
@@ -52,6 +54,8 @@ export interface AlunoImportado {
   usa_app: boolean | null;
   nif_encarregado: string | null;
   morada_encarregado: string | null;
+  sala_estudo: boolean;
+  faz_explicacoes: boolean;
 }
 
 // Base do nome de utilizador (antes de qualquer sufixo de desambiguação em
@@ -68,12 +72,97 @@ export function nomeUtilizadorDoAluno(dados: AlunoImportado): string {
 }
 
 // Chave de identidade para idempotência da importação: duas linhas (ou duas
-// importações do mesmo ficheiro) com o mesmo nome e data de nascimento são
-// tratadas como o mesmo aluno — não se cria uma segunda conta. Não usa o
-// nome de utilizador para esta deteção porque esse é só o login, não a
-// identidade da pessoa.
-export function chaveIdentidadeAluno(nome: string, dataNascimento: string | null): string {
-  return `${nome.trim().toLowerCase()}|${dataNascimento ?? ''}`;
+// importações do mesmo ficheiro) com o mesmo nome e ano escolar são tratadas
+// como o mesmo aluno — não se cria uma segunda conta. Já não usa a data de
+// nascimento (passou a opcional, muitos centros não a têm). Não usa o nome
+// de utilizador para esta deteção porque esse é só o login, não a identidade
+// da pessoa.
+//
+// Risco aceite e tratado à parte (ver ImportarAlunosModal.tsx): dois alunos
+// REAIS diferentes com o mesmo nome e o mesmo ano (homónimos) colidem nesta
+// chave. Por isso uma colisão nunca é resolvida em silêncio — bloqueia a
+// pré-visualização (colisão dentro do próprio ficheiro) ou fica sempre
+// listada explicitamente no relatório final (colisão com um aluno já
+// existente no centro).
+export function chaveIdentidadeAluno(nome: string, anoEscolar: number | null): string {
+  const nomeNormalizado = nome.trim().toLowerCase().replace(/\s+/g, ' ');
+  return `${nomeNormalizado}|${anoEscolar ?? ''}`;
+}
+
+// Modalidade da coluna opcional "Modalidade" do template — aceita variantes
+// sem acentos e em qualquer capitalização. Vazio, ausente, ou valor não
+// reconhecido = Sala de Estudo (o default de sempre), para nunca falhar a
+// importação de um ficheiro antigo sem esta coluna.
+export function paraModalidade(valor: unknown): { sala_estudo: boolean; faz_explicacoes: boolean } {
+  const texto = removerAcentosParaModalidade(String(valor ?? '').trim().toLowerCase());
+  if (texto === 'so explicacoes' || texto === 'explicacoes') {
+    return { sala_estudo: false, faz_explicacoes: true };
+  }
+  if (texto === 'ambos') {
+    return { sala_estudo: true, faz_explicacoes: true };
+  }
+  // 'sala de estudo', vazio, ou qualquer outra coisa não reconhecida.
+  return { sala_estudo: true, faz_explicacoes: false };
+}
+
+function removerAcentosParaModalidade(texto: string): string {
+  return texto.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/** Rótulo curto da modalidade — usado nas mensagens de colisão/duplicado. */
+export function rotuloModalidade(sala_estudo: boolean, faz_explicacoes: boolean): string {
+  if (sala_estudo && faz_explicacoes) return 'Ambos';
+  if (faz_explicacoes) return 'Só Explicações';
+  return 'Sala de Estudo';
+}
+
+/**
+ * Mensagem mostrada quando uma linha da importação colide (nome + ano) com
+ * um aluno já existente no centro — nunca em silêncio: diz sempre a
+ * modalidade atual desse aluno e, quando aplicável, sugere o caminho para
+ * "Ambos" em vez de reimportar.
+ */
+export function fraseJaExisteComoModalidade(sala_estudo: boolean, faz_explicacoes: boolean): string {
+  const rotulo = rotuloModalidade(sala_estudo, faz_explicacoes);
+  if (sala_estudo && faz_explicacoes) return `Já existe como ${rotulo}.`;
+  const outra = faz_explicacoes ? 'sala de estudo' : 'explicações';
+  return `Já existe como ${rotulo}. Se também faz ${outra}, abre a ficha e muda para Ambos.`;
+}
+
+function normalizarParaComparacao(texto: string | null | undefined): string {
+  return (texto ?? '').trim().toLowerCase();
+}
+
+/**
+ * Deteta homónimos DENTRO do próprio ficheiro: duas (ou mais) linhas com o
+ * mesmo nome e ano escolar — mesma `chaveIdentidadeAluno` — sem um "Nome de
+ * Utilizador" manual que as distinga uma da outra. Em vez de assumir que são
+ * a mesma pessoa (como aconteceria contra a base de dados) ou duplicar sem
+ * aviso, bloqueia o grupo inteiro na pré-visualização: mais seguro quando
+ * não há data de nascimento para desambiguar. Só deixa de bloquear se TODAS
+ * as linhas do grupo tiverem um Nome de Utilizador próprio, não vazio, e
+ * diferente entre si.
+ */
+export function detetarHomonimosNoFicheiro(linhas: LinhaImportacao[]): Map<number, string> {
+  const porChave = new Map<string, LinhaImportacao[]>();
+  for (const l of linhas) {
+    const chave = chaveIdentidadeAluno(l.dados.nome, l.dados.ano_escolar);
+    if (!porChave.has(chave)) porChave.set(chave, []);
+    porChave.get(chave)!.push(l);
+  }
+
+  const bloqueios = new Map<number, string>();
+  for (const grupo of porChave.values()) {
+    if (grupo.length < 2) continue;
+    const utilizadores = grupo.map((l) => normalizarParaComparacao(l.dados.nome_utilizador));
+    const todosDistintosENaoVazios = utilizadores.every((u) => u !== '') && new Set(utilizadores).size === utilizadores.length;
+    if (!todosDistintosENaoVazios) {
+      for (const linha of grupo) {
+        bloqueios.set(linha.linhaExcel, 'Possível duplicado ou homónimo: indica um Nome de Utilizador diferente para o importar');
+      }
+    }
+  }
+  return bloqueios;
 }
 
 export interface LinhaImportacao {
@@ -154,8 +243,11 @@ function paraDataNascimento(valor: unknown): string | null {
 }
 
 export function mapearLinha(linhaBruta: Record<string, unknown>, linhaExcel: number): LinhaImportacao {
+  const modalidade = paraModalidade(linhaBruta['Modalidade']);
+
   const dados: AlunoImportado = {
     nome: String(linhaBruta['Nome*'] ?? linhaBruta['Nome'] ?? '').trim(),
+    // Opcional — muitos centros não têm a data de nascimento dos alunos.
     data_nascimento: paraDataNascimento(linhaBruta['Data Nascimento*'] ?? linhaBruta['Data Nascimento']),
     email_encarregado: paraTextoOuNull(linhaBruta['Email Encarregado*'] ?? linhaBruta['Email Encarregado'])?.toLowerCase() ?? null,
     nome_utilizador: paraTextoOuNull(linhaBruta['Nome de Utilizador do Aluno']),
@@ -168,11 +260,12 @@ export function mapearLinha(linhaBruta: Record<string, unknown>, linhaExcel: num
     usa_app: paraBooleanoOuNull(linhaBruta['Usa App']),
     nif_encarregado: paraTextoOuNull(linhaBruta['NIF Encarregado']),
     morada_encarregado: paraTextoOuNull(linhaBruta['Morada Encarregado']),
+    sala_estudo: modalidade.sala_estudo,
+    faz_explicacoes: modalidade.faz_explicacoes,
   };
 
   const erros: string[] = [];
   if (!dados.nome) erros.push('Nome em falta');
-  if (!dados.data_nascimento) erros.push('Data de Nascimento em falta ou inválida (usa DD/MM/AAAA)');
   // Email e telefone do encarregado são agora opcionais — só contacto para
   // extratos, já não servem de login (o aluno nunca dá email).
   if (dados.email_encarregado && !REGEX_EMAIL.test(dados.email_encarregado)) erros.push('Email do Encarregado inválido');

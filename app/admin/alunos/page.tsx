@@ -18,6 +18,7 @@ export default function ListaAlunos() {
   const [alunos, setAlunos] = useState<any[]>([]);
   const [busca, setBusca] = useState('');
   const [filtroAno, setFiltroAno] = useState('');
+  const [filtroModalidade, setFiltroModalidade] = useState<'todos' | 'sala_estudo' | 'so_explicacoes' | 'ambos'>('todos');
   const [loading, setLoading] = useState(true);
   const [ficheiroImportacao, setFicheiroImportacao] = useState<File | null>(null);
   const inputImportacaoRef = useRef<HTMLInputElement>(null);
@@ -126,10 +127,30 @@ export default function ListaAlunos() {
     e.target.value = '';
   };
 
+  // sala_estudo vem com default true e faz_explicacoes com default false na
+  // BD — ?? aqui é só para o instante entre o primeiro render e o fetch
+  // devolver, nunca deve refletir um valor real em falta.
+  const modalidadeDoAluno = (a: any): 'sala_estudo' | 'so_explicacoes' | 'ambos' => {
+    const salaEstudo = a.sala_estudo ?? true;
+    const explicacoes = a.faz_explicacoes ?? false;
+    if (salaEstudo && explicacoes) return 'ambos';
+    if (explicacoes) return 'so_explicacoes';
+    return 'sala_estudo';
+  };
+
+  const contagemModalidade = alunos.reduce(
+    (acc, a) => {
+      acc[modalidadeDoAluno(a)]++;
+      return acc;
+    },
+    { sala_estudo: 0, so_explicacoes: 0, ambos: 0 } as Record<'sala_estudo' | 'so_explicacoes' | 'ambos', number>
+  );
+
   const alunosFiltrados = alunos.filter(a => {
     const matchesNome = a.nome?.toLowerCase().includes(busca.toLowerCase());
     const matchesAno = filtroAno === '' || String(a.ano_escolar) === filtroAno;
-    return matchesNome && matchesAno;
+    const matchesModalidade = filtroModalidade === 'todos' || modalidadeDoAluno(a) === filtroModalidade;
+    return matchesNome && matchesAno && matchesModalidade;
   });
 
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
@@ -222,12 +243,12 @@ export default function ListaAlunos() {
         />
       )}
 
-      <div className="flex flex-col md:flex-row gap-4 mb-8">
-        <div className="relative flex-1">
+      <div className="flex flex-col md:flex-row flex-wrap gap-4 mb-8">
+        <div className="relative flex-1 min-w-0">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={20} />
-          <input 
-            type="text" 
-            placeholder="Pesquisar por nome do aluno..." 
+          <input
+            type="text"
+            placeholder="Pesquisar por nome do aluno..."
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             className="w-full bg-surface/50 border border-border p-5 pl-14 rounded-2xl outline-none focus:border-accent transition-all text-lg font-medium placeholder:text-muted"
@@ -236,7 +257,7 @@ export default function ListaAlunos() {
 
         <div className="relative w-full md:w-64">
           <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={20} />
-          <select 
+          <select
             value={filtroAno}
             onChange={(e) => setFiltroAno(e.target.value)}
             className="w-full bg-surface/50 border border-border p-5 pl-14 rounded-2xl outline-none focus:border-accent transition-all text-lg font-medium appearance-none cursor-pointer text-secondary"
@@ -245,6 +266,20 @@ export default function ListaAlunos() {
             {[...Array(12)].map((_, i) => (
               <option key={i + 1} value={i + 1}>{i + 1}º Ano</option>
             ))}
+          </select>
+        </div>
+
+        <div className="relative w-full md:w-64">
+          <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={20} />
+          <select
+            value={filtroModalidade}
+            onChange={(e) => setFiltroModalidade(e.target.value as typeof filtroModalidade)}
+            className="w-full bg-surface/50 border border-border p-5 pl-14 rounded-2xl outline-none focus:border-accent transition-all text-lg font-medium appearance-none cursor-pointer text-secondary"
+          >
+            <option value="todos">Todos ({alunos.length})</option>
+            <option value="sala_estudo">Sala de Estudo ({contagemModalidade.sala_estudo})</option>
+            <option value="so_explicacoes">Só Explicações ({contagemModalidade.so_explicacoes})</option>
+            <option value="ambos">Ambos ({contagemModalidade.ambos})</option>
           </select>
         </div>
       </div>
@@ -276,6 +311,16 @@ export default function ListaAlunos() {
                       {aluno.saida_autorizada ? <ShieldCheck size={10} /> : <ShieldAlert size={10} />}
                       {aluno.saida_autorizada ? 'Autónomo' : 'Restrito'}
                     </span>
+                    {(aluno.sala_estudo ?? true) && (
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-success-bg text-success border border-success/20 rounded-md">
+                        Sala de Estudo
+                      </span>
+                    )}
+                    {aluno.faz_explicacoes && (
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-violet-500/10 text-violet-500 border border-violet-500/20 rounded-md">
+                        Explicações
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

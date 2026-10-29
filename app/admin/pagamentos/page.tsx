@@ -292,10 +292,17 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
     return aluno?.nome || 'Desconhecido';
   };
 
-  const rowsFiltradas = rows.filter((r) => getNome(r).toLowerCase().includes(searchQuery.toLowerCase()));
+  // Esconde (sem apagar da BD) linhas antigas de mensalidade com
+  // valor_esperado <= 0 que ainda estão por pagar — resíduo de antes de
+  // lib/mensalidades.ts deixar de as gerar. Uma linha de 0€ já marcada como
+  // paga (ex. desconto manual) continua visível — só se escondem as
+  // "dívidas fantasma" nunca resolvidas.
+  const rowsVisiveis = rows.filter((r) => Number(r.valor_esperado) > 0 || r.pago);
 
-  const totalEsperado = rows.reduce((acc, r) => acc + (Number(r.valor_esperado) || 0), 0);
-  const totalPago = rows.reduce((acc, r) => acc + (r.pago ? (Number(r.valor_pago) || 0) : 0), 0);
+  const rowsFiltradas = rowsVisiveis.filter((r) => getNome(r).toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const totalEsperado = rowsVisiveis.reduce((acc, r) => acc + (Number(r.valor_esperado) || 0), 0);
+  const totalPago = rowsVisiveis.reduce((acc, r) => acc + (r.pago ? (Number(r.valor_pago) || 0) : 0), 0);
   const emFalta = totalEsperado - totalPago;
   const pctCobranca = totalEsperado > 0 ? (totalPago / totalEsperado) * 100 : 0;
 
@@ -375,7 +382,7 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                 <tr>
                   <td colSpan={7} className="p-16 text-center text-muted font-medium italic">
                     <Wallet size={48} className="mx-auto mb-4 opacity-20" />
-                    {rows.length === 0 ? 'Sem alunos ativos para gerar mensalidades neste mês.' : 'Nenhum aluno encontrado para a pesquisa.'}
+                    {rowsVisiveis.length === 0 ? 'Sem alunos ativos para gerar mensalidades neste mês.' : 'Nenhum aluno encontrado para a pesquisa.'}
                   </td>
                 </tr>
               ) : (

@@ -49,6 +49,9 @@ function EditarAlunoContent() {
   const [escola, setEscola] = useState('');
   const [turma, setTurma] = useState('');
   const [mensalidadeBase, setMensalidadeBase] = useState(''); // NOVO: Valor fixo
+  // Modalidade: Sala de Estudo por defeito — traduzida em sala_estudo/
+  // faz_explicacoes só no envio (nunca as duas false, a API também valida isto).
+  const [modalidade, setModalidade] = useState<'sala_estudo' | 'so_explicacoes' | 'ambos'>('sala_estudo');
   const [saidaAutorizada, setSaidaAutorizada] = useState(false);
   const [ativo, setAtivo] = useState(true);
   const [consentimentoIa, setConsentimentoIa] = useState(false);
@@ -112,6 +115,9 @@ function EditarAlunoContent() {
       setEscola(aluno.escola || '');
       setTurma(aluno.turma || '');
       setMensalidadeBase(aluno.mensalidade_base?.toString() || ''); // CARREGAMENTO DO VALOR FIXO
+      const salaEstudoCarregada = aluno.sala_estudo ?? true;
+      const explicacoesCarregadas = aluno.faz_explicacoes ?? false;
+      setModalidade(salaEstudoCarregada && explicacoesCarregadas ? 'ambos' : explicacoesCarregadas ? 'so_explicacoes' : 'sala_estudo');
       setSaidaAutorizada(aluno.saida_autorizada || false);
       setAtivo(aluno.ativo ?? true);
       setConsentimentoIa(aluno.consentimento_ia || false);
@@ -284,7 +290,7 @@ function EditarAlunoContent() {
           nif_encarregado: nifEncarregado,
           morada_encarregado: moradaEncarregado,
           telemovel_aluno: telemovelAluno,
-          data_nascimento: dataNascimento,
+          data_nascimento: dataNascimento || null,
           ano_escolar: parseInt(anoEscolar),
           escola: escola.trim() || null,
           turma: turma.trim() || null,
@@ -294,6 +300,8 @@ function EditarAlunoContent() {
           consentimento_ia: eMaiorDe13() ? consentimentoIa : false,
           usa_app: usaApp,
           avatar_url: avatarUrl,
+          sala_estudo: modalidade !== 'so_explicacoes',
+          faz_explicacoes: modalidade !== 'sala_estudo',
         })
         .eq('id', studentId);
 
@@ -368,8 +376,8 @@ function EditarAlunoContent() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase text-muted tracking-widest">Data de Nascimento</label>
-              <input type="date" required value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all text-primary" />
+              <label className="text-[10px] font-black uppercase text-muted tracking-widest">Data de Nascimento (opcional)</label>
+              <input type="date" value={dataNascimento} onChange={(e) => setDataNascimento(e.target.value)} className="w-full bg-page border border-border p-4 rounded-xl outline-none focus:border-accent transition-all text-primary" />
             </div>
 
             {ehEmailFachada(email) ? (
@@ -596,7 +604,27 @@ function EditarAlunoContent() {
         {/* 2. PLANO FINANCEIRO E FREQUÊNCIA */}
         <div className="space-y-6">
           <h2 className="text-[10px] font-black uppercase text-accent tracking-[0.2em]">2. Plano Financeiro e Frequência</h2>
-          
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase text-muted tracking-widest">Modalidade</label>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { id: 'sala_estudo', label: 'Sala de Estudo' },
+                { id: 'so_explicacoes', label: 'Só Explicações' },
+                { id: 'ambos', label: 'Ambos' },
+              ] as const).map((opcao) => (
+                <button
+                  key={opcao.id}
+                  type="button"
+                  onClick={() => setModalidade(opcao.id)}
+                  className={`flex-1 min-w-32 p-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${modalidade === opcao.id ? 'bg-accent border-accent shadow-lg shadow-accent/20 text-on-accent' : 'bg-page border-border text-muted'}`}
+                >
+                  {opcao.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-success uppercase tracking-widest flex items-center gap-2">
