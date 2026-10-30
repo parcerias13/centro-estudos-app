@@ -380,8 +380,18 @@ function BadgeTipo({ tipo }: { tipo: Tipo }) {
   );
 }
 
-function TextoAviso({ aviso }: { aviso: AvisoFamilia | undefined }) {
-  if (!aviso || aviso.total === 0) return <span className="text-muted italic">Sem aviso à família</span>;
+// Uma pausa de série cancela as sessões uma a uma (motivo a começar por
+// "Pausa de"), mas nunca manda mensagem individual por sessão — a família
+// recebe UMA mensagem-resumo do tipo 'pausa', sem alteracao_id nenhum a
+// ligar de volta a estas linhas. Sem isto, pareceria que a família nunca
+// foi avisada.
+function TextoAviso({ aviso, linha }: { aviso: AvisoFamilia | undefined; linha: LinhaAlteracao }) {
+  if (!aviso || aviso.total === 0) {
+    if (linha.tipo === 'cancelada' && linha.motivo?.startsWith('Pausa de')) {
+      return <span className="text-muted italic">Avisadas em resumo (pausa)</span>;
+    }
+    return <span className="text-muted italic">Sem aviso à família</span>;
+  }
   return <span>{aviso.total} mensagem{aviso.total === 1 ? '' : 'ns'} · {aviso.lidas} lida{aviso.lidas === 1 ? '' : 's'}</span>;
 }
 
@@ -430,7 +440,7 @@ function LinhaDesktop(props: PropsLinha) {
       <td className="p-3 whitespace-nowrap font-mono text-xs">{resumoAntesDepois(l)}</td>
       <td className="p-3 max-w-[200px]">{l.motivo || <span className="text-muted">—</span>}</td>
       <td className="p-3 whitespace-nowrap">{nomeAutor}<br /><span className="text-[10px] text-muted">{format(new Date(l.criada_em), 'dd/MM/yyyy HH:mm')}</span></td>
-      <td className="p-3 whitespace-nowrap"><TextoAviso aviso={aviso} /></td>
+      <td className="p-3 whitespace-nowrap"><TextoAviso aviso={aviso} linha={l} /></td>
       <td className="p-3"><Acoes {...props} /></td>
     </tr>
   );
@@ -451,7 +461,7 @@ function CartaoMobile(props: PropsLinha) {
       <p className="text-xs font-mono text-secondary">{resumoAntesDepois(l)}</p>
       {l.motivo && <p className="text-xs text-muted italic">"{l.motivo}"</p>}
       <p className="text-xs text-muted">{nomeAutor} · {format(new Date(l.criada_em), 'dd/MM/yyyy HH:mm')}</p>
-      <p className="text-xs"><TextoAviso aviso={aviso} /></p>
+      <p className="text-xs"><TextoAviso aviso={aviso} linha={l} /></p>
       <div className="pt-1"><Acoes {...props} /></div>
     </div>
   );

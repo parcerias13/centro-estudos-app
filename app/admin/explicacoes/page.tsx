@@ -9,6 +9,7 @@ import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GraduationCap, Loader2,
   Clock, Trash2, Save, Search, Users, AlertTriangle, HelpCircle, CalendarDays,
+  CheckCheck, Ban, RotateCcw, UserCog, CalendarClock, ListTree,
 } from 'lucide-react';
 import { startOfWeek, endOfWeek, addWeeks, addDays, eachDayOfInterval, format, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -56,12 +57,15 @@ function extrairHoraDoPedido(horario: string | null): string {
   return `${hora}:${minuto}`;
 }
 
-// Só apresentação: "Dada" vem direto de sessao.dado, sem comparar datas —
-// por isso não precisa de getHojeLisboa() nenhuma (nem de new Date()).
-const getEstadoSessaoResumido = (dado: boolean) =>
-  dado
-    ? { label: 'Dada', classes: 'bg-success-bg text-success border-success/30' }
-    : { label: 'Por dar', classes: 'bg-page text-muted border-border' };
+// Só apresentação: "Dada"/"Por dar" vêm direto de sessao.dado, sem comparar
+// datas; "Cancelada" tem sempre prioridade sobre o estado de dado (uma
+// sessão dada nunca fica cancelada — garantido por alterar_sessao).
+const getEstadoSessaoResumido = (sessao: any) =>
+  sessao.estado === 'cancelada'
+    ? { label: 'Cancelada', classes: 'bg-page text-muted border-border' }
+    : sessao.dado
+      ? { label: 'Dada', classes: 'bg-success-bg text-success border-success/30' }
+      : { label: 'Por dar', classes: 'bg-page text-muted border-border' };
 
 // Nomes separados por vírgula (sem o "· N.º ano" por nome, que rotuloAluno/
 // getNomeAluno sempre acrescentam — usados tal e qual nas modais) + o ano
@@ -112,6 +116,7 @@ function ExplicacoesPageContent() {
   const [currentWeekStart, setCurrentWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [sessoes, setSessoes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [marcandoHoje, setMarcandoHoje] = useState(false);
 
   const [detalheSessao, setDetalheSessao] = useState<any | null>(null);
   const [novaModalOpen, setNovaModalOpen] = useState(false);
@@ -254,11 +259,19 @@ function ExplicacoesPageContent() {
     initRef.current = true;
 
     (async () => {
-      const [{ data: { user } }, { data: subData }, { data: alunosData }] = await Promise.all([
+      // gerar_sessoes_series() corre aqui, em paralelo com o resto — é
+      // idempotente e segura em paralelo (qualquer staff pode chamá-la), por
+      // isso não depende de role/centro para arrancar. Uma falha mostra-se
+      // com o StatusToast mas nunca bloqueia a carga da página.
+      const [{ data: { user } }, { data: subData }, { data: alunosData }, { data: professoresData }, { error: erroGeracao }] = await Promise.all([
         supabase.auth.getUser(),
         supabase.from('subjects').select('id, name, centro_id, anos_aplicaveis').order('name'),
         supabase.from('alunos').select('id, nome, ano_escolar').eq('ativo', true).order('nome'),
+        supabase.from('staff').select('id, name').eq('role', 'professor').order('name'),
+        supabase.rpc('gerar_sessoes_series'),
       ]);
+
+      if (erroGeracao) showError('Erro ao gerar as sessões das séries: ' + erroGeracao.message);
 
       const r = user?.app_metadata?.role?.toLowerCase() ?? null;
       const cId = user?.app_metadata?.centro_id ?? null;
@@ -268,15 +281,18 @@ function ExplicacoesPageContent() {
       setAlunosAtivos(alunosData || []);
       setRole(r);
       setCentroId(cId);
+      // Lista de professores do centro carregada para qualquer role — além
+      // do seletor do admin, alimenta "Trocar professor" na modal de
+      // detalhe, também disponível ao professor da sessão.
+      setProfessores(professoresData || []);
 
       if (r === 'professor' && user) {
         setSelectedProfessorId(user.id);
       } else if (r === 'admin') {
-        const { data } = await supabase.from('staff').select('id, name').eq('role', 'professor').order('name');
-        setProfessores(data || []);
-        if (data && data.length > 0) setSelectedProfessorId(data[0].id);
+        if (professoresData && professoresData.length > 0) setSelectedProfessorId(professoresData[0].id);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // --- SESSÕES DA SEMANA ---
@@ -334,7 +350,15 @@ function ExplicacoesPageContent() {
   });
 
   const handleSessaoAtualizada = (atualizada: any) => {
-    setSessoes((prev) => prev.map((s) => (s.id === atualizada.id ? atualizada : s)));
+    // "Trocar professor" muda o professor_id — a sessão deixa de pertencer
+    // à agenda do professor selecionado e tem de desaparecer da lista
+    // atual, nunca só atualizar-se no lugar (que a deixaria visível na
+    // agenda errada até ao próximo fetchSessoes).
+    setSessoes((prev) =>
+      atualizada.professor_id !== selectedProfessorId
+        ? prev.filter((s) => s.id !== atualizada.id)
+        : prev.map((s) => (s.id === atualizada.id ? atualizada : s))
+    );
     setDetalheSessao(null);
   };
 
@@ -343,22 +367,96 @@ function ExplicacoesPageContent() {
     setDetalheSessao(null);
   };
 
+  // "Marcar as de hoje como dadas" — só sessões de hoje (getHojeLisboa(),
+  // nunca new Date() local), estado 'ativa' e ainda não dadas. Cada uma
+  // recebe horas_dadas = duracao_prevista_horas (as sessões manuais, sem
+  // duração prevista, nunca são marcadas automaticamente — ficam de fora e
+  // o resultado diz quantas). Query direta à base de dados (não ao estado
+  // sessoes já carregado), porque "hoje" pode não estar na semana aberta.
+  const nomeProfessorSelecionado = professores.find((p) => p.id === selectedProfessorId)?.name || 'professor';
+
+  const handleMarcarHojeComoDadas = async () => {
+    if (!selectedProfessorId || marcandoHoje) return;
+    const hojeISO = getHojeLisboa();
+    const { data: hojeSessoes, error } = await supabase
+      .from('explicacoes')
+      .select('id, duracao_prevista_horas')
+      .eq('professor_id', selectedProfessorId)
+      .eq('data', hojeISO)
+      .eq('estado', 'ativa')
+      .eq('dado', false);
+
+    if (error) {
+      showError('Erro ao verificar as sessões de hoje: ' + error.message);
+      return;
+    }
+    if (!hojeSessoes || hojeSessoes.length === 0) {
+      showError('Não há sessões de hoje por marcar.');
+      return;
+    }
+    if (!confirm(`Marcar as ${hojeSessoes.length} sessões de hoje de ${nomeProfessorSelecionado} como dadas?`)) return;
+
+    setMarcandoHoje(true);
+    try {
+      const comDuracao = hojeSessoes.filter((s) => s.duracao_prevista_horas != null);
+      const semDuracao = hojeSessoes.length - comDuracao.length;
+
+      const resultados = await Promise.all(
+        comDuracao.map((s) =>
+          supabase.from('explicacoes').update({ dado: true, horas_dadas: s.duracao_prevista_horas }).eq('id', s.id)
+        )
+      );
+      const erroMarcar = resultados.find((r) => r.error)?.error;
+      if (erroMarcar) {
+        showError('Erro ao marcar sessões como dadas: ' + erroMarcar.message);
+        return;
+      }
+
+      showSuccess(
+        `${comDuracao.length} ${comDuracao.length === 1 ? 'sessão marcada' : 'sessões marcadas'} como dadas.` +
+          (semDuracao > 0 ? ` ${semDuracao} ${semDuracao === 1 ? 'ficou' : 'ficaram'} de fora (sem duração definida).` : '')
+      );
+      fetchSessoes();
+    } finally {
+      setMarcandoHoje(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-page text-primary p-6 md:p-8 max-w-7xl mx-auto font-sans">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6">
-        <div className="flex items-center gap-4">
-          <Link href="/admin" className="p-3 bg-surface border border-border rounded-2xl hover:bg-raised transition-colors">
-            <ArrowLeft size={20} className="text-secondary" />
-          </Link>
-          <div>
-            <h1 className="text-3xl md:text-4xl font-black italic tracking-tighter uppercase flex items-center gap-3">
-              <GraduationCap className="text-accent" /> Explicações
-            </h1>
-            <p className="text-muted text-[10px] font-black uppercase tracking-widest mt-1">Agenda de Sessões</p>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-4 min-w-0">
+            <Link href="/admin" className="p-3 bg-surface border border-border rounded-2xl hover:bg-raised transition-colors shrink-0">
+              <ArrowLeft size={20} className="text-secondary" />
+            </Link>
+            <div className="min-w-0">
+              <h1 className="text-3xl md:text-4xl font-black italic tracking-tighter uppercase flex items-center gap-3">
+                <GraduationCap className="text-accent shrink-0" /> Explicações
+              </h1>
+              <p className="text-muted text-[10px] font-black uppercase tracking-widest mt-1">Agenda de Sessões</p>
+            </div>
           </div>
+          {role === 'admin' && (
+            <Link
+              href="/admin/explicacoes/series"
+              className="flex items-center gap-1.5 bg-surface border border-border hover:border-accent/50 text-secondary hover:text-primary px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shrink-0"
+            >
+              <ListTree size={14} /> Séries
+            </Link>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          <button
+            onClick={handleMarcarHojeComoDadas}
+            disabled={!selectedProfessorId || marcandoHoje}
+            className="flex items-center gap-2 bg-surface border border-border hover:border-success/40 text-secondary hover:text-success px-4 py-3 rounded-2xl font-black text-sm transition-all active:scale-95 disabled:opacity-40 min-w-0"
+          >
+            {marcandoHoje ? <Loader2 className="animate-spin shrink-0" size={16} /> : <CheckCheck className="shrink-0" size={16} />}
+            <span className="text-left break-words">Marcar as de hoje como dadas</span>
+          </button>
+
           {role === 'admin' && (
             <select
               value={selectedProfessorId || ''}
@@ -374,7 +472,7 @@ function ExplicacoesPageContent() {
 
           {/* SELETOR DE SEMANA */}
           <div className="flex items-center bg-surface border border-border rounded-2xl overflow-hidden p-1 shadow-xl shrink-0">
-            <button onClick={() => setCurrentWeekStart((prev) => addWeeks(prev, -1))} className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all">
+            <button aria-label="Semana anterior" onClick={() => setCurrentWeekStart((prev) => addWeeks(prev, -1))} className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all">
               <ChevronLeft size={20} />
             </button>
             <div className="px-3 py-1 text-center">
@@ -382,7 +480,7 @@ function ExplicacoesPageContent() {
                 {intervaloSemanaLabel(currentWeekStart, endOfWeek(currentWeekStart, { weekStartsOn: 1 }))}
               </p>
             </div>
-            <button onClick={() => setCurrentWeekStart((prev) => addWeeks(prev, 1))} className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all">
+            <button aria-label="Semana seguinte" onClick={() => setCurrentWeekStart((prev) => addWeeks(prev, 1))} className="p-2 hover:bg-raised text-secondary hover:text-primary transition-all">
               <ChevronRight size={20} />
             </button>
           </div>
@@ -522,14 +620,22 @@ function ExplicacoesPageContent() {
         // Agrupado uma única vez — a faixa da semana e os grupos por dia
         // usam exatamente a mesma contagem, nunca recalculada em separado.
         const hojeDate = new Date(`${getHojeLisboa()}T00:00:00`);
-        const sessoesPorDia = diasDaSemana.map((dia) => ({
-          dia,
-          diaISO: format(dia, 'yyyy-MM-dd'),
-          ehHoje: isSameDay(dia, hojeDate),
-          sessoesDoDia: sessoes.filter((s) => isSameDay(new Date(s.data + 'T00:00:00'), dia)),
-        }));
-        const totalSessoesSemana = sessoes.length;
-        const totalHorasSemana = sessoes.reduce((soma, s) => soma + (Number(s.horas_dadas) || 0), 0);
+        // Uma sessão cancelada fica sempre visível no grupo do dia, mas
+        // nunca entra em nenhuma contagem ("N sessões", "N sess.", total de
+        // horas da semana) — sessoesAtivasDoDia é a mesma lista menos essas.
+        const sessoesPorDia = diasDaSemana.map((dia) => {
+          const sessoesDoDia = sessoes.filter((s) => isSameDay(new Date(s.data + 'T00:00:00'), dia));
+          return {
+            dia,
+            diaISO: format(dia, 'yyyy-MM-dd'),
+            ehHoje: isSameDay(dia, hojeDate),
+            sessoesDoDia,
+            sessoesAtivasDoDia: sessoesDoDia.filter((s) => s.estado !== 'cancelada'),
+          };
+        });
+        const sessoesAtivasSemana = sessoes.filter((s) => s.estado !== 'cancelada');
+        const totalSessoesSemana = sessoesAtivasSemana.length;
+        const totalHorasSemana = sessoesAtivasSemana.reduce((soma, s) => soma + (Number(s.horas_dadas) || 0), 0);
 
         const irParaDia = (diaISO: string) => {
           setDiaFocoISO(diaISO);
@@ -540,7 +646,7 @@ function ExplicacoesPageContent() {
           <div className="space-y-6">
             {/* FAIXA DA SEMANA */}
             <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-              {sessoesPorDia.map(({ dia, diaISO, ehHoje, sessoesDoDia }) => (
+              {sessoesPorDia.map(({ dia, diaISO, ehHoje, sessoesAtivasDoDia }) => (
                 <button
                   key={diaISO}
                   onClick={() => irParaDia(diaISO)}
@@ -555,7 +661,7 @@ function ExplicacoesPageContent() {
                   <span className="text-[9px] font-black uppercase tracking-widest opacity-80">{format(dia, 'EEEEE', { locale: pt })}</span>
                   <span className="text-base font-black leading-none">{format(dia, 'd')}</span>
                   <span className="text-[9px] font-bold leading-tight text-center break-words">
-                    {sessoesDoDia.length > 0 ? `${sessoesDoDia.length} sess.` : 'livre'}
+                    {sessoesAtivasDoDia.length > 0 ? `${sessoesAtivasDoDia.length} sess.` : 'livre'}
                   </span>
                 </button>
               ))}
@@ -563,7 +669,7 @@ function ExplicacoesPageContent() {
 
             {/* GRUPOS POR DIA */}
             <div className="space-y-5">
-              {sessoesPorDia.map(({ dia, diaISO, ehHoje, sessoesDoDia }) => (
+              {sessoesPorDia.map(({ dia, diaISO, ehHoje, sessoesDoDia, sessoesAtivasDoDia }) => (
                 <div
                   key={diaISO}
                   id={`dia-grupo-${diaISO}`}
@@ -582,7 +688,7 @@ function ExplicacoesPageContent() {
                     </div>
                     <div className="shrink-0 flex items-center gap-3">
                       <span className="text-xs font-bold text-muted whitespace-nowrap">
-                        {sessoesDoDia.length > 0 ? `${sessoesDoDia.length} ${sessoesDoDia.length === 1 ? 'sessão' : 'sessões'}` : 'livre'}
+                        {sessoesAtivasDoDia.length > 0 ? `${sessoesAtivasDoDia.length} ${sessoesAtivasDoDia.length === 1 ? 'sessão' : 'sessões'}` : 'livre'}
                       </span>
                       {sessoesDoDia.length === 0 && (
                         <button
@@ -599,28 +705,43 @@ function ExplicacoesPageContent() {
                   {sessoesDoDia.length > 0 && (
                     <div className="divide-y divide-border border-t border-border">
                       {sessoesDoDia.map((sessao) => {
-                        const estado = getEstadoSessaoResumido(sessao.dado);
+                        const estado = getEstadoSessaoResumido(sessao);
+                        const cancelada = sessao.estado === 'cancelada';
                         const { nomes, anoEscolar } = nomesEAnoDaSessao(sessao);
                         const hora = sessao.hora_inicio?.slice(0, 5);
                         const duracao = sessao.horas_dadas != null ? formatarHorasResumo(Number(sessao.horas_dadas)) : null;
                         const disciplina = sessao.subjects?.name || '—';
+                        const etiquetaFixa = sessao.serie_id && (
+                          <span className="shrink-0 px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest bg-page text-muted border border-border">
+                            Fixa
+                          </span>
+                        );
                         return (
-                          <button key={sessao.id} data-sessao-linha="1" onClick={() => setDetalheSessao(sessao)} className="w-full text-left px-4 py-3.5 hover:bg-raised/40 transition-colors">
+                          <button
+                            key={sessao.id}
+                            data-sessao-linha="1"
+                            data-sessao-estado={sessao.estado}
+                            data-sessao-dado={String(sessao.dado)}
+                            onClick={() => setDetalheSessao(sessao)}
+                            className={`w-full text-left px-4 py-3.5 hover:bg-raised/40 transition-colors ${cancelada ? 'opacity-50' : ''}`}
+                          >
                             {/* < 768px: hora/disciplina/estado em cima, alunos por baixo */}
                             <div className="md:hidden space-y-1.5">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex items-start gap-3 min-w-0 flex-1">
                                   <div className="shrink-0">
-                                    <p className="font-black text-accent text-sm flex items-center gap-1 whitespace-nowrap"><Clock size={13} />{hora}</p>
+                                    <p className={`font-black text-sm flex items-center gap-1 whitespace-nowrap ${cancelada ? 'text-muted line-through' : 'text-accent'}`}><Clock size={13} />{hora}</p>
                                     {duracao && <p className="text-[10px] text-muted mt-0.5 whitespace-nowrap">{duracao}</p>}
                                   </div>
-                                  <p className="min-w-0 break-words text-sm font-bold text-primary">{disciplina}</p>
+                                  <p className={`min-w-0 break-words text-sm font-bold flex items-center gap-1.5 ${cancelada ? 'text-muted line-through' : 'text-primary'}`}>
+                                    {disciplina} {etiquetaFixa}
+                                  </p>
                                 </div>
                                 <span className={`shrink-0 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border whitespace-nowrap ${estado.classes}`}>
                                   {estado.label}
                                 </span>
                               </div>
-                              <p className="min-w-0 break-words text-sm text-secondary">
+                              <p className={`min-w-0 break-words text-sm ${cancelada ? 'text-muted line-through' : 'text-secondary'}`}>
                                 {nomes || 'Sem alunos'}{anoEscolar && <span className="text-muted"> · {anoEscolar}.º ano</span>}
                               </p>
                             </div>
@@ -628,11 +749,13 @@ function ExplicacoesPageContent() {
                             {/* >= 768px: hora | disciplina | alunos | estado, uma linha só */}
                             <div className="hidden md:grid md:grid-cols-4 md:gap-4 md:items-start">
                               <div className="min-w-0">
-                                <p className="font-black text-accent text-sm flex items-center gap-1 whitespace-nowrap"><Clock size={14} />{hora}</p>
+                                <p className={`font-black text-sm flex items-center gap-1 whitespace-nowrap ${cancelada ? 'text-muted line-through' : 'text-accent'}`}><Clock size={14} />{hora}</p>
                                 {duracao && <p className="text-[10px] text-muted mt-0.5 whitespace-nowrap">{duracao}</p>}
                               </div>
-                              <p className="min-w-0 break-words text-sm font-bold text-primary">{disciplina}</p>
-                              <p className="min-w-0 break-words text-sm text-secondary">
+                              <p className={`min-w-0 break-words text-sm font-bold flex items-center gap-1.5 ${cancelada ? 'text-muted line-through' : 'text-primary'}`}>
+                                {disciplina} {etiquetaFixa}
+                              </p>
+                              <p className={`min-w-0 break-words text-sm ${cancelada ? 'text-muted line-through' : 'text-secondary'}`}>
                                 {nomes || 'Sem alunos'}{anoEscolar && <span className="text-muted"> · {anoEscolar}.º ano</span>}
                               </p>
                               <div className="min-w-0 flex justify-end">
@@ -666,6 +789,7 @@ function ExplicacoesPageContent() {
           sessao={detalheSessao}
           role={role}
           souSalarioNoMesAtual={souSalarioNoMesAtual}
+          professores={professores}
           onClose={() => setDetalheSessao(null)}
           onSaved={handleSessaoAtualizada}
           onDeleted={handleSessaoApagada}
@@ -711,12 +835,89 @@ export default function ExplicacoesPage() {
 }
 
 // --- PAINEL DE DETALHE: toggle dado, horas, notas, apagar (só se ainda não dada) ---
-function DetalheExplicacaoModal({ sessao, role, souSalarioNoMesAtual, onClose, onSaved, onDeleted, showError, showSuccess }: any) {
+type AcaoSessao = 'cancelar' | 'mudar' | 'professor' | 'reativar';
+
+function DetalheExplicacaoModal({ sessao, role, souSalarioNoMesAtual, professores, onClose, onSaved, onDeleted, showError, showSuccess }: any) {
   const [dado, setDado] = useState<boolean>(sessao.dado);
   const [horasDadas, setHorasDadas] = useState(sessao.horas_dadas?.toString() || '');
   const [notas, setNotas] = useState(sessao.notas || '');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Ações via alterar_sessao (cancelar/mudar/trocar professor/repor) — a
+  // ÚNICA forma de escrever estado, serie_id, data ou hora_inicio de uma
+  // explicação; qualquer outra tentativa é recusada pela base de dados.
+  const [acaoAberta, setAcaoAberta] = useState<AcaoSessao | null>(null);
+  const [motivoAcao, setMotivoAcao] = useState('');
+  const [novaData, setNovaData] = useState(sessao.data);
+  const [novaHora, setNovaHora] = useState(sessao.hora_inicio?.slice(0, 5) || '');
+  const [novoProfessorId, setNovoProfessorId] = useState('');
+  const [alterando, setAlterando] = useState(false);
+
+  const nAlunosSessao = (sessao.explicacoes_alunos || []).length;
+  const podeAlterarSessao = role === 'admin' || role === 'professor';
+  const cancelarMudarReporDesativado = sessao.dado;
+  const trocarProfessorDesativado = sessao.dado && role !== 'admin';
+  const outrosProfessores = (professores || []).filter((p: any) => p.id !== sessao.professor_id);
+
+  const abrirAcao = (acao: AcaoSessao) => {
+    setMotivoAcao('');
+    setNovaData(sessao.data);
+    setNovaHora(sessao.hora_inicio?.slice(0, 5) || '');
+    setNovoProfessorId('');
+    setAcaoAberta(acao);
+  };
+
+  const handleConfirmarAcao = async () => {
+    if (!acaoAberta || alterando) return;
+    if (acaoAberta === 'mudar' && (!novaData || !novaHora)) {
+      showError('Preenche a nova data e hora.');
+      return;
+    }
+    if (acaoAberta === 'professor' && !novoProfessorId) {
+      showError('Escolhe o novo professor.');
+      return;
+    }
+
+    setAlterando(true);
+    try {
+      const params: Record<string, unknown> = { p_explicacao: sessao.id, p_acao: acaoAberta };
+      if (acaoAberta === 'cancelar') params.p_motivo = motivoAcao.trim() || null;
+      if (acaoAberta === 'mudar') { params.p_data = novaData; params.p_hora = novaHora; }
+      if (acaoAberta === 'professor') params.p_professor = novoProfessorId;
+
+      const { error } = await supabase.rpc('alterar_sessao', params);
+      if (error) {
+        showError(error.message);
+        return;
+      }
+
+      // Trocar professor: o professor de origem perde o acesso RLS a esta
+      // linha no mesmo instante (já não é dele) — reler por SELECT devolvia
+      // "no rows" só para ele. Monta a sessão atualizada a partir do que já
+      // se sabe, sem reler; handleSessaoAtualizada decide se ela desaparece
+      // da agenda atual (deixou de ser do professor selecionado).
+      if (acaoAberta === 'professor') {
+        showSuccess('Sessão atualizada.');
+        onSaved({ ...sessao, professor_id: novoProfessorId });
+        return;
+      }
+
+      const { data, error: fetchError } = await supabase
+        .from('explicacoes')
+        .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, alunos(nome, ano_escolar)), subjects(name)')
+        .eq('id', sessao.id)
+        .single();
+      if (fetchError) {
+        showError('Erro ao reler a explicação: ' + fetchError.message);
+        return;
+      }
+      showSuccess('Sessão atualizada.');
+      onSaved(data);
+    } finally {
+      setAlterando(false);
+    }
+  };
 
   // Para o admin: se o professor desta sessão é de salário no mês da
   // sessão, esconde "Último valor calculado" (não gera pagamento à parte
@@ -847,9 +1048,23 @@ function DetalheExplicacaoModal({ sessao, role, souSalarioNoMesAtual, onClose, o
         <div className="space-y-4">
           <div className="bg-page p-4 rounded-2xl border border-border flex items-center justify-between">
             <span className="font-bold text-sm text-primary">Sessão dada?</span>
-            <button type="button" onClick={() => setDado((v) => !v)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
-              dado ? 'bg-success-bg text-success border-success/30' : 'bg-raised text-muted border-border'
-            }`}>
+            <button
+              type="button"
+              onClick={() => setDado((v) => {
+                const novo = !v;
+                // Sessão de série (duracao_prevista_horas definida) — ao marcar
+                // como dada, pré-preenche as horas com a duração prevista, só
+                // se o campo ainda estiver vazio (nunca substitui um valor já
+                // escrito à mão).
+                if (novo && sessao.duracao_prevista_horas != null && horasDadas.trim() === '') {
+                  setHorasDadas(String(sessao.duracao_prevista_horas));
+                }
+                return novo;
+              })}
+              className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                dado ? 'bg-success-bg text-success border-success/30' : 'bg-raised text-muted border-border'
+              }`}
+            >
               {dado ? 'Sim' : 'Não'}
             </button>
           </div>
@@ -903,6 +1118,135 @@ function DetalheExplicacaoModal({ sessao, role, souSalarioNoMesAtual, onClose, o
             </div>
           )}
         </div>
+
+        {podeAlterarSessao && (
+          <div className="mt-6 pt-6 border-t border-border space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted">Ações</p>
+
+            {!acaoAberta ? (
+              <div className="flex flex-wrap gap-2">
+                {sessao.estado === 'cancelada' ? (
+                  <button
+                    type="button"
+                    onClick={() => abrirAcao('reativar')}
+                    disabled={cancelarMudarReporDesativado}
+                    className="flex items-center gap-1.5 bg-page border border-border text-success px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all disabled:opacity-40"
+                  >
+                    <RotateCcw size={13} /> Repor sessão
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => abrirAcao('cancelar')}
+                      disabled={cancelarMudarReporDesativado}
+                      className="flex items-center gap-1.5 bg-page border border-border text-danger px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all disabled:opacity-40"
+                    >
+                      <Ban size={13} /> Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => abrirAcao('mudar')}
+                      disabled={cancelarMudarReporDesativado}
+                      className="flex items-center gap-1.5 bg-page border border-border text-warning px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all disabled:opacity-40"
+                    >
+                      <CalendarClock size={13} /> Mudar hora ou dia
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => abrirAcao('professor')}
+                  disabled={trocarProfessorDesativado}
+                  className="flex items-center gap-1.5 bg-page border border-border text-accent px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all disabled:opacity-40"
+                >
+                  <UserCog size={13} /> Trocar professor
+                </button>
+              </div>
+            ) : (
+              <div className="bg-page border border-border rounded-2xl p-4 space-y-3">
+                <p className="text-xs text-warning font-bold">
+                  As famílias dos {nAlunosSessao} aluno{nAlunosSessao === 1 ? '' : 's'} recebem um aviso automático. O motivo só a direção o vê.
+                </p>
+
+                {acaoAberta === 'cancelar' && (
+                  <div>
+                    <label className="text-xs font-bold text-muted uppercase ml-1">Motivo (opcional)</label>
+                    <input
+                      type="text"
+                      aria-label="Motivo"
+                      value={motivoAcao}
+                      onChange={(e) => setMotivoAcao(e.target.value)}
+                      placeholder="Só a direção vê isto"
+                      className="w-full bg-surface border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1"
+                    />
+                  </div>
+                )}
+
+                {acaoAberta === 'mudar' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-muted uppercase ml-1">Nova data</label>
+                      <input
+                        type="date"
+                        aria-label="Nova data"
+                        value={novaData}
+                        onChange={(e) => setNovaData(e.target.value)}
+                        className="w-full bg-surface border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-muted uppercase ml-1">Nova hora</label>
+                      <input
+                        type="time"
+                        aria-label="Nova hora"
+                        value={novaHora}
+                        onChange={(e) => setNovaHora(e.target.value)}
+                        className="w-full bg-surface border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {acaoAberta === 'professor' && (
+                  <div>
+                    <label className="text-xs font-bold text-muted uppercase ml-1">Novo professor</label>
+                    <select
+                      aria-label="Novo professor"
+                      value={novoProfessorId}
+                      onChange={(e) => setNovoProfessorId(e.target.value)}
+                      className="w-full bg-surface border border-border text-primary p-3 rounded-xl outline-none focus:border-accent mt-1 appearance-none"
+                    >
+                      <option value="">Escolhe...</option>
+                      {outrosProfessores.map((p: any) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAcaoAberta(null)}
+                    disabled={alterando}
+                    className="px-4 py-2.5 bg-raised hover:bg-border rounded-xl font-black text-xs transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmarAcao}
+                    disabled={alterando}
+                    className="flex-1 py-2.5 bg-accent hover:bg-accent-hover text-on-accent rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    {alterando ? <Loader2 size={14} className="animate-spin" /> : null} Confirmar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex gap-3 mt-6">
           <button

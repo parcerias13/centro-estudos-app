@@ -187,7 +187,7 @@ test.describe('Avisos e alterações de explicações — centro descartável ZZ
     const { error: errPausa } = await supabaseAdmin.from('mensagens').insert({
       centro_id: centroId, aluno_id: alunoId, autor: 'centro', autor_id: admin.id, tipo: 'alteracao_explicacao',
       texto: null, lida_pelo_centro_em: new Date().toISOString(),
-      payload: { tipo_alteracao: 'pausa', disciplina: `Disciplina Alt ${SUFIXO}`, de: '2027-08-01', ate: '2027-08-15', sessoes: '3 sessões' },
+      payload: { tipo_alteracao: 'pausa', disciplina: `Disciplina Alt ${SUFIXO}`, de: '2027-08-01', ate: '2027-08-15', sessoes: 3 },
     });
     if (errPausa) throw new Error(`criar mensagem pausa: ${errPausa.message}`);
 

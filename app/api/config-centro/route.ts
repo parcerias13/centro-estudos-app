@@ -46,7 +46,7 @@ export async function GET() {
   // por centro, para não a pôr nas mãos de cada admin.
   const { data: config, error } = await supabaseAdmin
     .from('config_centro')
-    .select('nome_centro')
+    .select('nome_centro, aviso_alteracoes_explicacao_ativo')
     .eq('id', centroId)
     .maybeSingle()
 
@@ -58,13 +58,21 @@ export async function PATCH(req: Request) {
   const centroId = await getAdminCentroId()
   if (!centroId) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
-  const { nome_centro } = await req.json()
+  const { nome_centro, aviso_alteracoes_explicacao_ativo } = await req.json()
 
   // email_remetente e resend_api_key deixaram de ser aceites aqui — a
-  // chave é da plataforma, nunca por centro.
+  // chave é da plataforma, nunca por centro. Cada campo só entra no update
+  // se vier no pedido — a Gestão envia os dois num PATCH só, mas o
+  // interruptor de aviso pode vir sozinho sem apagar o nome do centro.
+  const payload: Record<string, unknown> = {}
+  if (typeof nome_centro === 'string') payload.nome_centro = nome_centro
+  if (typeof aviso_alteracoes_explicacao_ativo === 'boolean') {
+    payload.aviso_alteracoes_explicacao_ativo = aviso_alteracoes_explicacao_ativo
+  }
+
   const { error } = await supabaseAdmin
     .from('config_centro')
-    .update({ nome_centro })
+    .update(payload)
     .eq('id', centroId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

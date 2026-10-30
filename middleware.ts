@@ -14,6 +14,20 @@ const ROLE_ALLOWED_EXACT_PATHS: Record<string, string[]> = {
   professor: ['/admin/alunos', '/admin/alunos/ficha', '/admin/relatorio'],
 }
 
+// Subcaminhos bloqueados mesmo dentro de um prefixo já permitido — a área de
+// Séries (/admin/explicacoes/series) é só admin; o professor tem
+// '/admin/explicacoes' na lista normal (para a sua própria agenda), que de
+// outra forma deixaria passar este subcaminho por prefixo.
+const ROLE_BLOCKED_SUBPATHS: Record<string, string[]> = {
+  professor: ['/admin/explicacoes/series'],
+}
+
+function isPathBlocked(pathname: string, blockedPaths: string[] = []) {
+  return blockedPaths.some(
+    (blocked) => pathname === blocked || pathname.startsWith(blocked + '/')
+  )
+}
+
 function isPathAllowed(pathname: string, allowedPaths: string[], allowedExactPaths: string[] = []) {
   // "/admin" (raiz, dashboard) é sempre permitido a qualquer role reconhecido
   if (pathname === '/admin') return true
@@ -82,10 +96,13 @@ export async function middleware(request: NextRequest) {
     if (role === 'admin') {
       // acesso total
     } else if (role === 'professor' || role === 'secretaria') {
-      if (!isPathAllowed(request.nextUrl.pathname, ROLE_ALLOWED_PATHS[role], ROLE_ALLOWED_EXACT_PATHS[role])) {
+      const bloqueado = isPathBlocked(request.nextUrl.pathname, ROLE_BLOCKED_SUBPATHS[role])
+      if (bloqueado || !isPathAllowed(request.nextUrl.pathname, ROLE_ALLOWED_PATHS[role], ROLE_ALLOWED_EXACT_PATHS[role])) {
         // Um subcaminho bloqueado de /admin/alunos (editar, extrato, novo)
         // volta para a lista, não para o dashboard — é de lá que se chegou.
-        const destino = request.nextUrl.pathname.startsWith('/admin/alunos/') ? '/admin/alunos' : '/admin'
+        const destino = bloqueado
+          ? '/admin/explicacoes'
+          : request.nextUrl.pathname.startsWith('/admin/alunos/') ? '/admin/alunos' : '/admin'
         return NextResponse.redirect(new URL(destino, request.url))
       }
     } else {

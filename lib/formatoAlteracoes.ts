@@ -27,15 +27,15 @@ export type AlteracaoCartao =
       horaMudou: boolean;
     }
   | { tipo: 'professor'; icone: 'professor'; disciplina: string; data: string; hora: string; professorNovo: string }
-  | { tipo: 'pausa'; icone: 'pausa'; disciplina: string; de: string; ate: string; sessoes: string };
+  | { tipo: 'pausa'; icone: 'pausa'; disciplina: string; de: string; ate: string; sessoes: number };
 
 function str(v: unknown): string | null {
   return typeof v === 'string' && v.trim() !== '' ? v : null;
 }
 
-function sessoesComoTexto(v: unknown): string | null {
-  if (typeof v === 'string' && v.trim() !== '') return v;
-  if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+function sessoesComoNumero(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string' && /^\d+$/.test(v)) return Number(v);
   return null;
 }
 
@@ -82,8 +82,8 @@ export function sanitizarAlteracaoExplicacao(payload: unknown): AlteracaoCartao 
   if (tipoAlteracao === 'pausa') {
     const de = str(p.de);
     const ate = str(p.ate);
-    const sessoes = sessoesComoTexto(p.sessoes);
-    if (!de || !ate || !sessoes) return null;
+    const sessoes = sessoesComoNumero(p.sessoes);
+    if (!de || !ate || sessoes == null) return null;
     return { tipo: 'pausa', icone: 'pausa', disciplina, de, ate, sessoes };
   }
 
@@ -135,7 +135,7 @@ export function linhasAlteracao(a: AlteracaoCartao): string[] {
       return [`A explicação de ${a.disciplina} de ${formatarDataExtensoAlteracao(a.data)}, às ${formatarHoraAlteracao(a.hora)}, passa a ser dada por ${a.professorNovo}.`];
     case 'pausa':
       return [
-        `As sessões de ${a.disciplina} entre ${formatarDataCurtaAlteracao(a.de)} e ${formatarDataCurtaAlteracao(a.ate)} ficam canceladas (${a.sessoes}).`,
+        `As sessões de ${a.disciplina} entre ${formatarDataCurtaAlteracao(a.de)} e ${formatarDataCurtaAlteracao(a.ate)} ficam canceladas (${a.sessoes} ${a.sessoes === 1 ? 'sessão' : 'sessões'}).`,
         'Avisaremos quando recomeçarem.',
       ];
     case 'horario': {

@@ -13,7 +13,7 @@ import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import {
   Building2, Save, Loader2, DollarSign, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
-  Plus, Trash2, RefreshCw, ShieldAlert, Receipt, GraduationCap, Pencil
+  Plus, Trash2, RefreshCw, ShieldAlert, Receipt, GraduationCap, Pencil, Bell
 } from 'lucide-react';
 
 const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -36,6 +36,8 @@ export default function GestaoTotalPage() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   const [nomeCentro, setNomeCentro] = useState('');
+  const [avisoAlteracoesAtivo, setAvisoAlteracoesAtivo] = useState(false);
+  const [salvandoAviso, setSalvandoAviso] = useState(false);
 
   const [servicos, setServicos] = useState<any[]>([]);
 
@@ -138,6 +140,7 @@ export default function GestaoTotalPage() {
 
         const config = await configRes.json();
         setNomeCentro(config.nome_centro || '');
+        setAvisoAlteracoesAtivo(!!config.aviso_alteracoes_explicacao_ativo);
       }
     } catch (error) {
       console.error("Erro no load:", error);
@@ -166,6 +169,25 @@ export default function GestaoTotalPage() {
       setSaveError(body?.error || `Erro ao guardar (${res.status}). Tenta novamente.`);
     }
     setSubmitting(false);
+  };
+
+  const handleToggleAvisoAlteracoes = async () => {
+    const novoValor = !avisoAlteracoesAtivo;
+    setSalvandoAviso(true);
+    const res = await fetch('/api/config-centro', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aviso_alteracoes_explicacao_ativo: novoValor }),
+    });
+    setSalvandoAviso(false);
+
+    if (res.ok) {
+      setAvisoAlteracoesAtivo(novoValor);
+      showSuccess(novoValor ? 'Avisos às famílias ativados.' : 'Avisos às famílias desativados.');
+    } else {
+      const body = await res.json().catch(() => ({}));
+      showError(body?.error || `Erro ao guardar (${res.status}). Tenta novamente.`);
+    }
   };
 
   const handleCreateService = async (e: React.FormEvent) => {
@@ -1196,6 +1218,28 @@ export default function GestaoTotalPage() {
               <p className="text-danger text-[11px] font-bold px-1 pt-2">{saveError}</p>
             )}
           </form>
+
+          <div className="mt-6 pt-6 border-t border-border flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2.5 bg-page/50 rounded-xl text-muted shrink-0">
+                <Bell size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-sm text-primary">Avisar as famílias das alterações às explicações</p>
+                <p className="text-[10px] text-muted mt-0.5">Cancelamentos, remarcações e trocas de professor.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleAvisoAlteracoes}
+              disabled={salvandoAviso}
+              className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all disabled:opacity-50 ${
+                avisoAlteracoesAtivo ? 'bg-success-bg text-success border-success/30' : 'bg-raised text-muted border-border'
+              }`}
+            >
+              {salvandoAviso ? <Loader2 size={12} className="animate-spin" /> : avisoAlteracoesAtivo ? 'Ativo' : 'Inativo'}
+            </button>
+          </div>
         </section>
 
         {/* BLOCO 4: PREÇOS DE EXPLICAÇÕES (FAMÍLIA) */}
