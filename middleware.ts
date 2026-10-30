@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const ROLE_ALLOWED_PATHS: Record<string, string[]> = {
   professor: ['/admin/notas', '/admin/agenda', '/admin/disciplinas', '/admin/explicacoes'],
-  secretaria: ['/admin/alunos', '/admin/notas', '/admin/agenda', '/admin/refeitorio', '/admin/historico', '/admin/relatorio', '/admin/mensagens'],
+  secretaria: ['/admin/alunos', '/admin/notas', '/admin/agenda', '/admin/refeitorio', '/admin/historico', '/admin/relatorio', '/admin/mensagens', '/admin/alteracoes'],
 }
 
 // Caminhos que um papel só pode ver exatamente (nunca subcaminhos) — para o

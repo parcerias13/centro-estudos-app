@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { horaOuDataMensagem, comSeparadoresDeDia, sanitizarPedidoExplicacao } from '@/lib/formatoMensagens';
+import { sanitizarAlteracaoExplicacao, tituloAlteracao, linhasAlteracao, type ChaveIconeAlteracao } from '@/lib/formatoAlteracoes';
 import { avisarMensagensLidas } from '@/lib/eventoMensagensAdmin';
 import {
   BUCKET_ANEXOS, MAX_ANEXOS_POR_MENSAGEM, validarAnexo, higienizarNomeFicheiro,
@@ -14,7 +15,12 @@ import {
 import {
   Loader2, Search, MessageCircle, Send, ArrowLeft, ExternalLink, ChevronUp,
   FileText, HelpCircle, CalendarCheck, CheckCircle2, Clock, XCircle, Check, Paperclip, X,
+  CalendarX, CalendarDays, UserCog, PauseCircle,
 } from 'lucide-react';
+
+const ICONES_ALTERACAO: Record<ChaveIconeAlteracao, typeof CalendarCheck> = {
+  cancelada: CalendarX, reativada: CalendarCheck, hora: Clock, dia: CalendarDays, professor: UserCog, pausa: PauseCircle,
+};
 
 const DIAS_SEMANA_ROTULO: Record<number, string> = { 1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb', 7: 'Dom' };
 
@@ -25,7 +31,7 @@ type Mensagem = {
   aluno_id: string;
   autor: 'familia' | 'centro';
   autor_id: string | null;
-  tipo: 'texto' | 'relatorio_mensal' | 'pedido_explicacao' | 'confirmacao_explicacao';
+  tipo: 'texto' | 'relatorio_mensal' | 'pedido_explicacao' | 'confirmacao_explicacao' | 'alteracao_explicacao';
   texto: string | null;
   payload: any;
   estado: string | null;
@@ -159,6 +165,28 @@ function CartaoMensagem({ msg, nomeAutorCentro, showError }: { msg: Mensagem; no
         {p.horario && <p className="text-xs">Horário: {p.horario}</p>}
         {p.nota && <p className="text-xs italic">"{p.nota}"</p>}
         {anexos}
+        {rodape}
+      </div>
+    );
+  }
+
+  if (msg.tipo === 'alteracao_explicacao') {
+    const a = sanitizarAlteracaoExplicacao(msg.payload);
+    if (!a) {
+      return (
+        <div className={estilo}>
+          <div className="flex items-center gap-1.5"><CalendarDays size={13} /><p className="font-black text-[10px] uppercase tracking-widest">Alteração a uma Explicação</p></div>
+          {rodape}
+        </div>
+      );
+    }
+    const Icone = ICONES_ALTERACAO[a.icone];
+    return (
+      <div className={estilo}>
+        <div className="flex items-center gap-1.5"><Icone size={13} /><p className="font-black text-[10px] uppercase tracking-widest">{tituloAlteracao(a)}</p></div>
+        <div className="text-xs space-y-0.5">
+          {linhasAlteracao(a).map((linha, i) => <p key={i}>{linha}</p>)}
+        </div>
         {rodape}
       </div>
     );

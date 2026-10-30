@@ -6,12 +6,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { subscreverMensagensLidas } from '@/lib/eventoMensagensAdmin'
 import { subscreverNotasConfirmadas } from '@/lib/eventoNotasAdmin'
+import { subscreverAlteracoesVistas } from '@/lib/eventoAlteracoesAdmin'
 import { contarNotasPendentes } from '@/lib/notas'
-import { LayoutDashboard, Users, ClipboardCheck, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle, FileBarChart } from 'lucide-react'
+import { contarAlteracoesPorVer } from '@/lib/alteracoes'
+import { LayoutDashboard, Users, ClipboardCheck, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle, FileBarChart, Bell } from 'lucide-react'
 
 const ROLE_ALLOWED_MENU: Record<string, string[]> = {
   professor: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Disciplinas e Materiais', 'Explicações'],
-  secretaria: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Refeitório', 'Histórico', 'Mensagens'],
+  secretaria: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Refeitório', 'Histórico', 'Mensagens', 'Alterações'],
 }
 
 export default function AdminLayout({
@@ -24,6 +26,7 @@ export default function AdminLayout({
   const [centroId, setCentroId] = useState<string | null>(null)
   const [pendentesNotas, setPendentesNotas] = useState(0)
   const [mensagensNaoLidas, setMensagensNaoLidas] = useState(0)
+  const [alteracoesPorVer, setAlteracoesPorVer] = useState(0)
   const pathname = usePathname()
 
   useEffect(() => {
@@ -117,6 +120,45 @@ export default function AdminLayout({
     }
   }, [role, centroId, carregarBadgeNotas])
 
+  // Selo "Alterações" na sidebar — admin e secretaria (nunca o professor, que
+  // não tem acesso à página). Conta alterações do centro ainda por ver
+  // (vista_em nulo). Mesmo padrão de atualização dos selos de Mensagens e
+  // Notas: logo ao montar, ao ganhar foco, a cada 30s enquanto visível, e
+  // imediatamente a seguir a marcar alterações como vistas (evento partilhado).
+  const carregarBadgeAlteracoes = useCallback(async (centro_id: string) => {
+    setAlteracoesPorVer(await contarAlteracoesPorVer(supabase, centro_id))
+  }, [])
+
+  useEffect(() => {
+    if ((role !== 'admin' && role !== 'secretaria') || !centroId) return
+
+    carregarBadgeAlteracoes(centroId)
+
+    const aoFocar = () => carregarBadgeAlteracoes(centroId)
+    window.addEventListener('focus', aoFocar)
+
+    let intervalo: ReturnType<typeof setInterval> | null = null
+    const geriIntervalo = () => {
+      if (document.visibilityState === 'visible') {
+        if (!intervalo) intervalo = setInterval(() => carregarBadgeAlteracoes(centroId), 30000)
+      } else if (intervalo) {
+        clearInterval(intervalo)
+        intervalo = null
+      }
+    }
+    geriIntervalo()
+    document.addEventListener('visibilitychange', geriIntervalo)
+
+    const cancelarEvento = subscreverAlteracoesVistas(() => carregarBadgeAlteracoes(centroId))
+
+    return () => {
+      window.removeEventListener('focus', aoFocar)
+      document.removeEventListener('visibilitychange', geriIntervalo)
+      if (intervalo) clearInterval(intervalo)
+      cancelarEvento()
+    }
+  }, [role, centroId, carregarBadgeAlteracoes])
+
   // Lista de items atualizada com Refeitório
   const menuItems = [
     { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -126,6 +168,7 @@ export default function AdminLayout({
     { name: 'Refeitório', href: '/admin/refeitorio', icon: Utensils }, // Novo item
     { name: 'Histórico', href: '/admin/historico', icon: History },
     { name: 'Mensagens', href: '/admin/mensagens', icon: MessageCircle },
+    { name: 'Alterações', href: '/admin/alteracoes', icon: Bell },
     { name: 'Disciplinas e Materiais', href: '/admin/disciplinas', icon: BookOpen },
     { name: 'Explicações', href: '/admin/explicacoes', icon: GraduationCap },
     { name: 'Performance', href: '/admin/performance', icon: BarChart3 },
@@ -174,13 +217,20 @@ export default function AdminLayout({
               ? pendentesNotas
               : item.name === 'Mensagens' && mensagensNaoLidas > 0
                 ? mensagensNaoLidas
-                : null
+                : item.name === 'Alterações' && alteracoesPorVer > 0
+                  ? alteracoesPorVer
+                  : null
+            const tituloBadge = item.name === 'Mensagens'
+              ? `${badge} mensagem(ns) por ler`
+              : item.name === 'Alterações'
+                ? `${badge} alteração(ões) por ver`
+                : `${badge} nota(s) por confirmar`
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setIsMenuOpen(false)}
-                title={badge !== null ? (item.name === 'Mensagens' ? `${badge} mensagem(ns) por ler` : `${badge} nota(s) por confirmar`) : undefined}
+                title={badge !== null ? tituloBadge : undefined}
                 className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group ${
                   isActive ? 'bg-white/10 text-sidebar-text' : 'text-sidebar-text-secondary hover:text-sidebar-text hover:bg-white/5'
                 }`}

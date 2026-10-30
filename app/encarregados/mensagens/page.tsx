@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { isUnlocked, touch, subscribe } from '@/lib/encarregadoUnlock';
 import { horaOuDataMensagem, comSeparadoresDeDia, sanitizarPedidoExplicacao } from '@/lib/formatoMensagens';
+import { sanitizarAlteracaoExplicacao, tituloAlteracao, linhasAlteracao, type ChaveIconeAlteracao } from '@/lib/formatoAlteracoes';
 import { disciplinasParaAno } from '@/lib/disciplinas';
 import {
   BUCKET_ANEXOS, MAX_ANEXOS_POR_MENSAGEM, validarAnexo, higienizarNomeFicheiro,
@@ -16,7 +17,12 @@ import {
 import {
   ArrowLeft, Loader2, MessageCircle, Send, FileText, HelpCircle, CalendarCheck,
   CheckCircle2, Clock, XCircle, ChevronUp, X, Plus, Paperclip,
+  CalendarX, CalendarDays, UserCog, PauseCircle,
 } from 'lucide-react';
+
+const ICONES_ALTERACAO: Record<ChaveIconeAlteracao, typeof CalendarCheck> = {
+  cancelada: CalendarX, reativada: CalendarCheck, hora: Clock, dia: CalendarDays, professor: UserCog, pausa: PauseCircle,
+};
 
 const DIAS_SEMANA = [
   { valor: 1, rotulo: 'Seg' },
@@ -29,7 +35,7 @@ const DIAS_SEMANA = [
 ];
 const NOTA_MAX = 500;
 
-type TipoMensagem = 'texto' | 'relatorio_mensal' | 'pedido_explicacao' | 'confirmacao_explicacao';
+type TipoMensagem = 'texto' | 'relatorio_mensal' | 'pedido_explicacao' | 'confirmacao_explicacao' | 'alteracao_explicacao';
 
 type Anexo = { id: string; caminho: string; nome_original: string; mime: string; tamanho: number };
 
@@ -193,6 +199,34 @@ function CartaoMensagem({ msg, showError }: { msg: Mensagem; showError: (msg: st
         {p.nota && <p className="text-xs opacity-90 italic">"{p.nota}"</p>}
         {anexos}
         <p className="text-[9px] font-bold uppercase tracking-widest text-on-accent/70">{horaOuDataMensagem(msg.criada_em)}</p>
+      </div>
+    );
+  }
+
+  if (msg.tipo === 'alteracao_explicacao') {
+    const a = sanitizarAlteracaoExplicacao(msg.payload);
+    if (!a) {
+      return (
+        <div className={estilo}>
+          <div className="flex items-center gap-2 text-accent">
+            <CalendarDays size={16} />
+            <p className="font-black text-xs uppercase tracking-widest">Alteração a uma Explicação</p>
+          </div>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-muted">{horaOuDataMensagem(msg.criada_em)}</p>
+        </div>
+      );
+    }
+    const Icone = ICONES_ALTERACAO[a.icone];
+    return (
+      <div className={estilo}>
+        <div className="flex items-center gap-2 text-accent">
+          <Icone size={16} />
+          <p className="font-black text-xs uppercase tracking-widest">{tituloAlteracao(a)}</p>
+        </div>
+        <div className="text-xs space-y-0.5">
+          {linhasAlteracao(a).map((linha, i) => <p key={i} className="text-muted">{linha}</p>)}
+        </div>
+        <p className="text-[9px] font-bold uppercase tracking-widest text-muted">{horaOuDataMensagem(msg.criada_em)}</p>
       </div>
     );
   }
