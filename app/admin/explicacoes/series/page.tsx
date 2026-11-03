@@ -65,7 +65,7 @@ export default function SeriesExplicacoesPage() {
         .order('dia_semana', { ascending: true })
         .order('hora_inicio', { ascending: true });
       if (error) {
-        showError('Não foi possível carregar as séries: ' + error.message);
+        showError('Não foi possível carregar as explicações fixas: ' + error.message);
         return;
       }
       setSeries(data || []);
@@ -117,7 +117,7 @@ export default function SeriesExplicacoesPage() {
         </Link>
         <div>
           <h1 className="text-3xl md:text-4xl font-black italic tracking-tighter uppercase flex items-center gap-3">
-            <ListTree className="text-accent" /> Séries
+            <ListTree className="text-accent" /> Fixas
           </h1>
           <p className="text-muted text-[10px] font-black uppercase tracking-widest mt-1">Explicações Fixas</p>
         </div>
@@ -125,10 +125,10 @@ export default function SeriesExplicacoesPage() {
 
       <div className="bg-surface border border-border/60 rounded-[2.5rem] shadow-2xl p-6 md:p-8 mb-8">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-primary font-black uppercase text-sm tracking-widest">Nova Série</h2>
+          <h2 className="text-primary font-black uppercase text-sm tracking-widest">Nova Explicação Fixa</h2>
           <button
             type="button"
-            aria-label="Nova série"
+            aria-label="Nova explicação fixa"
             onClick={() => setMostrarNovaSerie((v) => !v)}
             className={`p-2 rounded-xl border transition-all active:scale-90 ${mostrarNovaSerie ? 'bg-border text-primary border-border' : 'bg-accent-soft text-accent border-accent/20 hover:bg-accent hover:text-on-accent'}`}
           >
@@ -145,7 +145,7 @@ export default function SeriesExplicacoesPage() {
             showError={showError}
             onCreated={() => {
               setMostrarNovaSerie(false);
-              showSuccess('Série criada.');
+              showSuccess('Explicação fixa criada.');
               if (centroId) carregarSeries(centroId);
             }}
             onCancel={() => setMostrarNovaSerie(false)}
@@ -157,10 +157,11 @@ export default function SeriesExplicacoesPage() {
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-accent" size={28} /></div>
       ) : series.length === 0 ? (
         <div className="text-center py-16 border-2 border-dashed border-border/50 rounded-[2rem]">
-          <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem séries criadas</p>
+          <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem explicações fixas criadas</p>
         </div>
       ) : (
         <div className="space-y-4">
+          <p className="text-muted font-bold uppercase text-[10px] tracking-widest px-1">Explicações fixas ativas</p>
           {series.map((serie) => (
             <CartaoSerie
               key={serie.id}
@@ -188,6 +189,7 @@ function FormNovaSerie({ centroId, professores, subjects, alunosAtivos, showErro
   const [alunoIds, setAlunoIds] = useState<string[]>([]);
   const [buscaAluno, setBuscaAluno] = useState('');
   const [dataInicio, setDataInicio] = useState(() => getHojeLisboa());
+  const [semDataFim, setSemDataFim] = useState(true);
   const [dataFim, setDataFim] = useState('');
   const [criando, setCriando] = useState(false);
 
@@ -197,7 +199,7 @@ function FormNovaSerie({ centroId, professores, subjects, alunosAtivos, showErro
       const anoDoGrupo = alunosAtivos.find((a: any) => a.id === alunoIds[0])?.ano_escolar;
       const anoDoNovo = alunosAtivos.find((a: any) => a.id === id)?.ano_escolar;
       if (anoDoGrupo != null && anoDoNovo !== anoDoGrupo) {
-        showError('Todos os alunos de uma série têm de ser do mesmo ano escolar.');
+        showError('Todos os alunos de uma explicação fixa têm de ser do mesmo ano escolar.');
         return;
       }
     }
@@ -236,7 +238,7 @@ function FormNovaSerie({ centroId, professores, subjects, alunosAtivos, showErro
         p_duracao: duracaoNum,
         p_alunos: alunoIds,
         p_inicio: dataInicio,
-        p_fim: dataFim || null,
+        p_fim: semDataFim ? null : (dataFim || null),
       });
       if (error) {
         showError(error.message);
@@ -364,28 +366,43 @@ function FormNovaSerie({ centroId, professores, subjects, alunosAtivos, showErro
         </select>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 space-y-1">
-          <label className="text-[9px] font-black text-muted uppercase ml-1">Início</label>
+      <div>
+        <label className="text-[9px] font-black text-muted uppercase ml-1">Início</label>
+        <input
+          type="date"
+          aria-label="Início"
+          value={dataInicio}
+          onChange={(e) => setDataInicio(e.target.value)}
+          className="w-full bg-surface border border-border text-primary p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
+        />
+      </div>
+
+      <label className="flex items-start gap-2 text-xs font-bold text-secondary cursor-pointer">
+        <input
+          type="checkbox"
+          checked={semDataFim}
+          onChange={(e) => setSemDataFim(e.target.checked)}
+          className="mt-0.5 shrink-0 accent-accent"
+        />
+        <span>Sem data de fim: continua todas as semanas até a terminares</span>
+      </label>
+
+      {!semDataFim && (
+        <div>
+          <label className="text-[9px] font-black text-muted uppercase ml-1">Data de fim</label>
           <input
             type="date"
-            aria-label="Início"
-            value={dataInicio}
-            onChange={(e) => setDataInicio(e.target.value)}
-            className="w-full bg-surface border border-border text-primary p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
-          />
-        </div>
-        <div className="flex-1 space-y-1">
-          <label className="text-[9px] font-black text-muted uppercase ml-1">Fim (opcional)</label>
-          <input
-            type="date"
-            aria-label="Fim (opcional)"
+            aria-label="Data de fim"
             value={dataFim}
             onChange={(e) => setDataFim(e.target.value)}
             className="w-full bg-surface border border-border text-primary p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
           />
         </div>
-      </div>
+      )}
+
+      <p className="text-[10px] text-muted italic">
+        As próximas 12 semanas ficam logo marcadas e depois vão-se marcando sozinhas, semana a semana.
+      </p>
 
       <div className="flex gap-3">
         <button
@@ -395,7 +412,7 @@ function FormNovaSerie({ centroId, professores, subjects, alunosAtivos, showErro
           className="flex-1 py-3 bg-accent hover:bg-accent-hover text-on-accent rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
         >
           {criando ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-          Criar Série
+          Criar Explicação Fixa
         </button>
         <button
           type="button"
@@ -469,7 +486,7 @@ function CartaoSerie({ serie, nomeProfessor, showError, showSuccess, onAtualizad
     try {
       const { error } = await supabase.rpc('pausar_serie', { p_serie: serie.id, p_de: pausarDe, p_ate: pausarAte });
       if (error) { showError(error.message); return; }
-      showSuccess('Série pausada.');
+      showSuccess('Explicação fixa pausada.');
       setModoAberto(null);
       onAtualizado();
     } finally {
@@ -484,7 +501,7 @@ function CartaoSerie({ serie, nomeProfessor, showError, showSuccess, onAtualizad
     try {
       const { error } = await supabase.rpc('terminar_serie_a_partir_de', { p_serie: serie.id, p_data: terminarData });
       if (error) { showError(error.message); return; }
-      showSuccess('Série terminada a partir dessa data.');
+      showSuccess('Explicação fixa terminada a partir dessa data.');
       setModoAberto(null);
       onAtualizado();
     } finally {

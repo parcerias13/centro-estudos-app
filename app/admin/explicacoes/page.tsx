@@ -271,7 +271,7 @@ function ExplicacoesPageContent() {
         supabase.rpc('gerar_sessoes_series'),
       ]);
 
-      if (erroGeracao) showError('Erro ao gerar as sessões das séries: ' + erroGeracao.message);
+      if (erroGeracao) showError('Erro ao gerar as sessões das explicações fixas: ' + erroGeracao.message);
 
       const r = user?.app_metadata?.role?.toLowerCase() ?? null;
       const cId = user?.app_metadata?.centro_id ?? null;
@@ -442,7 +442,7 @@ function ExplicacoesPageContent() {
               href="/admin/explicacoes/series"
               className="flex items-center gap-1.5 bg-surface border border-border hover:border-accent/50 text-secondary hover:text-primary px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shrink-0"
             >
-              <ListTree size={14} /> Séries
+              <ListTree size={14} /> Fixas
             </Link>
           )}
         </div>

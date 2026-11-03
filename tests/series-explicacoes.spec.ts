@@ -334,7 +334,7 @@ test.describe('Séries de explicações e ações sobre sessões — centro desc
     await loginUI(page, admin.email, admin.password);
     await page.goto(`${BASE_URL}/admin/explicacoes/series`, { waitUntil: 'networkidle' });
 
-    await page.getByLabel('Nova série').click();
+    await page.getByLabel('Nova explicação fixa').click();
     await page.getByLabel('Professor').selectOption({ label: 'Prof Series Um' });
     await page.getByPlaceholder('Pesquisar aluno...').fill('Aluno Series Fixa');
     await page.getByRole('button', { name: /Aluno Series Fixa/ }).click();
@@ -344,8 +344,8 @@ test.describe('Séries de explicações e ações sobre sessões — centro desc
     await page.getByLabel('Hora de início').fill('09:00');
     await page.getByLabel('Duração (horas)').fill('1');
     await page.getByLabel('Início', { exact: true }).fill(HOJE);
-    await page.getByRole('button', { name: 'Criar Série' }).click();
-    await expect(page.getByText('Série criada.')).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'Criar Explicação Fixa' }).click();
+    await expect(page.getByText('Explicação fixa criada.')).toBeVisible({ timeout: 15_000 });
 
     await context.close();
 
@@ -404,7 +404,7 @@ test.describe('Séries de explicações e ações sobre sessões — centro desc
 
     page.once('dialog', (d) => d.accept());
     await page.getByRole('button', { name: 'Confirmar Pausa' }).click();
-    await expect(page.getByText('Série pausada.')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Explicação fixa pausada.')).toBeVisible({ timeout: 15_000 });
 
     const { data: canceladas } = await supabaseAdmin
       .from('explicacoes').select('id, estado').eq('serie_id', serieId).gte('data', pausarDe).lte('data', pausarAte);
@@ -450,7 +450,7 @@ test.describe('Séries de explicações e ações sobre sessões — centro desc
     await page.getByLabel('Terminar a partir de').fill(terminarA);
     page.once('dialog', (d) => d.accept());
     await page.getByRole('button', { name: 'Confirmar' }).click();
-    await expect(page.getByText('Série terminada a partir dessa data.')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Explicação fixa terminada a partir dessa data.')).toBeVisible({ timeout: 15_000 });
 
     const { count: futurasDepois } = await supabaseAdmin
       .from('explicacoes').select('id', { count: 'exact', head: true }).eq('serie_id', serieId).gte('data', terminarA);
