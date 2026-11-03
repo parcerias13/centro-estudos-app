@@ -7,6 +7,7 @@ import { garantirMesGerado } from '@/lib/mensalidades';
 import { getHojeLisboa } from '@/lib/dataLisboa';
 import { obterCustosDoMes, mesParaData, ultimoDiaDoMes } from '@/lib/custos';
 import { obterRemuneracaoDoMes } from '@/lib/remuneracaoProfessores';
+import { obterReceitaExplicacoesDoMes } from '@/lib/receitaExplicacoes';
 import { ArrowLeft, Activity, RefreshCw, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { startOfMonth, addMonths, format } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -27,6 +28,9 @@ export default function AdminStats() {
     despesasVariaveis: 0,
     totalExplicacoesMes: 0,
     mensalidadesRegistadas: true,
+    totalPagoMensalidades: 0,
+    totalExtrasMes: 0,
+    receitaExplicacoesPago: 0,
   });
 
   const ano = currentMonth.getFullYear();
@@ -70,6 +74,7 @@ export default function AdminStats() {
         mensalidadesMes,
         remuneracaoProfessores,
         custosDoMes,
+        receitaExplicacoes,
       ] = await Promise.all([
         supabase.from('consumos_diarios').select('preco_aplicado').gte('data_consumo', inicioMesStr).lte('data_consumo', fimMesStr),
         // Só gera linhas em falta para o mês corrente real (mesma função partilhada
@@ -87,6 +92,10 @@ export default function AdminStats() {
         // Fixos ativos no mês + variáveis do mês — mesma função que a secção
         // "Custos" de Gestão, para os números nunca divergirem.
         obterCustosDoMes(centro_id, mesStr),
+        // O que as famílias pagam pelas explicações — mesma função partilhada
+        // com /admin/pagamentos (aba Mensalidades), para os dois nunca
+        // mostrarem números diferentes.
+        obterReceitaExplicacoesDoMes(centro_id, ano, mes),
       ]);
 
       // --- RECEITA ---
@@ -96,12 +105,15 @@ export default function AdminStats() {
       const totalEsperadoMensalidades = mensalidadesMes?.reduce((acc, m) => acc + (Number(m.valor_esperado) || 0), 0) || 0;
       const totalPagoMensalidades = mensalidadesMes?.reduce((acc, m) => acc + (m.pago ? (Number(m.valor_pago) || 0) : 0), 0) || 0;
       const totalExtrasMes = extras?.reduce((acc, curr) => acc + (Number(curr.preco_aplicado) || 0), 0) || 0;
-      const accumulatedRevenue = totalPagoMensalidades + totalExtrasMes;
+      // O que as famílias pagam pelas explicações entra na receita — o custo
+      // do professor por as dar já está em remuneracaoProfessores (despesas).
+      const receitaExplicacoesPago = receitaExplicacoes.totalPago;
+      const accumulatedRevenue = totalPagoMensalidades + totalExtrasMes + receitaExplicacoesPago;
       // Mês já terminado: nada a extrapolar, a Projeção iguala a Receita Real.
       // Só o mês corrente continua a projetar a partir da média diária de extras.
       const mediaExtrasDiaria = totalExtrasMes / diaAtual;
       const projectedRevenue = isMesAtual
-        ? totalEsperadoMensalidades + (mediaExtrasDiaria * totalDiasMes)
+        ? totalEsperadoMensalidades + (mediaExtrasDiaria * totalDiasMes) + receitaExplicacoes.totalEsperado
         : accumulatedRevenue;
 
       // --- DESPESAS DO MÊS ---
@@ -129,6 +141,9 @@ export default function AdminStats() {
         despesasVariaveis,
         totalExplicacoesMes,
         mensalidadesRegistadas,
+        totalPagoMensalidades,
+        totalExtrasMes,
+        receitaExplicacoesPago,
       });
     } catch (err) {
       console.error("Erro BI:", err);
@@ -237,6 +252,7 @@ export default function AdminStats() {
           <div>
             <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Receita Real</p>
             <p className="text-2xl font-black text-primary tracking-tighter">{stats.accumulatedRevenue.toFixed(2)}€</p>
+            <p className="text-sm font-bold text-muted mt-2">Mensalidades: {stats.totalPagoMensalidades.toFixed(2)}€ · Extras: {stats.totalExtrasMes.toFixed(2)}€ · Explicações: {stats.receitaExplicacoesPago.toFixed(2)}€</p>
             {semDadosMensalidades && (
               <p className="text-xs text-warning font-bold uppercase mt-1">Sem mensalidades registadas para este mês</p>
             )}

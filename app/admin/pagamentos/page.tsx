@@ -7,6 +7,7 @@ import { garantirMesGeradoComContagem } from '@/lib/mensalidades';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { getHojeLisboa } from '@/lib/dataLisboa';
 import { obterRemuneracaoDoMes, type RemuneracaoProfessorNoMes } from '@/lib/remuneracaoProfessores';
+import { obterReceitaExplicacoesDoMes, aplicarPagamentoNaReceita, type ReceitaExplicacoesDoMes } from '@/lib/receitaExplicacoes';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Search, Wallet, Loader2, CalendarClock,
   GraduationCap, AlertTriangle, Plus, Save,
@@ -106,10 +107,10 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
   // discreto; nunca persiste entre meses/aberturas (reposto a 0 em cada fetchMes).
   const [linhasCriadasNestaAbertura, setLinhasCriadasNestaAbertura] = useState(0);
 
-  // Explicações (família) — soma de valor_cobrado_familia e lista de sessões
-  // do mês, por aluno; e o estado de pago próprio, em pagamentos_explicacoes_familia.
-  const [explicacoesPorAluno, setExplicacoesPorAluno] = useState<Record<string, { soma: number; semPrecoCount: number; sessoes: any[] }>>({});
-  const [pagamentosExplicacoes, setPagamentosExplicacoes] = useState<Record<string, { id: string; pago: boolean; data_pagamento: string | null }>>({});
+  // Explicações (família) — esperado/pago/em falta por aluno e no total,
+  // sempre via lib/receitaExplicacoes.ts (mesma fonte que Performance, para
+  // os dois nunca divergirem).
+  const [receitaExplicacoes, setReceitaExplicacoes] = useState<ReceitaExplicacoesDoMes | null>(null);
   const [expandedAlunoIds, setExpandedAlunoIds] = useState<Set<string>>(new Set());
 
   // Definido antes de fetchMes (precisa dele para ordenar as linhas sintéticas
@@ -152,58 +153,26 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
         return;
       }
 
-      const inicioMes = format(new Date(ano, mes - 1, 1), 'yyyy-MM-dd');
-      const fimMes = format(new Date(ano, mes, 0), 'yyyy-MM-dd');
-
-      // Uma query batched para todas as sessões dadas do mês (com alunos —
-      // nome e ativo, para quem só aparece por esta via —, disciplina e
-      // professor embutidos) + uma para os pagamentos de explicações do mês
-      // — nunca uma por aluno.
-      const [{ linhas: linhasMensalidade, criadas }, { data: sessoesData, error: errSessoes }, { data: pagamentosData, error: errPagamentos }] = await Promise.all([
+      // Uma query batched para a mensalidade do mês + a receita de
+      // explicações do mês (lib/receitaExplicacoes.ts — mesma fonte que
+      // Performance, para os dois nunca divergirem).
+      const [{ linhas: linhasMensalidade, criadas }, receita] = await Promise.all([
         garantirMesGeradoComContagem(centro_id, ano, mes),
-        supabase
-          .from('explicacoes')
-          .select('data, subjects(name), staff(name), explicacoes_alunos(aluno_id, valor_cobrado_familia, alunos(nome, ativo))')
-          .eq('dado', true)
-          .gte('data', inicioMes)
-          .lte('data', fimMes),
-        supabase.from('pagamentos_explicacoes_familia').select('id, aluno_id, pago, data_pagamento').eq('ano', ano).eq('mes', mes),
+        obterReceitaExplicacoesDoMes(centro_id, ano, mes),
       ]);
 
-      if (errSessoes || errPagamentos) {
-        showError('Erro ao carregar explicações: ' + (errSessoes || errPagamentos)?.message);
-      }
-
       setLinhasCriadasNestaAbertura(criadas);
+      setReceitaExplicacoes(receita);
 
-      const porAluno: Record<string, { soma: number; semPrecoCount: number; sessoes: any[] }> = {};
-      // Nome (e, incidentalmente, se está ativo) de quem só aparece via
-      // explicações — um aluno "só explicações" nunca tem linha de
-      // mensalidade para dar o nome, por isso vem daqui. Alunos inativos
-      // entram também: a dívida de uma sessão já dada existe, inativo ou não.
+      // Nome de quem só aparece via explicações — um aluno "só explicações"
+      // nunca tem linha de mensalidade para dar o nome, por isso vem daqui.
+      // Alunos inativos entram também: a dívida de uma sessão já dada existe,
+      // inativo ou não. Só conta quem tem SESSÕES este mês — um aluno com
+      // apenas uma linha de pagamento antiga (sem sessões este mês) não gera
+      // linha sintética, igual ao comportamento de sempre.
+      const alunosComSessoesEsteMs = Object.values(receita.porAluno).filter((e) => e.sessoes.length > 0);
       const nomeAlunoExplicacoes: Record<string, string> = {};
-      (sessoesData || []).forEach((exp: any) => {
-        const disciplina = exp.subjects?.name || 'Sem disciplina';
-        const professor = exp.staff?.name || '—';
-        (exp.explicacoes_alunos || []).forEach((ea: any) => {
-          if (!porAluno[ea.aluno_id]) porAluno[ea.aluno_id] = { soma: 0, semPrecoCount: 0, sessoes: [] };
-          const entry = porAluno[ea.aluno_id];
-          if (ea.valor_cobrado_familia != null) {
-            entry.soma += Number(ea.valor_cobrado_familia);
-          } else {
-            entry.semPrecoCount += 1;
-          }
-          entry.sessoes.push({ data: exp.data, disciplina, professor, valor: ea.valor_cobrado_familia });
-
-          const alunoInfo = Array.isArray(ea.alunos) ? ea.alunos[0] : ea.alunos;
-          if (alunoInfo?.nome) nomeAlunoExplicacoes[ea.aluno_id] = alunoInfo.nome;
-        });
-      });
-      setExplicacoesPorAluno(porAluno);
-
-      const pagMap: Record<string, { id: string; pago: boolean; data_pagamento: string | null }> = {};
-      (pagamentosData || []).forEach((p: any) => { pagMap[p.aluno_id] = { id: p.id, pago: p.pago, data_pagamento: p.data_pagamento }; });
-      setPagamentosExplicacoes(pagMap);
+      for (const e of alunosComSessoesEsteMs) nomeAlunoExplicacoes[e.alunoId] = e.nome;
 
       // Linhas da tabela = união dos alunos com mensalidade este mês e dos
       // alunos com sessões de explicações este mês (qualquer mês, incluindo
@@ -212,7 +181,7 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
       // colunas da mensalidade mostram "—" e ficam desativadas; a coluna das
       // Explicações funciona exatamente como para qualquer outra linha.
       const mensalidadePorAluno = new Map((linhasMensalidade || []).map((r: any) => [r.aluno_id, r]));
-      const idsUnificados = new Set([...mensalidadePorAluno.keys(), ...Object.keys(porAluno)]);
+      const idsUnificados = new Set([...mensalidadePorAluno.keys(), ...alunosComSessoesEsteMs.map((e) => e.alunoId)]);
       const linhasUnificadas = Array.from(idsUnificados)
         .map((alunoId) => {
           const existente = mensalidadePorAluno.get(alunoId);
@@ -306,13 +275,19 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
   };
 
   const handleToggleExplicacoesPago = async (alunoId: string) => {
-    const atual = pagamentosExplicacoes[alunoId];
-    const novoPago = !atual?.pago;
+    const atual = receitaExplicacoes?.porAluno[alunoId];
+    const novoPago = !atual?.pagoRegistrado;
     // Sem centro_id no payload: pagamentos_explicacoes_familia não tem essa
     // coluna (ao contrário de pagamentos_professores) — a RLS já protege via
-    // alunos.centro_id.
-    const payload: Record<string, any> = { aluno_id: alunoId, ano, mes, pago: novoPago };
-    if (novoPago && !atual?.data_pagamento) payload.data_pagamento = new Date().toISOString().split('T')[0];
+    // alunos.centro_id. valor_pago grava o esperado ATUAL deste aluno ao
+    // marcar pago (nunca um valor congelado de antes); ao desmarcar, limpa-se
+    // — nunca fica um valor "pago" associado a uma dívida marcada como não
+    // paga.
+    const payload: Record<string, any> = {
+      aluno_id: alunoId, ano, mes, pago: novoPago,
+      valor_pago: novoPago ? (atual?.esperado ?? 0) : null,
+    };
+    if (novoPago && !atual?.dataPagamento) payload.data_pagamento = new Date().toISOString().split('T')[0];
 
     const { data, error } = await supabase
       .from('pagamentos_explicacoes_familia')
@@ -324,39 +299,60 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
       showError('Erro ao atualizar pagamento de explicações: ' + error.message);
       return;
     }
-    setPagamentosExplicacoes((prev) => ({ ...prev, [alunoId]: { id: data.id, pago: data.pago, data_pagamento: data.data_pagamento } }));
+    setReceitaExplicacoes((prev) => prev && aplicarPagamentoNaReceita(prev, alunoId, {
+      id: data.id, aluno_id: alunoId, pago: data.pago, data_pagamento: data.data_pagamento, valor_pago: data.valor_pago,
+    }));
     showSuccess(novoPago ? 'Explicações marcadas como pagas.' : 'Explicações marcadas como não pagas.');
   };
 
   const handleUpdateDataPagamentoExplicacoes = async (alunoId: string, dataStr: string) => {
-    const pagamento = pagamentosExplicacoes[alunoId];
-    if (!pagamento) return;
+    const pagamento = receitaExplicacoes?.porAluno[alunoId];
+    if (!pagamento?.pagamentoId) return;
     const valor = dataStr === '' ? null : dataStr;
-    const { error } = await supabase.from('pagamentos_explicacoes_familia').update({ data_pagamento: valor }).eq('id', pagamento.id);
+    const { error } = await supabase.from('pagamentos_explicacoes_familia').update({ data_pagamento: valor }).eq('id', pagamento.pagamentoId);
     if (error) {
       showError('Erro ao atualizar data de pagamento: ' + error.message);
       return;
     }
-    setPagamentosExplicacoes((prev) => ({ ...prev, [alunoId]: { ...prev[alunoId], data_pagamento: valor } }));
+    setReceitaExplicacoes((prev) => prev && aplicarPagamentoNaReceita(prev, alunoId, {
+      id: pagamento.pagamentoId!, aluno_id: alunoId, pago: pagamento.pagoRegistrado, data_pagamento: valor, valor_pago: pagamento.valorPagoRegistrado,
+    }));
     showSuccess('Data de pagamento atualizada.');
   };
+
+  const temExplicacoesNoMs = (alunoId: string) => (receitaExplicacoes?.porAluno[alunoId]?.sessoes.length ?? 0) > 0;
 
   // Esconde (sem apagar da BD) uma linha só quando não tem NEM mensalidade
   // visível (> 0€ ou já paga) NEM explicações este mês — "dívidas fantasma"
   // de mensalidade a 0€ continuam escondidas (resíduo de antes de
   // lib/mensalidades.ts deixar de as gerar), mas uma linha sintética (só
-  // explicações, sem mensalidade) tem sempre explicacoesPorAluno[aluno_id]
-  // preenchido — é por isso que existe — por isso nunca é escondida aqui.
+  // explicações, sem mensalidade) tem sempre sessões este mês — é por isso
+  // que existe — por isso nunca é escondida aqui.
   const rowsVisiveis = rows.filter(
-    (r) => Number(r.valor_esperado) > 0 || r.pago || !!explicacoesPorAluno[r.aluno_id]
+    (r) => Number(r.valor_esperado) > 0 || r.pago || temExplicacoesNoMs(r.aluno_id)
   );
 
   const rowsFiltradas = rowsVisiveis.filter((r) => getNome(r).toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const totalEsperado = rowsVisiveis.reduce((acc, r) => acc + (Number(r.valor_esperado) || 0), 0);
-  const totalPago = rowsVisiveis.reduce((acc, r) => acc + (r.pago ? (Number(r.valor_pago) || 0) : 0), 0);
-  const emFalta = totalEsperado - totalPago;
-  const pctCobranca = totalEsperado > 0 ? (totalPago / totalEsperado) * 100 : 0;
+  // Mensalidades — mesma definição e mesma base de linhas de sempre (nunca
+  // inclui explicações).
+  const totalEsperadoMensalidade = rowsVisiveis.reduce((acc, r) => acc + (Number(r.valor_esperado) || 0), 0);
+  const totalPagoMensalidade = rowsVisiveis.reduce((acc, r) => acc + (r.pago ? (Number(r.valor_pago) || 0) : 0), 0);
+  const emFaltaMensalidade = totalEsperadoMensalidade - totalPagoMensalidade;
+  const pctCobrancaMensalidade = totalEsperadoMensalidade > 0 ? (totalPagoMensalidade / totalEsperadoMensalidade) * 100 : 0;
+
+  // Explicações — totais do centro no mês, vindos da lib (nunca filtrados
+  // pela pesquisa, igual à Mensalidade).
+  const totalEsperadoExplicacoes = receitaExplicacoes?.totalEsperado ?? 0;
+  const totalPagoExplicacoes = receitaExplicacoes?.totalPago ?? 0;
+  const emFaltaExplicacoes = receitaExplicacoes?.totalEmFalta ?? 0;
+  const sessoesSemPrecoTotal = receitaExplicacoes?.sessoesSemPrecoTotal ?? 0;
+
+  // Total — soma das duas partes.
+  const totalEsperadoGeral = totalEsperadoMensalidade + totalEsperadoExplicacoes;
+  const totalPagoGeral = totalPagoMensalidade + totalPagoExplicacoes;
+  const emFaltaGeral = totalEsperadoGeral - totalPagoGeral;
+  const pctCobrancaGeral = totalEsperadoGeral > 0 ? (totalPagoGeral / totalEsperadoGeral) * 100 : 0;
 
   if (isFuturo) {
     return (
@@ -378,24 +374,76 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
         </p>
       )}
 
-      {/* BARRA DE RESUMO */}
-      <div className="bg-surface border border-border rounded-3xl p-8 mb-8 grid grid-cols-2 md:grid-cols-4 gap-6">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Total Esperado</p>
-          <p className="text-2xl font-black text-primary tracking-tighter">{totalEsperado.toFixed(2)}€</p>
+      {/* BARRA DE RESUMO — três grupos: Mensalidades (como sempre), Explicações, Total */}
+      <div className="bg-surface border border-border rounded-3xl p-6 md:p-8 mb-8 space-y-6">
+        <div data-testid="resumo-mensalidades">
+          <p className="text-[9px] font-black uppercase tracking-widest text-accent mb-3">Mensalidades</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Total Esperado</p>
+              <p className="text-2xl font-black text-primary tracking-tighter">{totalEsperadoMensalidade.toFixed(2)}€</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Total Pago</p>
+              <p className="text-2xl font-black text-success tracking-tighter">{totalPagoMensalidade.toFixed(2)}€</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Em Falta</p>
+              <p className={`text-2xl font-black tracking-tighter ${emFaltaMensalidade > 0 ? 'text-danger' : 'text-muted'}`}>{emFaltaMensalidade.toFixed(2)}€</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">% Cobrança</p>
+              <p className="text-2xl font-black text-accent tracking-tighter">{pctCobrancaMensalidade.toFixed(0)}%</p>
+            </div>
+          </div>
         </div>
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Total Pago</p>
-          <p className="text-2xl font-black text-success tracking-tighter">{totalPago.toFixed(2)}€</p>
+
+        <div data-testid="resumo-explicacoes" className="border-t border-border pt-6">
+          <p className="text-[9px] font-black uppercase tracking-widest text-accent mb-3">Explicações</p>
+          <div className="grid grid-cols-3 gap-3 md:gap-6">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Esperado</p>
+              <p className="text-xl font-black text-primary tracking-tighter">{totalEsperadoExplicacoes.toFixed(2)}€</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Pago</p>
+              <p className="text-xl font-black text-success tracking-tighter">{totalPagoExplicacoes.toFixed(2)}€</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Em Falta</p>
+              <p className={`text-xl font-black tracking-tighter ${emFaltaExplicacoes > 0 ? 'text-danger' : 'text-muted'}`}>{emFaltaExplicacoes.toFixed(2)}€</p>
+            </div>
+          </div>
         </div>
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Em Falta</p>
-          <p className={`text-2xl font-black tracking-tighter ${emFalta > 0 ? 'text-danger' : 'text-muted'}`}>{emFalta.toFixed(2)}€</p>
+
+        <div data-testid="resumo-total" className="border-t border-border pt-6">
+          <p className="text-[9px] font-black uppercase tracking-widest text-accent mb-3">Total</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Esperado</p>
+              <p className="text-2xl font-black text-primary tracking-tighter">{totalEsperadoGeral.toFixed(2)}€</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Pago</p>
+              <p className="text-2xl font-black text-success tracking-tighter">{totalPagoGeral.toFixed(2)}€</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Em Falta</p>
+              <p className={`text-2xl font-black tracking-tighter ${emFaltaGeral > 0 ? 'text-danger' : 'text-muted'}`}>{emFaltaGeral.toFixed(2)}€</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">% Cobrança</p>
+              <p className="text-2xl font-black text-accent tracking-tighter">{pctCobrancaGeral.toFixed(0)}%</p>
+            </div>
+          </div>
         </div>
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">% Cobrança</p>
-          <p className="text-2xl font-black text-accent tracking-tighter">{pctCobranca.toFixed(0)}%</p>
-        </div>
+
+        {sessoesSemPrecoTotal > 0 && (
+          <p className="text-[11px] text-warning font-bold flex items-center gap-1.5 pt-2">
+            <AlertTriangle size={12} />
+            {sessoesSemPrecoTotal} {sessoesSemPrecoTotal === 1 ? 'sessão dada sem preço' : 'sessões dadas sem preço'} às famílias: não {sessoesSemPrecoTotal === 1 ? 'está' : 'estão'} nos totais.
+          </p>
+        )}
       </div>
 
       {/* PESQUISA */}
@@ -445,8 +493,16 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                 </tr>
               ) : (
                 rowsFiltradas.map((row) => {
-                  const explicacoes = explicacoesPorAluno[row.aluno_id];
-                  const pagamentoExplicacoes = pagamentosExplicacoes[row.aluno_id];
+                  const explicacoes = receitaExplicacoes?.porAluno[row.aluno_id];
+                  const temSessoes = (explicacoes?.sessoes.length ?? 0) > 0;
+                  // "Pago, faltam X€": só quando há valor_pago registado (fluxo
+                  // novo) E o esperado atual já subiu acima dele (mais uma
+                  // sessão dada depois de marcar pago) — uma linha antiga sem
+                  // valor_pago continua simplesmente "Pago".
+                  const faltamExplicacoes =
+                    temSessoes && explicacoes!.valorPagoRegistrado != null && explicacoes!.esperado > explicacoes!.valorPagoRegistrado
+                      ? explicacoes!.esperado - explicacoes!.valorPagoRegistrado
+                      : null;
                   const expandido = expandedAlunoIds.has(row.aluno_id);
 
                   return (
@@ -504,19 +560,19 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                           />
                         </td>
                         <td className="p-6 text-right whitespace-nowrap border-l border-border">
-                          {explicacoes ? (
+                          {temSessoes ? (
                             <>
                               <button
                                 type="button"
                                 onClick={() => toggleExpandido(row.aluno_id)}
                                 className="font-mono font-bold text-primary hover:text-accent underline decoration-dotted transition-colors"
                               >
-                                {explicacoes.soma.toFixed(2)}€
+                                {explicacoes!.esperado.toFixed(2)}€
                               </button>
-                              {explicacoes.semPrecoCount > 0 && (
+                              {explicacoes!.semPrecoCount > 0 && (
                                 <p className="text-[9px] text-warning font-bold mt-1 flex items-center gap-1 justify-end">
                                   <AlertTriangle size={11} />
-                                  Preço não definido — {explicacoes.semPrecoCount} {explicacoes.semPrecoCount === 1 ? 'sessão' : 'sessões'} sem valor
+                                  Preço não definido — {explicacoes!.semPrecoCount} {explicacoes!.semPrecoCount === 1 ? 'sessão' : 'sessões'} sem valor
                                 </p>
                               )}
                             </>
@@ -525,29 +581,35 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                           )}
                         </td>
                         <td className="p-6 text-center whitespace-nowrap">
-                          {explicacoes ? (
+                          {temSessoes ? (
                             <button
                               onClick={() => handleToggleExplicacoesPago(row.aluno_id)}
                               className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
-                                pagamentoExplicacoes?.pago
-                                  ? 'bg-success-bg text-success border-success/30'
-                                  : 'bg-danger-bg text-danger border-danger/30'
+                                !explicacoes!.pagoRegistrado
+                                  ? 'bg-danger-bg text-danger border-danger/30'
+                                  : faltamExplicacoes != null
+                                    ? 'bg-warning-bg text-warning border-warning/30'
+                                    : 'bg-success-bg text-success border-success/30'
                               }`}
                             >
-                              {pagamentoExplicacoes?.pago ? 'Pago' : 'Não Pago'}
+                              {!explicacoes!.pagoRegistrado
+                                ? 'Não Pago'
+                                : faltamExplicacoes != null
+                                  ? `Pago, faltam ${faltamExplicacoes.toFixed(2)}€`
+                                  : 'Pago'}
                             </button>
                           ) : (
                             <span className="text-muted text-[10px] font-black uppercase tracking-widest">Sem sessões</span>
                           )}
                         </td>
                       </tr>
-                      {expandido && explicacoes && (
+                      {expandido && temSessoes && (
                         <tr className="bg-page/30">
                           <td colSpan={7} className="p-6">
                             <div className="flex items-start justify-between gap-6">
                               <div className="space-y-1.5 flex-1">
                                 <p className="text-[9px] font-black uppercase text-muted tracking-widest mb-2">Sessões de {getNome(row)} este mês</p>
-                                {explicacoes.sessoes.map((s: any, i: number) => (
+                                {explicacoes!.sessoes.map((s, i) => (
                                   <div key={i} className="flex items-center justify-between text-xs bg-surface border border-border/60 rounded-xl px-4 py-2">
                                     <span className="text-secondary font-bold">
                                       {new Date(s.data + 'T00:00:00').toLocaleDateString('pt-PT')} · {s.disciplina} · {s.professor}
@@ -565,10 +627,10 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                               <div className="shrink-0 space-y-1">
                                 <label className="text-[9px] font-black text-muted uppercase ml-1">Data de Pagamento</label>
                                 <input
-                                  key={`dpe-${row.aluno_id}-${pagamentoExplicacoes?.data_pagamento}`}
+                                  key={`dpe-${row.aluno_id}-${explicacoes!.dataPagamento}`}
                                   type="date"
-                                  defaultValue={pagamentoExplicacoes?.data_pagamento ?? ''}
-                                  disabled={!pagamentoExplicacoes?.pago}
+                                  defaultValue={explicacoes!.dataPagamento ?? ''}
+                                  disabled={!explicacoes!.pagoRegistrado}
                                   onChange={(e) => handleUpdateDataPagamentoExplicacoes(row.aluno_id, e.target.value)}
                                   className="bg-page border border-border p-2 rounded-lg text-primary outline-none focus:border-accent/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all block"
                                 />
