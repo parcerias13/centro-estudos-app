@@ -4,13 +4,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { getHojeLisboa, diaSemanaLisboa, dataLisboaDe, instanteLisboaParaUTC } from '@/lib/dataLisboa';
 import { urlWhatsApp, marcarMensagemEnviada } from '@/lib/whatsapp';
+import { format } from 'date-fns';
+import { pt } from 'date-fns/locale';
 import {
   Search, X, Plus, Undo2, MessageCircle, CheckCircle2, Loader2, AlertTriangle, Clock,
 } from 'lucide-react';
 
+// Chegadas marcadas pelo staff (toque ou "+ Aluno fora da lista") nunca
+// escolhem disciplina nem sala — ver decisão "SEM SELETOR DE DISCIPLINA".
+// Só o próprio aluno, no seu ecrã (app/page.tsx, intocado), continua a
+// escolher a disciplina do seu check-in.
+const DISCIPLINA_ESTUDO_AUTONOMO = 'Estudo autónomo';
+
 type Props = {
   alunos: any[];
-  subjects: any[];
   presencasAbertas: any[]; // todas as sessões com saida IS NULL, qualquer dia (= `presencas` do Dashboard)
   diarioHoje: any[]; // todas as linhas de diario_bordo de hoje (Europe/Lisbon), qualquer status/saida
   isSubmitting: boolean;
@@ -32,12 +39,10 @@ type Linha = {
   temHorarioHoje: boolean;
 };
 
-const CHAVE_DISCIPLINA = 'listaDoDia.disciplinaId';
 const CHAVE_WHATSAPP_AO_TOCAR = 'listaDoDia.whatsappAoTocar';
 
 export default function ListaDoDiaPresencas({
   alunos,
-  subjects,
   presencasAbertas,
   diarioHoje,
   isSubmitting,
@@ -48,7 +53,6 @@ export default function ListaDoDiaPresencas({
   handleDarSaida,
   handleRejeitarEntrada,
 }: Props) {
-  const [disciplinaEscolhidaId, setDisciplinaEscolhidaId] = useState('');
   const [whatsappAoTocar, setWhatsappAoTocar] = useState(false);
   const [processando, setProcessando] = useState<Set<string>>(new Set());
 
@@ -64,16 +68,9 @@ export default function ListaDoDiaPresencas({
   // cliente, depois do primeiro render, para não desalinhar com o SSR.
   useEffect(() => {
     try {
-      const disciplinaGuardada = localStorage.getItem(CHAVE_DISCIPLINA);
-      if (disciplinaGuardada) setDisciplinaEscolhidaId(disciplinaGuardada);
       setWhatsappAoTocar(localStorage.getItem(CHAVE_WHATSAPP_AO_TOCAR) === '1');
-    } catch { /* localStorage indisponível — fica nos valores por omissão */ }
+    } catch { /* localStorage indisponível — fica no valor por omissão */ }
   }, []);
-
-  const guardarDisciplinaEscolhida = (id: string) => {
-    setDisciplinaEscolhidaId(id);
-    try { localStorage.setItem(CHAVE_DISCIPLINA, id); } catch { /* ignora */ }
-  };
 
   const alternarWhatsappAoTocar = () => {
     const novoValor = !whatsappAoTocar;
@@ -83,6 +80,12 @@ export default function ListaDoDiaPresencas({
 
   const hoje = getHojeLisboa();
   const diaSemanaHoje = diaSemanaLisboa();
+  // "sexta, 6 de novembro" — EEEE do date-fns em pt dá "sexta-feira"; para o
+  // formato curto pedido, tira o sufixo "-feira" (só existe em 2ª a 6ª feira;
+  // sábado/domingo ficam como estão).
+  const dataReferencia = new Date(`${hoje}T12:00:00`);
+  const diaSemanaExtenso = format(dataReferencia, 'EEEE', { locale: pt }).replace('-feira', '');
+  const dataExtensa = `${diaSemanaExtenso}, ${format(dataReferencia, "d 'de' MMMM", { locale: pt })}`;
 
   const diarioHojePorAluno = useMemo(() => {
     const mapa = new Map<string, any>();
@@ -147,8 +150,6 @@ export default function ListaDoDiaPresencas({
     return { esperados, naSala, saiu };
   }, [linhas]);
 
-  const disciplinaEscolhida = disciplinaEscolhidaId ? subjects.find((s) => String(s.id) === disciplinaEscolhidaId) : null;
-
   const marcar = (id: string) => setProcessando((prev) => new Set(prev).add(id));
   const desmarcar = (id: string) => setProcessando((prev) => { const n = new Set(prev); n.delete(id); return n; });
 
@@ -165,9 +166,9 @@ export default function ListaDoDiaPresencas({
       .from('diario_bordo')
       .insert({
         aluno_id: aluno.id,
-        subject_id: disciplinaEscolhida?.id ?? null,
-        subject_name: disciplinaEscolhida?.name ?? null,
-        sala_id: disciplinaEscolhida?.sala_id ?? null,
+        subject_id: null,
+        subject_name: DISCIPLINA_ESTUDO_AUTONOMO,
+        sala_id: null,
         entrada: new Date().toISOString(),
         status: 'validado',
         verified_at: new Date().toISOString(),
@@ -363,31 +364,51 @@ export default function ListaDoDiaPresencas({
 
   return (
     <div className="space-y-4">
-      <div className="bg-surface border border-border rounded-3xl p-4 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-4 flex-1 min-w-0">
-          <span className="text-[10px] font-black uppercase text-muted tracking-widest shrink-0">
-            Esperados {contagens.esperados} · Na sala {contagens.naSala} · Já saíram {contagens.saiu}
+      <div className="bg-surface border border-border rounded-3xl p-4 space-y-4">
+        <p className="text-xs font-bold text-secondary">{dataExtensa}</p>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-raised text-muted shrink-0">
+            Esperados {contagens.esperados}
+          </span>
+          <span className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-success-bg text-success shrink-0">
+            Na sala {contagens.naSala}
+          </span>
+          <span className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-blue-500/10 text-blue-500 shrink-0">
+            Já saíram {contagens.saiu}
           </span>
         </div>
-        <select
-          value={disciplinaEscolhidaId}
-          onChange={(e) => guardarDisciplinaEscolhida(e.target.value)}
-          className="bg-page border border-border p-2 rounded-xl outline-none font-bold text-xs text-primary"
-        >
-          <option value="">Disciplina: nenhuma</option>
-          {subjects.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
-        </select>
-        <label className="flex items-center gap-2 text-[10px] font-black uppercase text-muted tracking-widest cursor-pointer select-none">
-          <input type="checkbox" checked={whatsappAoTocar} onChange={alternarWhatsappAoTocar} className="accent-accent w-4 h-4" />
-          Abrir o WhatsApp ao tocar
-        </label>
-        <button
-          type="button"
-          onClick={() => setMostrarForaLista((v) => !v)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-accent-soft text-accent rounded-xl text-[10px] font-black uppercase tracking-widest"
-        >
-          <Plus size={14} /> Aluno fora da lista
-        </button>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setMostrarForaLista((v) => !v)}
+            className="min-h-11 flex items-center gap-1.5 px-4 py-2.5 bg-accent-soft text-accent rounded-xl text-[10px] font-black uppercase tracking-widest shrink-0"
+          >
+            <Plus size={14} /> Aluno fora da lista
+          </button>
+
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={whatsappAoTocar}
+              aria-label="Abrir o WhatsApp ao tocar"
+              onClick={alternarWhatsappAoTocar}
+              className="shrink-0 min-h-11 min-w-11 flex items-center justify-center"
+            >
+              <span className={`relative inline-flex items-center w-11 h-6 rounded-full transition-colors ${whatsappAoTocar ? 'bg-accent' : 'bg-raised'}`}>
+                <span className={`inline-block w-5 h-5 bg-white rounded-full shadow transform transition-transform ${whatsappAoTocar ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </span>
+            </button>
+            <div className="min-w-0 max-w-xs">
+              <p className="text-[10px] font-black uppercase text-primary tracking-widest">Abrir o WhatsApp ao tocar</p>
+              <p className="text-[10px] text-muted leading-snug mt-0.5">
+                Ao marcar a chegada ou a saída, abre a mensagem pronta para o encarregado. Tu só carregas em enviar.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {mostrarForaLista && (

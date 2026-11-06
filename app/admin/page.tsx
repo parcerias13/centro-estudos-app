@@ -17,10 +17,10 @@ export default function DashboardAdmin() {
   const [proximosTestes, setProximosTestes] = useState<any[]>([]);
   const [salas, setSalas] = useState<any[]>([]);
   // Lista do Dia (ver ~/Desktop/plano-presencas.md) — modo escolhido na Gestão
-  // (config_centro.modo_presencas), lido diretamente pelo cliente (a mesma
-  // RLS permissiva já usada para `subjects`/`salas` nesta página) porque
-  // admin, professor e secretaria têm todos de o ver aqui, e o GET de
-  // /api/config-centro é só para admin (usado pela Gestão).
+  // (config_centro.modo_presencas), lido via /api/modo-presencas (role de
+  // serviço) porque admin, professor e secretaria têm todos de o ver aqui, e
+  // a RLS viva de config_centro só deixa o admin ler a linha pelo cliente
+  // (ver app/api/modo-presencas/route.ts).
   const [modoPresencas, setModoPresencas] = useState<'individual' | 'lista_dia'>('individual');
   const [diarioHoje, setDiarioHoje] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -533,7 +533,6 @@ export default function DashboardAdmin() {
           {modoPresencas === 'lista_dia' ? (
             <ListaDoDiaPresencas
               alunos={alunos}
-              subjects={subjects}
               presencasAbertas={presencas}
               diarioHoje={diarioHoje}
               isSubmitting={isSubmitting}

@@ -135,6 +135,24 @@ async function linhaDoAluno(page: Page, nome: string) {
   return page.locator('div[role="button"]', { hasText: nome }).first();
 }
 
+// Os contadores do cabeçalho são 3 etiquetas separadas (não um único texto
+// "Esperados N · Na sala N · Já saíram N" como antes do redesenho).
+function pillEsperados(page: Page) { return page.getByText(/^esperados \d+$/i); }
+function pillNaSala(page: Page) { return page.getByText(/^na sala \d+$/i); }
+function pillJaSairam(page: Page) { return page.getByText(/^já saíram \d+$/i); }
+function botaoForaDaLista(page: Page) { return page.getByRole('button', { name: /aluno fora da lista/i }); }
+function interruptorWhatsapp(page: Page) { return page.getByRole('switch', { name: /abrir o whatsapp ao tocar/i }); }
+
+async function esperarCabecalhoListaDoDia(page: Page) {
+  await expect(pillEsperados(page)).toBeVisible({ timeout: 15_000 });
+  await expect(pillNaSala(page)).toBeVisible();
+  await expect(pillJaSairam(page)).toBeVisible();
+}
+
+function sobrepoem(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
 async function diarioHojeDoAluno(alunoId: string) {
   const { inicio, fim } = janelaLarga(hoje);
   const { data } = await supabaseAdmin
@@ -250,7 +268,16 @@ test.describe('Lista do Dia — centro descartável ZZTESTE', () => {
     const page = await context.newPage();
     await page.goto(`${BASE_URL}/admin`, { waitUntil: 'networkidle' });
     await expect(page.getByRole('button', { name: /entrada manual/i })).toHaveCount(0);
-    await expect(page.getByText(/esperados.*na sala.*já saíram/i)).toBeVisible({ timeout: 15_000 });
+    await esperarCabecalhoListaDoDia(page);
+    await expect(botaoForaDaLista(page)).toBeVisible();
+    await expect(interruptorWhatsapp(page)).toBeVisible();
+    // Seletor de disciplina removido — nenhum <select> na página em Lista do
+    // Dia (os modais que têm <select> — Entrada Manual, Agendar Teste — nem
+    // chegam a existir no DOM sem o botão que os abre).
+    await expect(page.locator('select')).toHaveCount(0);
+    // (a sidebar tem um link "Disciplinas e Materiais" — não confundir com o
+    // antigo seletor "Disciplina das chegadas" removido desta secção).
+    await expect(page.getByText(/disciplina das chegadas/i)).toHaveCount(0);
 
     const linhaEsperado = await linhaDoAluno(page, alunos.esperado.nome);
     await expect(linhaEsperado).toContainText(/esperado/i);
@@ -264,7 +291,7 @@ test.describe('Lista do Dia — centro descartável ZZTESTE', () => {
       const context = await browser.newContext({ storageState: state });
       const page = await context.newPage();
       await page.goto(`${BASE_URL}/admin`, { waitUntil: 'networkidle' });
-      await expect(page.getByText(/esperados.*na sala.*já saíram/i)).toBeVisible({ timeout: 15_000 });
+      await esperarCabecalhoListaDoDia(page);
       await context.close();
     }
   });
@@ -285,6 +312,11 @@ test.describe('Lista do Dia — centro descartável ZZTESTE', () => {
     expect(linhasDb[0].verified_at).not.toBeNull();
     expect(linhasDb[0].checkout_at).toBeNull();
     expect(linhasDb[0].saida).toBeNull();
+    // Sem seletor de disciplina: a chegada por toque do staff grava sempre
+    // "Estudo autónomo", sem disciplina nem sala.
+    expect(linhasDb[0].subject_id).toBeNull();
+    expect(linhasDb[0].subject_name).toBe('Estudo autónomo');
+    expect(linhasDb[0].sala_id).toBeNull();
     await context.close();
   });
 
@@ -520,6 +552,11 @@ test.describe('Lista do Dia — centro descartável ZZTESTE', () => {
     await page.reload({ waitUntil: 'networkidle' });
     const linhaAdicionado = await linhaDoAluno(page, alunos.foraDaLista.nome);
     await expect(linhaAdicionado).toContainText(/chegou/i, { timeout: 15_000 });
+
+    const [linhaDb] = await diarioHojeDoAluno(alunos.foraDaLista.id);
+    expect(linhaDb.subject_id).toBeNull();
+    expect(linhaDb.subject_name).toBe('Estudo autónomo');
+    expect(linhaDb.sala_id).toBeNull();
     await context.close();
   });
 
@@ -583,7 +620,7 @@ test.describe('Lista do Dia — centro descartável ZZTESTE', () => {
     await prepararInterceptorWhatsApp(page);
     await page.goto(`${BASE_URL}/admin`, { waitUntil: 'networkidle' });
 
-    await page.getByRole('checkbox', { name: /abrir o whatsapp ao tocar/i }).check();
+    await interruptorWhatsapp(page).click();
 
     const linhaComTelefone = await linhaDoAluno(page, alunos.realtime.nome); // já ficou "Esperado" (desfeito no teste anterior)
     await linhaComTelefone.click();
@@ -682,5 +719,43 @@ test.describe('Lista do Dia — centro descartável ZZTESTE', () => {
     await expect(page.getByText(/bom estudo/i)).toHaveCount(0, { timeout: 15_000 });
 
     await context.close();
+  });
+
+  test('CABEÇALHO: etiquetas, botão e interruptor não se sobrepõem a 1280px nem a 390px', async ({ browser }) => {
+    for (const largura of [1280, 390]) {
+      const context = await browser.newContext({ storageState: adminState, viewport: { width: largura, height: 900 } });
+      const page = await context.newPage();
+      await page.goto(`${BASE_URL}/admin`, { waitUntil: 'networkidle' });
+      await esperarCabecalhoListaDoDia(page);
+      await expect(botaoForaDaLista(page)).toBeVisible();
+      await expect(interruptorWhatsapp(page)).toBeVisible();
+
+      const caixas = await Promise.all([
+        pillEsperados(page).boundingBox(),
+        pillNaSala(page).boundingBox(),
+        pillJaSairam(page).boundingBox(),
+        botaoForaDaLista(page).boundingBox(),
+        interruptorWhatsapp(page).boundingBox(),
+      ]);
+      const nomes = ['Esperados', 'Na sala', 'Já saíram', '+ Aluno fora da lista', 'Interruptor WhatsApp'];
+      caixas.forEach((c, i) => expect(c, `${nomes[i]} devia ter boundingBox a ${largura}px`).not.toBeNull());
+
+      for (let i = 0; i < caixas.length; i++) {
+        for (let j = i + 1; j < caixas.length; j++) {
+          expect(
+            sobrepoem(caixas[i]!, caixas[j]!),
+            `"${nomes[i]}" e "${nomes[j]}" sobrepõem-se a ${largura}px: ${JSON.stringify(caixas[i])} / ${JSON.stringify(caixas[j])}`
+          ).toBe(false);
+        }
+      }
+
+      // Alvo de toque de 44px no botão e no interruptor (as etiquetas são só leitura).
+      const [, , , caixaBotao, caixaInterruptor] = caixas;
+      expect(caixaBotao!.height).toBeGreaterThanOrEqual(44);
+      expect(caixaInterruptor!.height).toBeGreaterThanOrEqual(44);
+      expect(caixaInterruptor!.width).toBeGreaterThanOrEqual(44);
+
+      await context.close();
+    }
   });
 });
