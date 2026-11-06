@@ -5,31 +5,14 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { getHojeLisboa } from '@/lib/dataLisboa';
-import { disciplinasComuns } from '@/lib/disciplinas';
-import { format } from 'date-fns';
-import { pt } from 'date-fns/locale';
 import {
-  ArrowLeft, ListTree, Plus, X, Loader2, Search, Users, ShieldAlert, Pause, CalendarX2, Trash2,
+  ArrowLeft, ListTree, Plus, Loader2, ShieldAlert, Pause, CalendarX2, Trash2,
+  CheckCheck, XCircle, ChevronDown, ChevronUp,
 } from 'lucide-react';
-
-const DIAS_SEMANA = [
-  { valor: 1, label: 'Seg' },
-  { valor: 2, label: 'Ter' },
-  { valor: 3, label: 'Qua' },
-  { valor: 4, label: 'Qui' },
-  { valor: 5, label: 'Sex' },
-  { valor: 6, label: 'Sáb' },
-  { valor: 7, label: 'Dom' },
-];
-const DIA_SEMANA_LABEL: Record<number, string> = Object.fromEntries(DIAS_SEMANA.map((d) => [d.valor, d.label]));
-
-const rotuloAluno = (nome: string, anoEscolar: number | null | undefined) =>
-  anoEscolar ? `${nome} · ${anoEscolar}.º ano` : nome;
-
-function formatarDataCurta(dataISO: string | null | undefined): string {
-  if (!dataISO) return '—';
-  return format(new Date(`${dataISO}T00:00:00`), "d 'de' MMM", { locale: pt });
-}
+import {
+  DIA_SEMANA_LABEL, formatarDataCurta, formatarDataHoraCurta, nomesEAlunosDaSerie,
+  FormularioSerie,
+} from '../_shared/fixasShared';
 
 export default function SeriesExplicacoesPage() {
   const { toast, showError, showSuccess } = useStatusToast();
@@ -46,6 +29,8 @@ export default function SeriesExplicacoesPage() {
   const [loadingSeries, setLoadingSeries] = useState(true);
 
   const [mostrarNovaSerie, setMostrarNovaSerie] = useState(false);
+  const [recusadasAbertas, setRecusadasAbertas] = useState(false);
+  const [processandoValidacaoId, setProcessandoValidacaoId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -95,6 +80,38 @@ export default function SeriesExplicacoesPage() {
     || series.find((s) => s.professor_id === professorId)?.staff?.name
     || '—';
 
+  // A mesma lista `series` (carregarSeries, sem filtro de estado) dividida
+  // em três — nunca três pedidos separados, para as contagens nunca
+  // divergirem entre si.
+  const porValidar = series.filter((s) => s.estado_validacao === 'por_validar');
+  const validadas = series.filter((s) => s.estado_validacao !== 'por_validar' && s.estado_validacao !== 'recusada');
+  const recusadas = series.filter((s) => s.estado_validacao === 'recusada');
+
+  const handleValidar = async (serieId: string) => {
+    setProcessandoValidacaoId(serieId);
+    try {
+      const { error } = await supabase.rpc('validar_serie', { p_serie: serieId });
+      if (error) { showError(error.message); return; }
+      showSuccess('Explicação fixa validada.');
+      if (centroId) carregarSeries(centroId);
+    } finally {
+      setProcessandoValidacaoId(null);
+    }
+  };
+
+  const handleRecusar = async (serieId: string) => {
+    if (!confirm('Recusar remove as sessões futuras ainda não dadas desta explicação fixa.')) return;
+    setProcessandoValidacaoId(serieId);
+    try {
+      const { data, error } = await supabase.rpc('recusar_serie', { p_serie: serieId });
+      if (error) { showError(error.message); return; }
+      showSuccess(`Explicação fixa recusada.${typeof data === 'number' ? ` ${data} sessão(ões) futura(s) removida(s).` : ''}`);
+      if (centroId) carregarSeries(centroId);
+    } finally {
+      setProcessandoValidacaoId(null);
+    }
+  };
+
   if (loadingPagina) {
     return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
   }
@@ -123,6 +140,53 @@ export default function SeriesExplicacoesPage() {
         </div>
       </div>
 
+      {!loadingSeries && porValidar.length > 0 && (
+        <div className="bg-warning-bg border border-warning/20 rounded-[2rem] p-6 md:p-8 mb-8 space-y-4">
+          <h2 className="text-warning font-black uppercase text-sm tracking-widest flex items-center gap-2">
+            <ShieldAlert size={16} /> Por validar · {porValidar.length}
+          </h2>
+          <div className="space-y-3">
+            {porValidar.map((serie) => {
+              const { nAlunos, nomesAlunos } = nomesEAlunosDaSerie(serie);
+              const processando = processandoValidacaoId === serie.id;
+              return (
+                <div key={serie.id} data-serie-porvalidar={serie.id} className="bg-surface border border-warning/30 rounded-3xl p-5 flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-black text-primary break-words">{nomeProfessor(serie.professor_id)}</p>
+                    <p className="text-xs text-secondary font-bold mt-0.5 break-words">
+                      {serie.subjects?.name || 'Sem disciplina'} · {DIA_SEMANA_LABEL[serie.dia_semana] || '—'} · {serie.hora_inicio?.slice(0, 5)} · {Number(serie.duracao_horas)}h
+                    </p>
+                    <p className="text-xs text-muted mt-0.5 break-words">{nomesAlunos || `${nAlunos} aluno(s)`}</p>
+                    <p className="text-[10px] text-muted font-bold mt-1">
+                      {formatarDataCurta(serie.data_inicio)} → {serie.data_fim ? formatarDataCurta(serie.data_fim) : 'sem fim'}
+                    </p>
+                    <p className="text-[10px] text-muted mt-1">Criada {formatarDataHoraCurta(serie.created_at)}</p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleValidar(serie.id)}
+                      disabled={processando}
+                      className="flex items-center gap-1.5 bg-success-bg text-success border border-success/30 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      {processando ? <Loader2 size={12} className="animate-spin" /> : <CheckCheck size={12} />} Validar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRecusar(serie.id)}
+                      disabled={processando}
+                      className="flex items-center gap-1.5 bg-page border border-border text-danger px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      {processando ? <Loader2 size={12} className="animate-spin" /> : <XCircle size={12} />} Recusar
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="bg-surface border border-border/60 rounded-[2.5rem] shadow-2xl p-6 md:p-8 mb-8">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-primary font-black uppercase text-sm tracking-widest">Nova Explicação Fixa</h2>
@@ -137,8 +201,8 @@ export default function SeriesExplicacoesPage() {
         </div>
 
         {mostrarNovaSerie && (
-          <FormNovaSerie
-            centroId={centroId!}
+          <FormularioSerie
+            modo="admin"
             professores={professores}
             subjects={subjects}
             alunosAtivos={alunosAtivos}
@@ -155,14 +219,14 @@ export default function SeriesExplicacoesPage() {
 
       {loadingSeries ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-accent" size={28} /></div>
-      ) : series.length === 0 ? (
+      ) : validadas.length === 0 ? (
         <div className="text-center py-16 border-2 border-dashed border-border/50 rounded-[2rem]">
           <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem explicações fixas criadas</p>
         </div>
       ) : (
         <div className="space-y-4">
           <p className="text-muted font-bold uppercase text-[10px] tracking-widest px-1">Explicações fixas ativas</p>
-          {series.map((serie) => (
+          {validadas.map((serie) => (
             <CartaoSerie
               key={serie.id}
               serie={serie}
@@ -175,255 +239,40 @@ export default function SeriesExplicacoesPage() {
         </div>
       )}
 
-      <StatusToast toast={toast} />
-    </main>
-  );
-}
-
-function FormNovaSerie({ centroId, professores, subjects, alunosAtivos, showError, onCreated, onCancel }: any) {
-  const [professorId, setProfessorId] = useState('');
-  const [disciplinaId, setDisciplinaId] = useState('');
-  const [diaSemana, setDiaSemana] = useState<number | null>(null);
-  const [horaInicio, setHoraInicio] = useState('');
-  const [duracaoHoras, setDuracaoHoras] = useState('');
-  const [alunoIds, setAlunoIds] = useState<string[]>([]);
-  const [buscaAluno, setBuscaAluno] = useState('');
-  const [dataInicio, setDataInicio] = useState(() => getHojeLisboa());
-  const [semDataFim, setSemDataFim] = useState(true);
-  const [dataFim, setDataFim] = useState('');
-  const [criando, setCriando] = useState(false);
-
-  const toggleAluno = (id: string) => {
-    const jaSelecionado = alunoIds.includes(id);
-    if (!jaSelecionado && alunoIds.length > 0) {
-      const anoDoGrupo = alunosAtivos.find((a: any) => a.id === alunoIds[0])?.ano_escolar;
-      const anoDoNovo = alunosAtivos.find((a: any) => a.id === id)?.ano_escolar;
-      if (anoDoGrupo != null && anoDoNovo !== anoDoGrupo) {
-        showError('Todos os alunos de uma explicação fixa têm de ser do mesmo ano escolar.');
-        return;
-      }
-    }
-    setAlunoIds((prev) => (jaSelecionado ? prev.filter((a) => a !== id) : [...prev, id]));
-  };
-
-  const alunosFiltrados = alunosAtivos.filter((a: any) => a.nome.toLowerCase().includes(buscaAluno.toLowerCase()));
-  const disciplinasComunsSerie = disciplinasComuns(
-    subjects,
-    alunoIds.map((id) => alunosAtivos.find((a: any) => a.id === id)?.ano_escolar)
-  );
-
-  useEffect(() => {
-    if (disciplinaId && !disciplinasComunsSerie.some((s: any) => String(s.id) === disciplinaId)) {
-      setDisciplinaId('');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [alunoIds]);
-
-  const handleCriar = async () => {
-    if (!professorId) return showError('Escolhe o professor.');
-    if (diaSemana == null) return showError('Escolhe o dia da semana.');
-    if (!horaInicio) return showError('Indica a hora de início.');
-    const duracaoNum = parseFloat(duracaoHoras);
-    if (isNaN(duracaoNum) || duracaoNum <= 0) return showError('Indica uma duração válida.');
-    if (alunoIds.length === 0) return showError('Escolhe pelo menos um aluno.');
-    if (!dataInicio) return showError('Escolhe a data de início.');
-
-    setCriando(true);
-    try {
-      const { error } = await supabase.rpc('criar_serie_explicacao', {
-        p_professor: professorId,
-        p_disciplina: disciplinaId ? Number(disciplinaId) : null,
-        p_dia: diaSemana,
-        p_hora: `${horaInicio}:00`,
-        p_duracao: duracaoNum,
-        p_alunos: alunoIds,
-        p_inicio: dataInicio,
-        p_fim: semDataFim ? null : (dataFim || null),
-      });
-      if (error) {
-        showError(error.message);
-        return;
-      }
-      onCreated();
-    } finally {
-      setCriando(false);
-    }
-  };
-
-  return (
-    <div className="mt-4 bg-page/50 border border-border rounded-3xl p-5 space-y-4">
-      <div>
-        <label className="text-[9px] font-black text-muted uppercase ml-1">Professor</label>
-        <select
-          aria-label="Professor"
-          value={professorId}
-          onChange={(e) => setProfessorId(e.target.value)}
-          className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none mt-1"
-        >
-          <option value="">Escolhe...</option>
-          {professores.map((p: any) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label className="text-[9px] font-black text-muted uppercase ml-1 flex items-center gap-1.5">
-          <Users size={12} /> Aluno(s)
-        </label>
-        <div className="relative mt-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
-          <input
-            type="text"
-            placeholder="Pesquisar aluno..."
-            value={buscaAluno}
-            onChange={(e) => setBuscaAluno(e.target.value)}
-            className="w-full bg-surface border border-border text-primary pl-9 pr-3 py-2.5 rounded-xl outline-none focus:border-accent text-sm"
-          />
-        </div>
-        <div className="max-h-40 overflow-y-auto mt-2 space-y-1 border border-border rounded-xl p-2">
-          {alunosFiltrados.length === 0 ? (
-            <p className="text-xs text-muted italic p-2">Nenhum aluno encontrado.</p>
-          ) : (
-            alunosFiltrados.map((aluno: any) => {
-              const selecionado = alunoIds.includes(aluno.id);
-              return (
-                <button
-                  key={aluno.id}
-                  type="button"
-                  onClick={() => toggleAluno(aluno.id)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition-all ${
-                    selecionado ? 'bg-accent text-on-accent' : 'bg-page text-primary hover:bg-raised'
-                  }`}
-                >
-                  {rotuloAluno(aluno.nome, aluno.ano_escolar)}
-                </button>
-              );
-            })
+      {!loadingSeries && recusadas.length > 0 && (
+        <div className="mt-8 bg-surface border border-border/60 rounded-2xl overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setRecusadasAbertas((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 p-4 text-muted"
+          >
+            <span className="font-black text-sm uppercase tracking-widest">Recusadas · {recusadas.length}</span>
+            {recusadasAbertas ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
+          {recusadasAbertas && (
+            <div className="space-y-3 px-4 pb-4">
+              {recusadas.map((serie) => {
+                const { nAlunos, nomesAlunos } = nomesEAlunosDaSerie(serie);
+                return (
+                  <div key={serie.id} className="bg-page border border-border rounded-2xl p-4">
+                    <p className="font-black text-primary break-words">{nomeProfessor(serie.professor_id)}</p>
+                    <p className="text-xs text-secondary font-bold mt-0.5 break-words">
+                      {serie.subjects?.name || 'Sem disciplina'} · {DIA_SEMANA_LABEL[serie.dia_semana] || '—'} · {serie.hora_inicio?.slice(0, 5)} · {Number(serie.duracao_horas)}h
+                    </p>
+                    <p className="text-xs text-muted mt-0.5 break-words">{nomesAlunos || `${nAlunos} aluno(s)`}</p>
+                    <p className="text-[10px] text-muted font-bold mt-1">
+                      {formatarDataCurta(serie.data_inicio)} → {serie.data_fim ? formatarDataCurta(serie.data_fim) : 'sem fim'}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
           )}
-        </div>
-        {alunoIds.length > 0 && (
-          <p className="text-[10px] text-accent font-bold mt-1.5">{alunoIds.length} selecionado(s)</p>
-        )}
-      </div>
-
-      <div>
-        <label className="text-[9px] font-black text-muted uppercase ml-1">Dia da semana</label>
-        <div className="grid grid-cols-7 gap-1.5 mt-1">
-          {DIAS_SEMANA.map((d) => (
-            <button
-              key={d.valor}
-              type="button"
-              onClick={() => setDiaSemana(d.valor)}
-              className={`py-2.5 rounded-xl text-[11px] font-black uppercase transition-all border ${
-                diaSemana === d.valor ? 'bg-accent text-on-accent border-accent' : 'bg-surface border-border text-secondary hover:border-accent/40'
-              }`}
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 space-y-1">
-          <label className="text-[9px] font-black text-muted uppercase ml-1">Hora de início</label>
-          <input
-            type="time"
-            aria-label="Hora de início"
-            value={horaInicio}
-            onChange={(e) => setHoraInicio(e.target.value)}
-            className="w-full bg-surface border border-border text-primary p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
-          />
-        </div>
-        <div className="flex-1 space-y-1">
-          <label className="text-[9px] font-black text-muted uppercase ml-1">Duração (horas)</label>
-          <input
-            type="number"
-            step="0.25"
-            min="0"
-            aria-label="Duração (horas)"
-            value={duracaoHoras}
-            onChange={(e) => setDuracaoHoras(e.target.value)}
-            placeholder="Ex: 1.5"
-            className="w-full bg-surface border border-border text-primary p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="text-[9px] font-black text-muted uppercase ml-1">Disciplina (opcional)</label>
-        <select
-          aria-label="Disciplina (opcional)"
-          value={disciplinaId}
-          onChange={(e) => setDisciplinaId(e.target.value)}
-          className="w-full bg-surface border border-border text-primary p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none mt-1"
-        >
-          <option value="">Sem disciplina</option>
-          {disciplinasComunsSerie.map((s: any) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label className="text-[9px] font-black text-muted uppercase ml-1">Início</label>
-        <input
-          type="date"
-          aria-label="Início"
-          value={dataInicio}
-          onChange={(e) => setDataInicio(e.target.value)}
-          className="w-full bg-surface border border-border text-primary p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
-        />
-      </div>
-
-      <label className="flex items-start gap-2 text-xs font-bold text-secondary cursor-pointer">
-        <input
-          type="checkbox"
-          checked={semDataFim}
-          onChange={(e) => setSemDataFim(e.target.checked)}
-          className="mt-0.5 shrink-0 accent-accent"
-        />
-        <span>Sem data de fim: continua todas as semanas até a terminares</span>
-      </label>
-
-      {!semDataFim && (
-        <div>
-          <label className="text-[9px] font-black text-muted uppercase ml-1">Data de fim</label>
-          <input
-            type="date"
-            aria-label="Data de fim"
-            value={dataFim}
-            onChange={(e) => setDataFim(e.target.value)}
-            className="w-full bg-surface border border-border text-primary p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
-          />
         </div>
       )}
 
-      <p className="text-[10px] text-muted italic">
-        As próximas 12 semanas ficam logo marcadas e depois vão-se marcando sozinhas, semana a semana.
-      </p>
-
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={handleCriar}
-          disabled={criando}
-          className="flex-1 py-3 bg-accent hover:bg-accent-hover text-on-accent rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-        >
-          {criando ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-          Criar Explicação Fixa
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={criando}
-          className="px-5 py-3 bg-raised hover:bg-border rounded-2xl font-black text-sm transition-all active:scale-95"
-        >
-          Cancelar
-        </button>
-      </div>
-    </div>
+      <StatusToast toast={toast} />
+    </main>
   );
 }
 
@@ -436,12 +285,7 @@ function CartaoSerie({ serie, nomeProfessor, showError, showSuccess, onAtualizad
   const [terminarData, setTerminarData] = useState(() => getHojeLisboa());
   const [processando, setProcessando] = useState(false);
 
-  const nAlunos = (serie.series_explicacoes_alunos || []).length;
-  const nomesAlunos = (serie.series_explicacoes_alunos || [])
-    .map((sa: any) => (Array.isArray(sa.alunos) ? sa.alunos[0] : sa.alunos))
-    .filter(Boolean)
-    .map((a: any) => rotuloAluno(a.nome, a.ano_escolar))
-    .join(', ');
+  const { nAlunos, nomesAlunos } = nomesEAlunosDaSerie(serie);
 
   // N (sessões ativas e não dadas da série no intervalo) recalcula sempre
   // que o intervalo muda — nunca mostra o aviso de pausa com um número de

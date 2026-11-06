@@ -128,6 +128,9 @@ function ExplicacoesPageContent() {
   const [pedidosPendentes, setPedidosPendentes] = useState<any[]>([]);
   const [pedidosAbertos, setPedidosAbertos] = useState(false);
 
+  // Selo vermelho no botão "Fixas" (só admin) — ver efeito mais abaixo.
+  const [fixasPorValidar, setFixasPorValidar] = useState(0);
+
   // Só apresentação: qual dia está em foco na faixa da semana (fundo de
   // destaque + scroll até ao grupo) — nunca decide o que é "hoje" (isso
   // continua a ser calculado com getHojeLisboa(), mais abaixo).
@@ -217,6 +220,46 @@ function ExplicacoesPageContent() {
     if (role !== 'admin' || !centroId) return;
     carregarPedidosPendentes(centroId);
   }, [role, centroId, carregarPedidosPendentes]);
+
+  // Selo vermelho no botão "Fixas" (só admin) — contagem de explicações
+  // fixas por validar do centro. Mesmo padrão de atualização do selo
+  // "Alterações" na sidebar (app/admin/layout.tsx): logo ao montar, ao
+  // ganhar foco, e a cada 30s enquanto o separador está visível.
+  const carregarFixasPorValidar = useCallback(async (centro_id: string) => {
+    const { count } = await supabase
+      .from('series_explicacoes')
+      .select('id', { count: 'exact', head: true })
+      .eq('centro_id', centro_id)
+      .eq('estado_validacao', 'por_validar');
+    setFixasPorValidar(count || 0);
+  }, []);
+
+  useEffect(() => {
+    if (role !== 'admin' || !centroId) return;
+
+    carregarFixasPorValidar(centroId);
+
+    const aoFocar = () => carregarFixasPorValidar(centroId);
+    window.addEventListener('focus', aoFocar);
+
+    let intervalo: ReturnType<typeof setInterval> | null = null;
+    const geriIntervalo = () => {
+      if (document.visibilityState === 'visible') {
+        if (!intervalo) intervalo = setInterval(() => carregarFixasPorValidar(centroId), 30000);
+      } else if (intervalo) {
+        clearInterval(intervalo);
+        intervalo = null;
+      }
+    };
+    geriIntervalo();
+    document.addEventListener('visibilitychange', geriIntervalo);
+
+    return () => {
+      window.removeEventListener('focus', aoFocar);
+      document.removeEventListener('visibilitychange', geriIntervalo);
+      if (intervalo) clearInterval(intervalo);
+    };
+  }, [role, centroId, carregarFixasPorValidar]);
 
   // ?pedido=<mensagem_id> — pré-preenche o NovaExplicacaoModal a partir de
   // um pedido pendente (vindo do cartão em /admin/mensagens ou do banner).
@@ -344,6 +387,31 @@ function ExplicacoesPageContent() {
 
   useEffect(() => { fetchSessoes(); }, [fetchSessoes]);
 
+  // Mapa serie_id -> estado_validacao, só para as sessões desta semana —
+  // uma só consulta às séries referidas (RLS já filtra: o admin lê todas as
+  // do centro, o professor só as suas), para a etiqueta "Fixa" passar a
+  // "Fixa · por validar" enquanto a direção não validou a série.
+  const [estadoPorSerie, setEstadoPorSerie] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const serieIds = Array.from(new Set(sessoes.map((s) => s.serie_id).filter(Boolean)));
+    if (serieIds.length === 0) {
+      setEstadoPorSerie({});
+      return;
+    }
+    let ativo = true;
+    supabase
+      .from('series_explicacoes')
+      .select('id, estado_validacao')
+      .in('id', serieIds)
+      .then(({ data }) => {
+        if (!ativo) return;
+        const mapa: Record<string, string> = {};
+        (data || []).forEach((s: any) => { mapa[s.id] = s.estado_validacao; });
+        setEstadoPorSerie(mapa);
+      });
+    return () => { ativo = false; };
+  }, [sessoes]);
+
   const diasDaSemana = eachDayOfInterval({
     start: currentWeekStart,
     end: endOfWeek(currentWeekStart, { weekStartsOn: 1 }),
@@ -440,9 +508,22 @@ function ExplicacoesPageContent() {
           {role === 'admin' && (
             <Link
               href="/admin/explicacoes/series"
-              className="flex items-center gap-1.5 bg-surface border border-border hover:border-accent/50 text-secondary hover:text-primary px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shrink-0"
+              className="relative flex items-center gap-1.5 bg-surface border border-border hover:border-accent/50 text-secondary hover:text-primary px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shrink-0"
             >
               <ListTree size={14} /> Fixas
+              {fixasPorValidar > 0 && (
+                <span className="absolute -top-2 -right-2 bg-danger text-on-danger text-[9px] font-black min-w-4 h-4 px-1 rounded-full flex items-center justify-center">
+                  {fixasPorValidar}
+                </span>
+              )}
+            </Link>
+          )}
+          {role === 'professor' && (
+            <Link
+              href="/admin/explicacoes/minhas-fixas"
+              className="flex items-center gap-1.5 bg-surface border border-border hover:border-accent/50 text-secondary hover:text-primary px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shrink-0"
+            >
+              <ListTree size={14} /> As Minhas Fixas
             </Link>
           )}
         </div>
@@ -713,7 +794,7 @@ function ExplicacoesPageContent() {
                         const disciplina = sessao.subjects?.name || '—';
                         const etiquetaFixa = sessao.serie_id && (
                           <span className="shrink-0 px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest bg-page text-muted border border-border">
-                            Fixa
+                            {estadoPorSerie[sessao.serie_id] === 'por_validar' ? 'Fixa · por validar' : 'Fixa'}
                           </span>
                         );
                         return (
