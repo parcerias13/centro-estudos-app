@@ -5,6 +5,9 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { disciplinasComuns } from '@/lib/disciplinas';
+import { getHojeLisboa, dataLisboaDe, janelaLarga } from '@/lib/dataLisboa';
+import { urlWhatsApp, marcarMensagemEnviada } from '@/lib/whatsapp';
+import ListaDoDiaPresencas from './ListaDoDiaPresencas';
 import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, MapPin, CheckCircle2, XCircle, UserPlus, Search, X, Plus, Calendar, ChevronDown, ChevronUp, Undo2 } from 'lucide-react';
 
 
@@ -13,6 +16,13 @@ export default function DashboardAdmin() {
   const [presencas, setPresencas] = useState<any[]>([]);
   const [proximosTestes, setProximosTestes] = useState<any[]>([]);
   const [salas, setSalas] = useState<any[]>([]);
+  // Lista do Dia (ver ~/Desktop/plano-presencas.md) — modo escolhido na Gestão
+  // (config_centro.modo_presencas), lido diretamente pelo cliente (a mesma
+  // RLS permissiva já usada para `subjects`/`salas` nesta página) porque
+  // admin, professor e secretaria têm todos de o ver aqui, e o GET de
+  // /api/config-centro é só para admin (usado pela Gestão).
+  const [modoPresencas, setModoPresencas] = useState<'individual' | 'lista_dia'>('individual');
+  const [diarioHoje, setDiarioHoje] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -101,7 +111,31 @@ export default function DashboardAdmin() {
         .order('nome');
         
       const { data: subData } = await supabase.from('subjects').select('*').eq('centro_id', centro_id).order('name');
-      
+
+      // Lê via API (role de serviço) em vez de SELECT direto — a RLS viva de
+      // config_centro só deixa o admin ler a linha pelo cliente; esta rota
+      // (/api/modo-presencas) existe exatamente para professor/secretaria
+      // também saberem que lista mostrar, sem tocar na RLS.
+      const modoRes = await fetch('/api/modo-presencas');
+      const modo: 'individual' | 'lista_dia' = modoRes.ok
+        ? ((await modoRes.json()).modo_presencas === 'lista_dia' ? 'lista_dia' : 'individual')
+        : 'individual';
+      setModoPresencas(modo);
+
+      if (modo === 'lista_dia') {
+        const hojeLisboa = getHojeLisboa();
+        const { inicio, fim } = janelaLarga(hojeLisboa);
+        const { data: diarioHojeData } = await supabase
+          .from('diario_bordo')
+          .select('*')
+          .eq('centro_id', centro_id)
+          .gte('entrada', inicio)
+          .lte('entrada', fim);
+        setDiarioHoje((diarioHojeData || []).filter((d) => dataLisboaDe(d.entrada) === hojeLisboa));
+      } else {
+        setDiarioHoje([]);
+      }
+
       setPresencas(presentes || []);
       setProximosTestes(exames || []);
       setSalas(salasData || []);
@@ -193,23 +227,21 @@ export default function DashboardAdmin() {
 
   const handleWhatsApp = async (presencaId: string, telefone: string, nome: string, tipo: 'entrada' | 'saida') => {
     if (!telefone) return alert("Este aluno não tem telefone registado.");
-    const numApenasNumeros = telefone.replace(/\D/g, '');
-    const numFinal = numApenasNumeros.startsWith('351') ? numApenasNumeros : `351${numApenasNumeros}`;
-    const msg = tipo === 'entrada'
-      ? `Olá! Informamos que o(a) aluno(a) ${nome} deu entrada no Centro de Estudos! 📚`
-      : `Olá! Informamos que o(a) aluno(a) ${nome} concluiu a sua sessão de estudo!`;
-    window.open(`https://wa.me/${numFinal}?text=${encodeURIComponent(msg)}`, '_blank');
-    const updateData = tipo === 'entrada' ? { msg_in_enviada: true } : { msg_out_enviada: true };
-    const { error } = await supabase.from('diario_bordo').update(updateData).eq('id', presencaId);
-    if (!error) fetchDados();
-    else showError('Erro ao registar envio de mensagem: ' + error.message);
+    window.open(urlWhatsApp(telefone, nome, tipo), '_blank');
+    const erro = await marcarMensagemEnviada(supabase, presencaId, tipo);
+    if (!erro) fetchDados();
+    else showError('Erro ao registar envio de mensagem: ' + erro);
   };
 
-  const handleDarSaida = async (presencaId: string) => {
-    if(!confirm("Confirmar saída física?")) return;
+  // Devolve true/false (além de continuar a atualizar o ecrã) para a Lista do
+  // Dia poder encadear a abertura do WhatsApp só quando a saída é mesmo
+  // confirmada — o modo individual continua a ignorar o valor devolvido.
+  const handleDarSaida = async (presencaId: string): Promise<boolean> => {
+    if(!confirm("Confirmar saída física?")) return false;
     const { error } = await supabase.from('diario_bordo').update({ saida: new Date().toISOString() }).eq('id', presencaId);
-    if (!error) fetchDados();
-    else showError('Erro ao registar saída: ' + error.message);
+    if (!error) { fetchDados(); return true; }
+    showError('Erro ao registar saída: ' + error.message);
+    return false;
   };
 
   const handleManualCheckIn = async (aluno: any) => {
@@ -467,9 +499,11 @@ export default function DashboardAdmin() {
         </div>
         
         <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
-          <button onClick={() => setIsModalOpen(true)} className="bg-accent hover:bg-accent-hover text-on-accent px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-accent/20 transition-all active:scale-95">
-            <UserPlus size={20} /> ENTRADA MANUAL
-          </button>
+          {modoPresencas === 'individual' && (
+            <button onClick={() => setIsModalOpen(true)} className="bg-accent hover:bg-accent-hover text-on-accent px-6 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-accent/20 transition-all active:scale-95">
+              <UserPlus size={20} /> ENTRADA MANUAL
+            </button>
+          )}
 
           {presencas.length > 0 && (
             <button disabled={isSubmitting} onClick={() => safeAction(handleMassCheckout)} className="bg-danger-bg hover:bg-danger text-danger hover:text-on-danger px-5 py-3 rounded-2xl font-black flex items-center gap-2 border border-danger/30 transition-all active:scale-95 disabled:opacity-50">
@@ -496,7 +530,21 @@ export default function DashboardAdmin() {
             <span className="text-[10px] text-success font-bold uppercase animate-pulse">● Ao Vivo</span>
           </div>
 
-          {presencas.length === 0 ? (
+          {modoPresencas === 'lista_dia' ? (
+            <ListaDoDiaPresencas
+              alunos={alunos}
+              subjects={subjects}
+              presencasAbertas={presencas}
+              diarioHoje={diarioHoje}
+              isSubmitting={isSubmitting}
+              fetchDados={fetchDados}
+              showError={showError}
+              showSuccess={showSuccess}
+              handleWhatsApp={handleWhatsApp}
+              handleDarSaida={handleDarSaida}
+              handleRejeitarEntrada={handleRejeitarEntrada}
+            />
+          ) : presencas.length === 0 ? (
             <div className="bg-surface/70 border-2 border-dashed border-border p-20 rounded-[2.5rem] text-center italic opacity-50">
               Aguardando check-ins...
             </div>
