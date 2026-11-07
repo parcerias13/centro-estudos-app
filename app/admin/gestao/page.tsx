@@ -13,8 +13,15 @@ import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import {
   Building2, Save, Loader2, DollarSign, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
-  Plus, Trash2, RefreshCw, ShieldAlert, Receipt, GraduationCap, Pencil, Bell, Users
+  Plus, Trash2, RefreshCw, ShieldAlert, Receipt, GraduationCap, Pencil, Bell, Users,
+  Layers, Calculator, AlertTriangle,
 } from 'lucide-react';
+import {
+  CICLOS_INFO, LABEL_CICLO, cicloDoAno, escolherPrecoPorAlunos, valorCobrado,
+  parseValorEuro, formatarValorPtPt, agruparPrecosCiclo, obterPrecosCiclo,
+  validarLinhasCiclo, guardarPrecosCiclo,
+  type Ciclo, type TipoPrecoCiclo, type PrecoCiclo, type LinhaCicloFormulario,
+} from '@/lib/precosCiclo';
 
 const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -104,6 +111,37 @@ export default function GestaoTotalPage() {
   const [precoValor, setPrecoValor] = useState('');
   const [savingPreco, setSavingPreco] = useState(false);
 
+  // Preços de explicações por ciclo (precos_explicacoes_ciclo) — lib/precosCiclo.ts
+  // tem os tipos, o mapeamento ano->ciclo, a escolha por nº de alunos e o
+  // carregar/guardar; aqui só o estado do formulário e os avisos.
+  const [linhasCiclo, setLinhasCiclo] = useState<LinhaCicloFormulario[]>(
+    CICLOS_INFO.map((c) => ({ ciclo: c.ciclo, individual: '', grupo: '' }))
+  );
+  const [tipoCiclo, setTipoCiclo] = useState<TipoPrecoCiclo>('fixo');
+  const [escaloesExtraCiclo, setEscaloesExtraCiclo] = useState<PrecoCiclo[]>([]);
+  const [errosCiclo, setErrosCiclo] = useState<Record<Ciclo, { individual?: string; grupo?: string }>>({} as any);
+  const [dirtyCiclo, setDirtyCiclo] = useState(false);
+  const [salvandoCiclo, setSalvandoCiclo] = useState(false);
+
+  const [simAno, setSimAno] = useState('6');
+  const [simAlunos, setSimAlunos] = useState('1');
+  const [simHoras, setSimHoras] = useState('1');
+
+  const aplicarPrecosCicloCarregados = (dados: PrecoCiclo[]) => {
+    const { porCiclo, extra } = agruparPrecosCiclo(dados);
+    setLinhasCiclo(
+      CICLOS_INFO.map((c) => ({
+        ciclo: c.ciclo,
+        individual: porCiclo[c.ciclo].individual ? formatarValorPtPt(porCiclo[c.ciclo].individual!.valor) : '',
+        grupo: porCiclo[c.ciclo].grupo ? formatarValorPtPt(porCiclo[c.ciclo].grupo!.valor) : '',
+      }))
+    );
+    setEscaloesExtraCiclo(extra);
+    setTipoCiclo(dados[0]?.tipo ?? 'fixo');
+    setErrosCiclo({} as any);
+    setDirtyCiclo(false);
+  };
+
   const loadTudo = useCallback(async () => {
     try {
       setLoading(true);
@@ -138,6 +176,9 @@ export default function GestaoTotalPage() {
             .eq('centro_id', centro_id)
             .order('ano_escolar', { ascending: true, nullsFirst: true });
           setPrecosFamilia(precosRes || []);
+
+          const precosCicloRes = await obterPrecosCiclo(centro_id);
+          aplicarPrecosCicloCarregados(precosCicloRes);
         }
 
         const config = await configRes.json();
@@ -656,6 +697,48 @@ export default function GestaoTotalPage() {
     showSuccess('Preço removido.');
   };
 
+  // --- Preços de explicações por ciclo (precos_explicacoes_ciclo) ---
+  const atualizarLinhaCiclo = (ciclo: Ciclo, campo: 'individual' | 'grupo', valor: string) => {
+    setLinhasCiclo((prev) => prev.map((l) => (l.ciclo === ciclo ? { ...l, [campo]: valor } : l)));
+    setErrosCiclo((prev) => ({ ...prev, [ciclo]: undefined }) as any);
+    setDirtyCiclo(true);
+  };
+
+  const handleTrocarTipoCiclo = (novoTipo: TipoPrecoCiclo) => {
+    if (novoTipo === tipoCiclo) return;
+    setTipoCiclo(novoTipo);
+    setDirtyCiclo(true);
+  };
+
+  const handleGuardarPrecosCiclo = async () => {
+    const erros = validarLinhasCiclo(linhasCiclo);
+    if (Object.keys(erros).length > 0) {
+      setErrosCiclo(erros);
+      showError('Corrige os valores assinalados.');
+      return;
+    }
+    setErrosCiclo({} as any);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const centro_id = user?.app_metadata?.centro_id;
+    if (!centro_id) {
+      showError('Não foi possível obter o centro. Recarrega a página.');
+      return;
+    }
+
+    setSalvandoCiclo(true);
+    try {
+      await guardarPrecosCiclo(centro_id, linhasCiclo, tipoCiclo, escaloesExtraCiclo);
+      showSuccess('Preços guardados.');
+      const novos = await obterPrecosCiclo(centro_id);
+      aplicarPrecosCicloCarregados(novos);
+    } catch (e: any) {
+      showError(e?.message || 'Erro ao guardar preços.');
+    } finally {
+      setSalvandoCiclo(false);
+    }
+  };
+
   if (loading) return (
     <div className="min-h-screen bg-page flex items-center justify-center">
       <Loader2 className="animate-spin text-accent" size={40} />
@@ -669,6 +752,47 @@ export default function GestaoTotalPage() {
       <p className="text-muted mt-2">Área reservada a administradores.</p>
     </div>
   );
+
+  // --- Derivados de preços por ciclo (avisos + simulador) — sempre a partir
+  // do formulário atual, gravado ou não, nunca de uma cópia à parte. ---
+  const unidadeCiclo = tipoCiclo === 'por_hora' ? 'hora' : 'sessão';
+
+  const avisosCiclo = linhasCiclo
+    .map((l) => {
+      if (l.individual.trim() === '') {
+        return { ciclo: l.ciclo, texto: `${LABEL_CICLO[l.ciclo]}: sem preço individual; as sessões deste ciclo ficam «sem preço».` };
+      }
+      const individual = parseValorEuro(l.individual);
+      const grupo = parseValorEuro(l.grupo);
+      if (individual !== null && grupo !== null && grupo > individual) {
+        return { ciclo: l.ciclo, texto: `${LABEL_CICLO[l.ciclo]}: o preço de grupo é superior ao individual. Confirma.` };
+      }
+      return null;
+    })
+    .filter((a): a is { ciclo: Ciclo; texto: string } => a !== null);
+
+  const cicloSimulador = cicloDoAno(Number(simAno) || 1);
+  const linhaSimulador = linhasCiclo.find((l) => l.ciclo === cicloSimulador);
+  const candidatosSimulador: { alunosAPartirDe: number; valor: number }[] = [];
+  if (linhaSimulador) {
+    const individualSim = parseValorEuro(linhaSimulador.individual);
+    const grupoSim = parseValorEuro(linhaSimulador.grupo);
+    if (individualSim !== null) candidatosSimulador.push({ alunosAPartirDe: 1, valor: individualSim });
+    if (grupoSim !== null) candidatosSimulador.push({ alunosAPartirDe: 2, valor: grupoSim });
+  }
+  const numAlunosSimulador = Number(simAlunos) || 1;
+  const horasSimulador = Number(simHoras) || 0;
+  const precoEscolhidoSimulador = escolherPrecoPorAlunos(candidatosSimulador, numAlunosSimulador);
+  let textoSimulador: string;
+  if (!precoEscolhidoSimulador) {
+    textoSimulador = 'Sem preço definido para este ciclo.';
+  } else {
+    const porAluno = valorCobrado({ tipo: tipoCiclo, valor: precoEscolhidoSimulador.valor }, horasSimulador);
+    textoSimulador = `Cada aluno do ${simAno}.º ano paga ${formatarValorPtPt(porAluno)} €.`;
+    if (numAlunosSimulador > 1) {
+      textoSimulador += ` (o centro cobra ${formatarValorPtPt(porAluno * numAlunosSimulador)} € no total)`;
+    }
+  }
 
   return (
     <main className="min-h-screen bg-page p-4 md:p-12 text-primary font-sans">
@@ -1422,6 +1546,180 @@ export default function GestaoTotalPage() {
                 <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem preços definidos</p>
               </div>
             )}
+          </div>
+        </section>
+
+        {/* BLOCO 5: PREÇOS DAS EXPLICAÇÕES POR CICLO */}
+        <section data-testid="precos-ciclo-secao" className="bg-surface border border-border/60 p-6 md:p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm lg:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-2">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-accent-soft rounded-2xl text-accent shrink-0">
+                <Layers size={24} />
+              </div>
+              <h3 className="text-primary font-black uppercase text-sm tracking-widest">Preços das Explicações</h3>
+            </div>
+            <div className="flex items-center bg-page border border-border rounded-2xl overflow-hidden p-1 shadow-xl shrink-0 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => handleTrocarTipoCiclo('por_hora')}
+                className={`min-h-11 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                  tipoCiclo === 'por_hora' ? 'bg-accent text-on-accent' : 'text-muted hover:text-secondary'
+                }`}
+              >
+                Por hora
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTrocarTipoCiclo('fixo')}
+                className={`min-h-11 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                  tipoCiclo === 'fixo' ? 'bg-accent text-on-accent' : 'text-muted hover:text-secondary'
+                }`}
+              >
+                Por sessão
+              </button>
+            </div>
+          </div>
+
+          <p className="text-xs text-muted font-bold mb-6 max-w-xl">
+            Preço que cada aluno paga. O de grupo aplica-se quando a sessão tem 2 ou mais alunos.
+          </p>
+
+          <div className="space-y-3 mb-2">
+            <div className="hidden sm:grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)] gap-4 px-1">
+              <span />
+              <span className="text-[9px] font-black uppercase text-muted tracking-widest text-center">Individual (€ / {unidadeCiclo})</span>
+              <span className="text-[9px] font-black uppercase text-muted tracking-widest text-center">Grupo, 2 ou + (€ / {unidadeCiclo})</span>
+            </div>
+
+            {CICLOS_INFO.map((info) => {
+              const linha = linhasCiclo.find((l) => l.ciclo === info.ciclo)!;
+              const erro = errosCiclo[info.ciclo];
+              return (
+                <div
+                  key={info.ciclo}
+                  data-testid={`linha-ciclo-${info.ciclo}`}
+                  className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 sm:gap-4 items-start sm:items-center p-4 bg-page/40 border border-border/50 rounded-3xl"
+                >
+                  <div>
+                    <p className="font-black text-sm text-primary">{info.label}</p>
+                    <p className="text-[10px] text-muted font-bold">{info.anos}</p>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black text-muted uppercase ml-1 sm:hidden">Individual (€ / {unidadeCiclo})</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      data-testid={`individual-${info.ciclo}`}
+                      value={linha.individual}
+                      onChange={(e) => atualizarLinhaCiclo(info.ciclo, 'individual', e.target.value)}
+                      placeholder="0,00"
+                      className={`w-full min-h-11 bg-surface border p-3 rounded-2xl text-sm font-mono font-black text-accent focus:border-accent outline-none transition-all text-right ${
+                        erro?.individual ? 'border-danger' : 'border-border'
+                      }`}
+                    />
+                    {erro?.individual && <p className="text-danger text-[10px] font-bold mt-1">{erro.individual}</p>}
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black text-muted uppercase ml-1 sm:hidden">Grupo, 2 ou + (€ / {unidadeCiclo})</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      data-testid={`grupo-${info.ciclo}`}
+                      value={linha.grupo}
+                      onChange={(e) => atualizarLinhaCiclo(info.ciclo, 'grupo', e.target.value)}
+                      placeholder="igual"
+                      className={`w-full min-h-11 bg-surface border p-3 rounded-2xl text-sm font-mono font-black text-accent focus:border-accent outline-none transition-all text-right placeholder:text-muted/50 placeholder:font-bold placeholder:italic placeholder:text-xs ${
+                        erro?.grupo ? 'border-danger' : 'border-border'
+                      }`}
+                    />
+                    {erro?.grupo && <p className="text-danger text-[10px] font-bold mt-1">{erro.grupo}</p>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {escaloesExtraCiclo.length > 0 && (
+            <p data-testid="aviso-escaloes-extra" className="text-[11px] text-muted italic mt-2 px-1">
+              Este centro tem escalões adicionais (a partir de{' '}
+              {escaloesExtraCiclo.map((e) => `${e.alunosAPartirDe} alunos (${LABEL_CICLO[e.ciclo]})`).join(', ')}) que aqui não se editam.
+            </p>
+          )}
+
+          {avisosCiclo.length > 0 && (
+            <div className="mt-4 space-y-2" data-testid="avisos-ciclo">
+              {avisosCiclo.map((a) => (
+                <p key={a.ciclo} className="text-[11px] text-warning font-bold flex items-start gap-1.5">
+                  <AlertTriangle size={12} className="shrink-0 mt-0.5" /> {a.texto}
+                </p>
+              ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleGuardarPrecosCiclo}
+            disabled={!dirtyCiclo || salvandoCiclo}
+            data-testid="guardar-precos-ciclo"
+            className="mt-6 w-full sm:w-auto min-h-11 px-8 py-3 bg-accent hover:bg-accent-hover text-on-accent rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+          >
+            {salvandoCiclo ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            Guardar Preços
+          </button>
+
+          <p className="text-[10px] text-muted italic mt-4 pt-4 border-t border-border">
+            As sessões já dadas mantêm o preço que tinham. Os novos preços valem para as sessões que forem dadas a partir de agora. Uma disciplina com preço próprio passa à frente do preço do ciclo.
+          </p>
+
+          {/* SIMULADOR */}
+          <div className="mt-8 pt-8 border-t border-border">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-page/50 rounded-xl text-muted shrink-0">
+                <Calculator size={18} />
+              </div>
+              <h4 className="font-black uppercase text-xs tracking-widest text-secondary">Simulador: quanto paga cada aluno?</h4>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+              <div>
+                <label className="text-[9px] font-black text-muted uppercase ml-1">Ano do aluno</label>
+                <select
+                  value={simAno}
+                  onChange={(e) => setSimAno(e.target.value)}
+                  data-testid="sim-ano"
+                  className="w-full min-h-11 bg-page border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((a) => (
+                    <option key={a} value={a}>{a}.º ano</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[9px] font-black text-muted uppercase ml-1">Alunos na sessão</label>
+                <select
+                  value={simAlunos}
+                  onChange={(e) => setSimAlunos(e.target.value)}
+                  data-testid="sim-alunos"
+                  className="w-full min-h-11 bg-page border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none"
+                >
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[9px] font-black text-muted uppercase ml-1">Horas</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  value={simHoras}
+                  onChange={(e) => setSimHoras(e.target.value)}
+                  data-testid="sim-horas"
+                  className="w-full min-h-11 bg-page border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
+                />
+              </div>
+            </div>
+            <p className="text-sm font-bold text-primary" data-testid="resultado-simulador-ciclo">{textoSimulador}</p>
           </div>
         </section>
 
