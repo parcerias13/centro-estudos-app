@@ -286,13 +286,29 @@ test.describe('Ciclo 1 — Alterar palavras-passe', () => {
         const page = await context.newPage();
         await loginUI(page, staff.email, staff.password);
 
-        await page.goto(`${BASE_URL}/admin/perfil`, { waitUntil: 'networkidle' });
+        // Menu lateral: "O Meu Perfil" só aparece para professor/secretaria;
+        // o admin deixou de o ter aí (menu demasiado longo) — vê-o em Equipa.
+        await page.goto(`${BASE_URL}/admin`, { waitUntil: 'networkidle' });
+        const linkMenuPerfil = page.getByRole('link', { name: 'O Meu Perfil' });
+        if (role === 'admin') {
+          await expect(linkMenuPerfil).toHaveCount(0);
+          await page.goto(`${BASE_URL}/admin/perfil`, { waitUntil: 'networkidle' });
+        } else {
+          await expect(linkMenuPerfil).toBeVisible();
+          await linkMenuPerfil.click();
+          await page.waitForURL(/\/admin\/perfil/, { timeout: 10_000 });
+        }
         expect(page.url(), `${role} devia conseguir abrir /admin/perfil`).toContain('/admin/perfil');
+        await expect(page.getByRole('heading', { name: 'O Meu Perfil' })).toBeVisible({ timeout: 10_000 });
 
         const texto = await page.evaluate(() => document.body.innerText);
         expect(texto).toContain(`ZZTESTE ${role} c-${role}`);
         expect(texto).toContain(staff.email);
         expect(texto.toLowerCase()).toContain(role);
+
+        // Seta de voltar: admin vai para a Equipa; professor/secretaria para o /admin.
+        const hrefVoltar = await page.locator('main a').first().getAttribute('href');
+        expect(hrefVoltar).toBe(role === 'admin' ? '/admin/equipa' : '/admin');
 
         const nova = gerarPasswordSegura();
         const passwordInputs = page.locator('input[type="password"]');
@@ -309,6 +325,20 @@ test.describe('Ciclo 1 — Alterar palavras-passe', () => {
         await ctxNova.close();
       });
     }
+
+    test('admin: botão "O Meu Perfil" em Equipa leva a /admin/perfil', async ({ browser }) => {
+      const staff = await criarStaff('admin', centroId, 'c-equipa-admin');
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await loginUI(page, staff.email, staff.password);
+
+      await page.goto(`${BASE_URL}/admin/equipa`, { waitUntil: 'networkidle' });
+      await page.getByRole('link', { name: 'O Meu Perfil' }).click();
+      await page.waitForURL(/\/admin\/perfil/, { timeout: 10_000 });
+      expect(page.url()).toContain('/admin/perfil');
+
+      await context.close();
+    });
   });
 
   // --- (d) Área dos Encarregados ------------------------------------------

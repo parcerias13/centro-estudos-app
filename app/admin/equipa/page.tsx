@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Shield, Plus, Trash2, Loader2, Save, Mail, User, Lock, X, AlertTriangle, Pencil, CalendarClock, KeyRound, Eye, EyeOff, Copy } from 'lucide-react';
+import { ArrowLeft, Shield, Plus, Trash2, Loader2, Save, Mail, User, Lock, X, AlertTriangle, Pencil, CalendarClock, KeyRound, Eye, EyeOff, Copy, UserCog } from 'lucide-react';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { getHojeLisboa } from '@/lib/dataLisboa';
 import { estadoCustoFixoNoMes, mesParaData, mensagemErroCusto, type PeriodoCustoFixo } from '@/lib/custos';
@@ -666,7 +666,7 @@ export default function AdminTeam() {
   return (
     <main className="min-h-screen bg-page text-primary p-6 max-w-5xl mx-auto">
 
-      <div className="flex items-center justify-between gap-4 mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">
           <Link href="/admin" className="bg-surface p-3 rounded-xl hover:bg-raised transition-colors border border-border">
             <ArrowLeft size={20} className="text-secondary" />
@@ -679,12 +679,20 @@ export default function AdminTeam() {
             <p className="text-muted text-xs">Quem tem a chave do centro?</p>
           </div>
         </div>
-        <Link
-          href="/admin/equipa/dias-trabalho"
-          className="flex items-center gap-2 bg-surface border border-border px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-secondary hover:text-primary hover:bg-raised transition-colors"
-        >
-          <CalendarClock size={16} /> Dias de Trabalho
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href="/admin/perfil"
+            className="flex items-center gap-2 bg-surface border border-border px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-secondary hover:text-primary hover:bg-raised transition-colors"
+          >
+            <UserCog size={16} /> O Meu Perfil
+          </Link>
+          <Link
+            href="/admin/equipa/dias-trabalho"
+            className="flex items-center gap-2 bg-surface border border-border px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-secondary hover:text-primary hover:bg-raised transition-colors"
+          >
+            <CalendarClock size={16} /> Dias de Trabalho
+          </Link>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-8">

@@ -181,7 +181,7 @@ export default function AdminLayout({
 
   const visibleMenuItems =
     role === 'admin'
-      ? menuItems
+      ? menuItems.filter((item) => item.name !== 'O Meu Perfil')
       : role && ROLE_ALLOWED_MENU[role]
         ? menuItems.filter((item) => ROLE_ALLOWED_MENU[role].includes(item.name))
         : []

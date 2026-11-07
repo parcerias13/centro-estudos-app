@@ -95,10 +95,12 @@ export default function PerfilStaffPage() {
     return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={32} /></div>;
   }
 
+  const destinoVoltar = cargo.toLowerCase() === 'admin' ? '/admin/equipa' : '/admin';
+
   return (
     <main className="min-h-screen bg-page text-primary p-6 max-w-xl mx-auto">
       <div className="flex items-center gap-4 mb-8">
-        <Link href="/admin" className="bg-surface p-3 rounded-xl hover:bg-raised transition-colors border border-border">
+        <Link href={destinoVoltar} className="bg-surface p-3 rounded-xl hover:bg-raised transition-colors border border-border">
           <ArrowLeft size={20} className="text-secondary" />
         </Link>
         <div>
