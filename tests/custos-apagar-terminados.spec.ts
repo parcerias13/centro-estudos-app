@@ -64,10 +64,19 @@ const SUFIXO = String(Date.now());
 const NOME_ZZTESTE = `ZZTESTE Apagar Terminados ${SUFIXO}`;
 const ADMIN_EMAIL = `admin-apagar-term-${SUFIXO}@zzteste.invalid`;
 
+// Centro à parte para o teste de troca rápida de mês — describe própria,
+// fora do mode:'serial' da describe principal, para nunca ser saltado só
+// porque outro teste (sem relação nenhuma) falhou primeiro.
+const SUFIXO_RAPIDO = `${Date.now()}r`;
+const NOME_ZZTESTE_RAPIDO = `ZZTESTE Custos Rapido ${SUFIXO_RAPIDO}`;
+const ADMIN_EMAIL_RAPIDO = `admin-custos-rapido-${SUFIXO_RAPIDO}@zzteste.invalid`;
+
 const NOME_ATIVO = `Custo Ativo Teste ${SUFIXO}`;
 const NOME_TERMINADO = `Custo Terminado Teste ${SUFIXO}`;
 const NOME_FUTURO = `Custo Futuro Teste ${SUFIXO}`;
 const NOME_LONGO = `Contrato de Manutenção Preventiva de Equipamento Informático e Rede ${SUFIXO}`;
+const NOME_ATIVO_RAPIDO = `Custo Ativo Rápido ${SUFIXO_RAPIDO}`;
+const NOME_VARIACAO = `Custo Variação Rápida Teste ${SUFIXO_RAPIDO}`;
 
 const mesAtual = getHojeLisboa().slice(0, 7);
 // Equivalente a "terminado em Mar / visto a partir de Jun" do pedido, mas em
@@ -83,6 +92,17 @@ const VALOR_TERMINADO = 150;
 const VALOR_ATIVO = 200;
 const VALOR_FUTURO = 80;
 const VALOR_LONGO = 99.99;
+// Um valor diferente por mês nos últimos 5 meses — para a troca rápida de
+// mês ter, em cada um, um total inconfundível (se ficar preso num mês
+// errado, o total lido não bate com nenhum destes por coincidência).
+const MES_RAPIDO_ALVO = somarMeses(mesAtual, -5);
+const VALORES_RAPIDOS: Array<{ mes: string; valor: number }> = [
+  { mes: somarMeses(mesAtual, -5), valor: 10 },
+  { mes: somarMeses(mesAtual, -4), valor: 20 },
+  { mes: somarMeses(mesAtual, -3), valor: 30 },
+  { mes: somarMeses(mesAtual, -2), valor: 40 },
+  { mes: somarMeses(mesAtual, -1), valor: 50 },
+];
 
 let centroId: string;
 let adminPassword: string;
@@ -113,9 +133,13 @@ async function irParaMes(page: Page, alvo: string) {
   throw new Error(`Não cheguei ao mês ${alvo}`);
 }
 
+// Espera o estado de carregamento desaparecer (o total mostra "…" enquanto
+// o pedido do mês selecionado ainda está em curso) antes de ler — nunca um
+// tempo fixo, que não garante que a resposta certa já chegou.
 async function lerTotalFixos(page: Page): Promise<number> {
-  const label = page.getByText('Fixos', { exact: true });
-  const valor = await label.locator('xpath=following-sibling::p[1]').textContent();
+  const valorEl = page.getByText('Fixos', { exact: true }).locator('xpath=following-sibling::p[1]');
+  await expect(valorEl).not.toHaveText('…', { timeout: 10_000 });
+  const valor = await valorEl.textContent();
   return parseFloat((valor || '0').replace('€', '').trim());
 }
 
@@ -136,9 +160,9 @@ async function criarCustoFixo(nome: string, categoria: string, centro: string, p
   return custo.id as string;
 }
 
-test.describe.configure({ mode: 'serial' });
-
 test.describe('Gestão > Custos — terminados/futuros numa gaveta à parte (ZZTESTE)', () => {
+  test.describe.configure({ mode: 'serial' });
+
   test.beforeAll(async () => {
     const saida = execFileSync(
       'node',
@@ -205,6 +229,8 @@ test.describe('Gestão > Custos — terminados/futuros numa gaveta à parte (ZZT
   });
 
   test('apagar um terminado: o aviso mostra o intervalo e o total certos, e os meses antigos deixam de o contar', async ({ page }) => {
+    test.setTimeout(90_000);
+
     await login(page, ADMIN_EMAIL, adminPassword);
 
     // Total "antes" de um mês dentro do intervalo em que o terminado contava.
@@ -306,4 +332,66 @@ test.describe('Gestão > Custos — terminados/futuros numa gaveta à parte (ZZT
       }
     });
   }
+});
+
+// Describe própria e independente (não serial com a de cima, centro ZZTESTE
+// próprio) — para este teste nunca ser saltado só porque outro, sem relação
+// nenhuma, falhou primeiro na describe principal.
+test.describe('Gestão > Custos — troca rápida de mês não mistura respostas (ZZTESTE)', () => {
+  let centroIdRapido: string;
+  let adminPasswordRapido: string;
+
+  test.beforeAll(async () => {
+    const saida = execFileSync(
+      'node',
+      ['novo-centro.mjs', '--nome', NOME_ZZTESTE_RAPIDO, '--admin-email', ADMIN_EMAIL_RAPIDO, '--admin-nome', 'Admin ZZTESTE Rapido'],
+      { cwd: GESTAO_DIR, encoding: 'utf8' }
+    );
+    const m = saida.match(/centro_id = ([0-9a-f-]+)/);
+    if (!m) throw new Error('novo-centro.mjs não devolveu centro_id: ' + saida);
+    centroIdRapido = m[1];
+
+    const { data: staffAdmin, error: staffAdminError } = await supabaseAdmin
+      .from('staff').select('id').eq('centro_id', centroIdRapido).eq('role', 'admin').single();
+    if (staffAdminError || !staffAdmin) throw new Error('não encontrei o staff admin criado pelo novo-centro.mjs');
+    adminPasswordRapido = gerarPasswordSegura();
+    const { error: resetError } = await supabaseAdmin.auth.admin.updateUserById(staffAdmin.id, { password: adminPasswordRapido });
+    if (resetError) throw new Error(`rodar password do admin: ${resetError.message}`);
+
+    await criarCustoFixo(NOME_ATIVO_RAPIDO, 'Outros', centroIdRapido, [{ de: somarMeses(mesAtual, -24), ate: null, valor: VALOR_ATIVO }]);
+    await criarCustoFixo(
+      NOME_VARIACAO, 'Outros', centroIdRapido,
+      VALORES_RAPIDOS.map((v) => ({ de: v.mes, ate: v.mes, valor: v.valor }))
+    );
+  });
+
+  test.afterAll(async () => {
+    if (centroIdRapido) await supabaseAdmin.from('custos_fixos').delete().eq('centro_id', centroIdRapido);
+    if (centroIdRapido) {
+      execFileSync('node', ['apagar-centro.mjs', centroIdRapido, '--confirmo-apagar', NOME_ZZTESTE_RAPIDO], { cwd: GESTAO_DIR, encoding: 'utf8' });
+    }
+    const { data: restoConfig } = await supabaseAdmin.from('config_centro').select('id').eq('id', centroIdRapido);
+    const { data: restoFixos } = await supabaseAdmin.from('custos_fixos').select('id').eq('centro_id', centroIdRapido);
+    expect(restoConfig ?? []).toHaveLength(0);
+    expect(restoFixos ?? []).toHaveLength(0);
+  });
+
+  test('trocar de mês depressa (5 cliques seguidos, 120ms): o total final é sempre o do último mês', async ({ page }) => {
+    await login(page, ADMIN_EMAIL_RAPIDO, adminPasswordRapido);
+    const totalEsperado = VALOR_ATIVO + VALORES_RAPIDOS[0].valor; // mesAtual-5: ativo (200) + 10
+
+    for (let repeticao = 1; repeticao <= 5; repeticao++) {
+      await page.goto(`${BASE_URL}/admin/gestao`, { waitUntil: 'networkidle' });
+      await irParaMes(page, mesAtual);
+
+      for (let i = 0; i < 5; i++) {
+        await page.getByRole('button', { name: 'Mês anterior' }).click();
+        await page.waitForTimeout(120);
+      }
+      await expect(page.locator('[data-mes-selecionado]').first()).toHaveAttribute('data-mes-selecionado', MES_RAPIDO_ALVO);
+
+      const total = await lerTotalFixos(page);
+      expect(total, `repetição ${repeticao}/5`).toBeCloseTo(totalEsperado, 2);
+    }
+  });
 });

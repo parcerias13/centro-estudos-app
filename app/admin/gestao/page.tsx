@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { getHojeLisboa } from '@/lib/dataLisboa';
@@ -318,19 +318,30 @@ export default function GestaoTotalPage() {
   // Chamada no arranque, quando o mês muda, e depois de qualquer escrita —
   // é a mesma função usada por Gestão e Performance (via lib/custos.ts),
   // para os números nunca divergirem.
+  //
+  // Guarda contra respostas fora de ordem: trocar de mês depressa dispara um
+  // pedido novo a cada clique, sem cancelar os anteriores — sem isto, uma
+  // resposta atrasada de um mês já abandonado podia chegar depois da do mês
+  // atual e sobrepor-se-lhe, mostrando o total errado durante uns segundos.
+  // Cada chamada leva o seu próprio número; só aplica o resultado (sucesso
+  // ou erro) se continuar a ser o pedido mais recente quando a resposta chega.
+  const pedidoCustosRef = useRef(0);
   const recarregarCustos = useCallback(async () => {
     if (!centroId) return;
+    const pedidoId = ++pedidoCustosRef.current;
     setLoadingCustos(true);
     try {
       const [comDados, dadosMes] = await Promise.all([
         obterMesesComDados(centroId),
         obterCustosDoMes(centroId, mesSelecionado),
       ]);
+      if (pedidoId !== pedidoCustosRef.current) return; // resposta de um pedido já ultrapassado
       setMesesDisponiveis(listaDeMeses(comDados, getHojeLisboa().slice(0, 7)));
       setCustosMes(dadosMes);
+      setLoadingCustos(false);
     } catch (error) {
+      if (pedidoId !== pedidoCustosRef.current) return; // erro de um pedido já ultrapassado
       console.error('Erro ao carregar custos:', error);
-    } finally {
       setLoadingCustos(false);
     }
   }, [centroId, mesSelecionado]);
@@ -850,15 +861,15 @@ export default function GestaoTotalPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
             <div className="bg-page/50 border border-border rounded-2xl p-4">
               <p className="text-[9px] font-black uppercase text-muted tracking-widest">Fixos</p>
-              <p className="font-mono font-black text-lg text-warning mt-1">{custosMes.totalFixos.toFixed(2)} €</p>
+              <p className="font-mono font-black text-lg text-warning mt-1">{loadingCustos ? '…' : `${custosMes.totalFixos.toFixed(2)} €`}</p>
             </div>
             <div className="bg-page/50 border border-border rounded-2xl p-4">
               <p className="text-[9px] font-black uppercase text-muted tracking-widest">Variáveis</p>
-              <p className="font-mono font-black text-lg text-warning mt-1">{custosMes.totalVariaveis.toFixed(2)} €</p>
+              <p className="font-mono font-black text-lg text-warning mt-1">{loadingCustos ? '…' : `${custosMes.totalVariaveis.toFixed(2)} €`}</p>
             </div>
             <div className="bg-page/50 border border-border rounded-2xl p-4">
               <p className="text-[9px] font-black uppercase text-muted tracking-widest">Total do mês</p>
-              <p className="font-mono font-black text-lg text-primary mt-1">{custosMes.totalGeral.toFixed(2)} €</p>
+              <p className="font-mono font-black text-lg text-primary mt-1">{loadingCustos ? '…' : `${custosMes.totalGeral.toFixed(2)} €`}</p>
             </div>
           </div>
 
