@@ -8,6 +8,7 @@ import { disciplinasComuns } from '@/lib/disciplinas';
 import { getHojeLisboa, dataLisboaDe, janelaLarga } from '@/lib/dataLisboa';
 import { urlWhatsApp, marcarMensagemEnviada } from '@/lib/whatsapp';
 import ListaDoDiaPresencas from './ListaDoDiaPresencas';
+import TurnoHojeCard from './TurnoHojeCard';
 import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, MapPin, CheckCircle2, XCircle, UserPlus, Search, X, Plus, Calendar, ChevronDown, ChevronUp, Undo2 } from 'lucide-react';
 
 
@@ -523,6 +524,8 @@ export default function DashboardAdmin() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
+          <TurnoHojeCard showError={showError} showSuccess={showSuccess} />
+
           <div className="flex items-center justify-between px-2">
             <h2 className="flex items-center gap-2 text-secondary font-black uppercase text-xs tracking-widest">
               <Clock size={14} /> Monitorização de Sala

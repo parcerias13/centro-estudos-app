@@ -35,6 +35,22 @@ export function jaAconteceu(dataISO: string, hoje: string = getHojeLisboa()): bo
 }
 
 /**
+ * Hora (HH:mm) de um instante em Europe/Lisbon — para mostrar a hora de um
+ * `entrada`/`saida` (timestamptz) de registos_horas_professor sem depender do
+ * fuso do browser de quem está a ver o ecrã.
+ */
+export function horaLisboaDe(instante: Date | string): string {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Lisbon',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(instante));
+  const obter = (tipo: string) => partes.find((p) => p.type === tipo)?.value ?? '';
+  return `${obter('hour')}:${obter('minute')}`.replace('24:', '00:');
+}
+
+/**
  * Dia da semana (0=Domingo..6=Sábado, igual a Date.getDay()) mas calculado em
  * Europe/Lisbon, não no fuso do browser — para a Lista do Dia (admin/page.tsx)
  * nunca discordar de aluno_horarios.dia_semana (1=Segunda..6=Sábado) por causa

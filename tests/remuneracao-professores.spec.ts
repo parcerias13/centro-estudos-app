@@ -10,13 +10,16 @@ import { getHojeLisboa } from '@/lib/dataLisboa';
 dotenv.config({ path: '.env.local' });
 
 // Remuneração dos professores: salário implícito por mês (periodos_valor_professor,
-// tipo 'salario' cobre o mês ou não), valor por dia de trabalho (tipo 'valor_dia'),
-// ajustes em pagamentos_professores, e os gatilhos/RLS que os protegem. Centro
-// descartável ZZTESTE (~/Desktop/gestao-centros/novo-centro.mjs), nunca o
-// centro real ou o demo. periodos_valor_professor e dias_trabalho_professor
-// ainda não constam da lista de tabelas de apagar-centro.mjs — limpas à mão
-// no afterAll, antes de chamar o script (mesmo padrão de custos-rls.spec.ts
-// para custos_fixos).
+// tipo 'salario' cobre o mês ou não), valor por hora de trabalho (tipo 'valor_hora'),
+// ajustes em pagamentos_professores, e os gatilhos/RLS que os protegem. As horas
+// de trabalho em si (registos_horas_professor) têm cobertura própria em
+// tests/registos-horas-professor.spec.ts — aqui só o necessário para alimentar
+// a remuneração (um registo já fechado, inserido com a chave de serviço, cuja
+// duração a base de dados calcula). Centro descartável ZZTESTE
+// (~/Desktop/gestao-centros/novo-centro.mjs), nunca o centro real ou o demo.
+// periodos_valor_professor e registos_horas_professor ainda não constam da
+// lista de tabelas de apagar-centro.mjs — limpas à mão no afterAll, antes de
+// chamar o script (mesmo padrão de custos-rls.spec.ts para custos_fixos).
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -42,7 +45,6 @@ let centroId: string;
 let outroCentroId: string;
 let admin: Conta;
 let outroAdmin: Conta;
-let outroProfessor: Conta;
 let profSalario: Conta;
 let profVariavel: Conta;
 let disciplinaId: number;
@@ -211,7 +213,6 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
     outroCentroId = outroCentro.id;
     limpeza.push(() => supabaseAdmin.from('config_centro').delete().eq('id', outroCentroId));
     outroAdmin = await criarStaff('admin', 'Outro Admin', outroCentroId);
-    outroProfessor = await criarStaff('professor', 'Outro Professor', outroCentroId);
 
     context = await browser.newContext();
     page = await context.newPage();
@@ -233,11 +234,11 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
 
     if (centroId) {
       await supabaseAdmin.from('periodos_valor_professor').delete().eq('centro_id', centroId);
-      await supabaseAdmin.from('dias_trabalho_professor').delete().eq('centro_id', centroId);
+      await supabaseAdmin.from('registos_horas_professor').delete().eq('centro_id', centroId);
     }
     if (outroCentroId) {
       await supabaseAdmin.from('periodos_valor_professor').delete().eq('centro_id', outroCentroId);
-      await supabaseAdmin.from('dias_trabalho_professor').delete().eq('centro_id', outroCentroId);
+      await supabaseAdmin.from('registos_horas_professor').delete().eq('centro_id', outroCentroId);
     }
 
     for (const passo of [...limpeza].reverse()) {
@@ -251,12 +252,12 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
     const { data: restoConfig } = await supabaseAdmin.from('config_centro').select('id').eq('id', centroId);
     const { data: restoStaff } = await supabaseAdmin.from('staff').select('id').eq('centro_id', centroId);
     const { data: restoPeriodos } = await supabaseAdmin.from('periodos_valor_professor').select('id').eq('centro_id', centroId);
-    const { data: restoDias } = await supabaseAdmin.from('dias_trabalho_professor').select('id').eq('centro_id', centroId);
+    const { data: restoRegistos } = await supabaseAdmin.from('registos_horas_professor').select('id').eq('centro_id', centroId);
     const { data: restoOutroCentro } = await supabaseAdmin.from('config_centro').select('id').eq('id', outroCentroId);
     expect(restoConfig ?? []).toHaveLength(0);
     expect(restoStaff ?? []).toHaveLength(0);
     expect(restoPeriodos ?? []).toHaveLength(0);
-    expect(restoDias ?? []).toHaveLength(0);
+    expect(restoRegistos ?? []).toHaveLength(0);
     expect(restoOutroCentro ?? []).toHaveLength(0);
   });
 
@@ -281,9 +282,9 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
     expect(periodos![1].ate).toBeNull();
   });
 
-  test('definir_periodo_professor: valor por dia de Prof Variavel, 10€/dia desde Jan/2026', async () => {
+  test('definir_periodo_professor: valor por hora de Prof Variavel, 10€/hora desde Jan/2026', async () => {
     const sessao = await sessaoComo(admin);
-    const { error } = await sessao.rpc('definir_periodo_professor', { p_professor: profVariavel.id, p_tipo: 'valor_dia', p_de: '2026-01-01', p_valor: 10 });
+    const { error } = await sessao.rpc('definir_periodo_professor', { p_professor: profVariavel.id, p_tipo: 'valor_hora', p_de: '2026-01-01', p_valor: 10 });
     expect(error).toBeNull();
   });
 
@@ -292,20 +293,31 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
     await criarExplicacaoDada(profSalario.id, '2026-03-10', '10:00');
   });
 
-  // --- Cenários 2 e 4 (dados): Prof Variavel com 2 sessões e 1.5 dias em Mar/2026 ---
-  test('Prof Variavel dá 2 sessões (20€ cada) e tem 1.5 dias de trabalho em Mar/2026', async () => {
+  // --- Cenários 2 e 4 (dados): Prof Variavel com 2 sessões e 90min de horas em Mar/2026 ---
+  // 90 minutos já é múltiplo dos 15 min de arredondamento por defeito — o valor
+  // fica exato independentemente da direção do arredondamento da base de
+  // dados, inserido diretamente (chave de serviço) para fixar o instante
+  // exato; a base de dados calcula `minutos` a partir de entrada/saida.
+  test('Prof Variavel dá 2 sessões (20€ cada) e tem 90min de horas de trabalho em Mar/2026', async () => {
     await criarExplicacaoDada(profVariavel.id, '2026-03-05', '10:00');
     await criarExplicacaoDada(profVariavel.id, '2026-03-12', '10:00');
 
-    const sessaoAdmin = await sessaoComo(admin);
-    let r = await sessaoAdmin
-      .from('dias_trabalho_professor')
-      .upsert({ centro_id: centroId, professor_id: profVariavel.id, data: '2026-03-06', fracao: 1 }, { onConflict: 'professor_id,data' });
-    expect(r.error).toBeNull();
-    r = await sessaoAdmin
-      .from('dias_trabalho_professor')
-      .upsert({ centro_id: centroId, professor_id: profVariavel.id, data: '2026-03-13', fracao: 0.5 }, { onConflict: 'professor_id,data' });
-    expect(r.error).toBeNull();
+    const { error } = await supabaseAdmin.from('registos_horas_professor').insert({
+      centro_id: centroId,
+      professor_id: profVariavel.id,
+      entrada: '2026-03-06T10:00:00.000Z', // Lisboa = UTC em março antes da hora de verão (muda em 2026-03-29)
+      saida: '2026-03-06T11:30:00.000Z',
+      origem: 'manual',
+    });
+    expect(error).toBeNull();
+
+    const { data: registo } = await supabaseAdmin
+      .from('registos_horas_professor')
+      .select('minutos')
+      .eq('professor_id', profVariavel.id)
+      .eq('entrada', '2026-03-06T10:00:00.000Z')
+      .single();
+    expect(Number(registo!.minutos)).toBe(90);
   });
 
   // --- Cenário 5 (dados): ajuste negativo em Mar/2026 (não fica negativo) e maior em Jul/2026 (fica negativo) ---
@@ -336,7 +348,7 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
   });
 
   // --- UI: A Pagar de Mar/2026 ---
-  test('UI — A Pagar de Mar/2026: Prof Salario sem aviso de tarifa e sem somar a sessão; Prof Variavel com sessões+dias+ajuste', async () => {
+  test('UI — A Pagar de Mar/2026: Prof Salario sem aviso de tarifa e sem somar a sessão; Prof Variavel com sessões+horas+ajuste', async () => {
     const estado = mesAtualReal();
     await abrirAPagar(page);
     await irParaMes(page, estado, 2026, 3);
@@ -348,7 +360,7 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
 
     const linhaVariavel = linhaDoProfessor(page, 'Prof Variavel');
     await expect(linhaVariavel).toContainText('Variável');
-    // 2 sessões x 20€ = 40 + 1.5 dias x 10€ = 15 - ajuste 10 = 45
+    // 2 sessões x 20€ = 40 + 1h30 x 10€/hora = 15 - ajuste 10 = 45
     await expect(linhaVariavel).toContainText('45.00€');
 
     await linhaVariavel.locator('button').first().click();
@@ -392,7 +404,7 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
   // --- Cenário 11: Prof Variavel passa a salário a partir de Set/2026 ---
   test('Prof Variavel passa a salário (900€) a partir de Set/2026', async () => {
     const sessao = await sessaoComo(admin);
-    let r = await sessao.rpc('terminar_periodo_professor', { p_professor: profVariavel.id, p_tipo: 'valor_dia', p_a_partir_de: '2026-09-01' });
+    let r = await sessao.rpc('terminar_periodo_professor', { p_professor: profVariavel.id, p_tipo: 'valor_hora', p_a_partir_de: '2026-09-01' });
     expect(r.error).toBeNull();
     r = await sessao.rpc('definir_periodo_professor', { p_professor: profVariavel.id, p_tipo: 'salario', p_de: '2026-09-01', p_valor: 900 });
     expect(r.error).toBeNull();
@@ -424,7 +436,10 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
   });
 
   // --- Cenário 7: isolamento ---
-  test('isolamento: outro admin não altera nem lê períodos deste centro; um professor não lê/escreve períodos e só marca os seus próprios dias, hoje ou ontem', async () => {
+  // Isolamento de registos_horas_professor (RLS, turno em curso, mês pago)
+  // tem cobertura própria em tests/registos-horas-professor.spec.ts — aqui
+  // só o isolamento de periodos_valor_professor (salário/valor por hora).
+  test('isolamento: outro admin não altera nem lê períodos deste centro; um professor não lê nem escreve períodos', async () => {
     const sessaoOutroAdmin = await sessaoComo(outroAdmin);
     let { error } = await sessaoOutroAdmin.rpc('definir_periodo_professor', { p_professor: profSalario.id, p_tipo: 'salario', p_de: '2030-01-01', p_valor: 1 });
     expect(error).not.toBeNull();
@@ -439,113 +454,28 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
 
     const { error: errEscritaProf } = await sessaoProfVariavel.rpc('definir_periodo_professor', { p_professor: profVariavel.id, p_tipo: 'salario', p_de: '2030-01-01', p_valor: 1 });
     expect(errEscritaProf).not.toBeNull();
-
-    // profVariavel tenta marcar um dia de OUTRO professor do mesmo centro
-    const { error: errDiaOutroProf } = await sessaoProfVariavel
-      .from('dias_trabalho_professor')
-      .insert({ centro_id: centroId, professor_id: profSalario.id, data: getHojeLisboa(), fracao: 1 });
-    expect(errDiaOutroProf).not.toBeNull();
-
-    // professor de OUTRO centro tenta marcar um dia de Prof Variavel
-    const sessaoOutroProf = await sessaoComo(outroProfessor);
-    const { error: errDiaOutroCentro } = await sessaoOutroProf
-      .from('dias_trabalho_professor')
-      .insert({ centro_id: centroId, professor_id: profVariavel.id, data: getHojeLisboa(), fracao: 1 });
-    expect(errDiaOutroCentro).not.toBeNull();
-
-    // profVariavel tenta marcar uma data que não é hoje nem ontem
-    const { error: errDataAntiga } = await sessaoProfVariavel
-      .from('dias_trabalho_professor')
-      .insert({ centro_id: centroId, professor_id: profVariavel.id, data: '2026-01-15', fracao: 1 });
-    expect(errDataAntiga).not.toBeNull();
   });
 
-  // --- Cenário 6: mês pago bloqueia marcar/alterar/apagar dias, para admin E para o professor; desmarcar pago destranca ---
-  test('mês pago bloqueia dias — admin e professor (sessão real); desmarcar o pago volta a permitir', async () => {
-    const hojeISO = getHojeLisboa();
-    const [anoAtualStr, mesAtualStr] = hojeISO.split('-');
-    const anoAtual = Number(anoAtualStr);
-    const mesAtual = Number(mesAtualStr);
-
-    const sessaoAdmin = await sessaoComo(admin);
-    let r = await sessaoAdmin.from('pagamentos_professores').upsert(
-      { centro_id: centroId, professor_id: profSalario.id, ano: anoAtual, mes: mesAtual, pago: true, data_pagamento: hojeISO },
-      { onConflict: 'professor_id,ano,mes' }
-    );
-    expect(r.error).toBeNull();
-
-    const { error: errAdminBloqueado } = await sessaoAdmin
-      .from('dias_trabalho_professor')
-      .upsert({ centro_id: centroId, professor_id: profSalario.id, data: hojeISO, fracao: 1 }, { onConflict: 'professor_id,data' });
-    expect(errAdminBloqueado).not.toBeNull();
-
-    const sessaoProf = await sessaoComo(profSalario);
-    const { error: errProfBloqueado } = await sessaoProf
-      .from('dias_trabalho_professor')
-      .upsert({ centro_id: centroId, professor_id: profSalario.id, data: hojeISO, fracao: 1 }, { onConflict: 'professor_id,data' });
-    expect(errProfBloqueado).not.toBeNull();
-
-    r = await sessaoAdmin
-      .from('pagamentos_professores')
-      .update({ pago: false })
-      .eq('centro_id', centroId)
-      .eq('professor_id', profSalario.id)
-      .eq('ano', anoAtual)
-      .eq('mes', mesAtual);
-    expect(r.error).toBeNull();
-
-    const { error: errDepoisDeDespagar } = await sessaoProf
-      .from('dias_trabalho_professor')
-      .upsert({ centro_id: centroId, professor_id: profSalario.id, data: hojeISO, fracao: 1 }, { onConflict: 'professor_id,data' });
-    expect(errDepoisDeDespagar).toBeNull();
-
-    // limpa o dia de hoje para não interferir com o teste de UI seguinte
-    await supabaseAdmin.from('dias_trabalho_professor').delete().eq('professor_id', profSalario.id).eq('data', hojeISO);
-  });
-
-  // --- Cenário 12: a vista do professor nunca mostra euros ---
-  test('UI — professor marca "Trabalhei hoje" e nunca vê nenhum valor em euros', async () => {
-    await pageProf.goto(`${BASE_URL}/admin/explicacoes`, { waitUntil: 'networkidle' });
-
-    const bloco = pageProf.getByTestId('meus-dias-trabalho');
-    await expect(bloco).toBeVisible();
-    await expect(bloco).not.toContainText('€');
-
-    await bloco.getByRole('button', { name: 'Dia Inteiro' }).first().click();
-    await pageProf.waitForTimeout(500);
-    await expect(bloco).not.toContainText('€');
-    await expect(bloco).toContainText('Dia inteiro');
-
-    const { data: diaCriado } = await supabaseAdmin
-      .from('dias_trabalho_professor')
-      .select('fracao, marcado_por')
-      .eq('professor_id', profSalario.id)
-      .eq('data', getHojeLisboa())
-      .maybeSingle();
-    expect(diaCriado).not.toBeNull();
-    expect(Number(diaCriado!.fracao)).toBe(1);
-    expect(diaCriado!.marcado_por).toBe(profSalario.id);
-  });
-
-  // --- sou_salario_no_mes (RPC): esconder "Trabalhei Hoje"/"Os Meus Dias" e
-  // "Último valor calculado" só para quem É de salário no mês corrente —
-  // Prof Variavel passou a salário em Set/2026 (teste acima), por isso no
-  // mês real de hoje já é de salário: cobre ao mesmo tempo o cenário "vê
-  // escondido" e o cenário "muda a meio do ano, reflete o mês corrente".
-  // Prof Salario terminou o salário em Set/2026 (teste acima), por isso no
-  // mês real de hoje voltou a variável: cobre o cenário "variável vê ambos".
-  test('UI — sou_salario_no_mes: Prof Variavel (salário desde Set/2026, logo de salário no mês atual) não vê "Trabalhei Hoje" nem "Último valor calculado"', async () => {
+  // sou_salario_no_mes (RPC): esconde "Último valor calculado" só para quem É
+  // de salário no mês corrente — Prof Variavel passou a salário em Set/2026
+  // (teste acima), por isso no mês real de hoje já é de salário: cobre ao
+  // mesmo tempo o cenário "vê escondido" e o cenário "muda a meio do ano,
+  // reflete o mês corrente". Prof Salario terminou o salário em Set/2026
+  // (teste acima), por isso no mês real de hoje voltou a variável: cobre o
+  // cenário "variável vê". O calendário/registo de horas em si (outroras
+  // "Trabalhei Hoje — Os Meus Dias") foi substituído pelo Dashboard "Turno de
+  // Hoje" e por /admin/horas — ver tests/registos-horas-professor.spec.ts.
+  test('UI — sou_salario_no_mes: Prof Variavel (salário desde Set/2026, logo de salário no mês atual) não vê "Último valor calculado"', async () => {
     const hojeISO = getHojeLisboa();
     await criarExplicacaoDada(profVariavel.id, hojeISO, '11:00');
 
     await pageProfVariavel.goto(`${BASE_URL}/admin/explicacoes`, { waitUntil: 'networkidle' });
-    await expect(pageProfVariavel.getByTestId('meus-dias-trabalho')).toHaveCount(0);
 
     await pageProfVariavel.locator('[data-sessao-linha="1"]').first().click();
     await expect(pageProfVariavel.getByText('Último valor calculado', { exact: false })).toHaveCount(0);
   });
 
-  test('UI — sou_salario_no_mes: Prof Salario (variável desde Set/2026) continua a ver "Trabalhei Hoje" e o "Último valor calculado"', async () => {
+  test('UI — sou_salario_no_mes: Prof Salario (variável desde Set/2026) continua a ver o "Último valor calculado"', async () => {
     const { error: errTarifa } = await supabaseAdmin
       .from('staff')
       .update({ tarifa_tipo: 'fixo', tarifa_valor: 15 })
@@ -556,15 +486,15 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
     await criarExplicacaoDada(profSalario.id, hojeISO, '12:00');
 
     await pageProf.goto(`${BASE_URL}/admin/explicacoes`, { waitUntil: 'networkidle' });
-    await expect(pageProf.getByTestId('meus-dias-trabalho')).toBeVisible();
 
     await pageProf.locator('[data-sessao-linha="1"]').first().click();
     await expect(pageProf.getByText('Último valor calculado', { exact: false })).toBeVisible();
   });
 
-  // --- Fumo (não é um dos 12 cenários pedidos, mas são ecrãs novos): Equipa
-  // e o calendário do admin abrem sem rebentar, e o modal de remuneração
-  // mostra o período de salário com o histórico das duas alterações. ---
+  // --- Fumo (não é um dos cenários pedidos, mas são ecrãs novos): Equipa
+  // e a página de Horas de Trabalho da direção abrem sem rebentar, e o modal
+  // de remuneração mostra o período de salário com o histórico das duas
+  // alterações. ---
   test('UI — Equipa: modal de Remuneração mostra o histórico de salário de Prof Salario', async () => {
     await page.goto(`${BASE_URL}/admin/equipa`, { waitUntil: 'networkidle' });
     await page.getByTestId(`membro-${profSalario.id}`).getByRole('button', { name: 'Remuneração' }).click();
@@ -574,9 +504,9 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
     await expect(page.getByText('1200.00€', { exact: false })).toBeVisible();
   });
 
-  test('UI — Dias de Trabalho (admin): abre sem rebentar e mostra o calendário', async () => {
-    await page.goto(`${BASE_URL}/admin/equipa/dias-trabalho`, { waitUntil: 'networkidle' });
-    await expect(page.getByText('Dias de Trabalho')).toBeVisible();
-    await expect(page.getByText('Soma do mês', { exact: false })).toBeVisible();
+  test('UI — Horas de Trabalho (admin): abre sem rebentar e mostra o total do mês', async () => {
+    await page.goto(`${BASE_URL}/admin/equipa/horas-trabalho`, { waitUntil: 'networkidle' });
+    await expect(page.getByText('Horas de Trabalho')).toBeVisible();
+    await expect(page.getByText('Total do Mês', { exact: false })).toBeVisible();
   });
 });

@@ -7,6 +7,7 @@ import { garantirMesGeradoComContagem } from '@/lib/mensalidades';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { getHojeLisboa } from '@/lib/dataLisboa';
 import { obterRemuneracaoDoMes, type RemuneracaoProfessorNoMes } from '@/lib/remuneracaoProfessores';
+import { formatarDuracao } from '@/lib/registosHoras';
 import { obterReceitaExplicacoesDoMes, aplicarPagamentoNaReceita, type ReceitaExplicacoesDoMes } from '@/lib/receitaExplicacoes';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Search, Wallet, Loader2, CalendarClock,
@@ -788,7 +789,7 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
   // ao comportamento de sempre, só que agora decidido pela lib, não por um
   // filter(agregados[p.id]) local.
   const linhasExibidas = linhas.filter(
-    (l) => l.tipo === 'salario' || l.sessoesDadas > 0 || l.somaDias > 0 || l.ajusteValor !== 0
+    (l) => l.tipo === 'salario' || l.sessoesDadas > 0 || l.minutosFechados > 0 || l.ajusteValor !== 0
   );
   const linhasFiltradas = linhasExibidas.filter((l) => l.nome.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -922,10 +923,22 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
                         <tr className="bg-page/30">
                           <td colSpan={5} className="p-6 space-y-4">
                             {linha.tipo === 'salario' ? (
-                              <div className="flex items-center justify-between text-xs bg-surface border border-border/60 rounded-xl px-4 py-2.5">
-                                <span className="text-secondary font-bold">Salário do mês</span>
-                                <span className="font-mono font-bold text-primary">{linha.salarioMes.toFixed(2)}€</span>
-                              </div>
+                              <>
+                                <div className="flex items-center justify-between text-xs bg-surface border border-border/60 rounded-xl px-4 py-2.5">
+                                  <span className="text-secondary font-bold">Salário do mês</span>
+                                  <span className="font-mono font-bold text-primary">{linha.salarioMes.toFixed(2)}€</span>
+                                </div>
+                                <div className="flex items-center justify-between text-xs bg-page border border-border/60 rounded-xl px-4 py-2.5">
+                                  <span className="text-secondary font-bold">
+                                    Registo de presença: {formatarDuracao(linha.minutosFechados)} (não entra no pagamento)
+                                  </span>
+                                </div>
+                                {linha.registosAbertos > 0 && (
+                                  <p className="text-[9px] text-warning font-bold flex items-center gap-1">
+                                    <AlertTriangle size={10} /> {linha.registosAbertos} {linha.registosAbertos === 1 ? 'turno em aberto' : 'turnos em aberto'} — não {linha.registosAbertos === 1 ? 'conta' : 'contam'} até ser{linha.registosAbertos === 1 ? '' : 'em'} fechado{linha.registosAbertos === 1 ? '' : 's'}
+                                  </p>
+                                )}
+                              </>
                             ) : (
                               <>
                                 <div>
@@ -947,20 +960,30 @@ function APagarTab({ ano, mes, centroId, showError, showSuccess }: any) {
                                 </div>
                                 <div>
                                   <div className="flex items-center justify-between mb-2">
-                                    <p className="text-[9px] font-black uppercase text-muted tracking-widest">Dias de trabalho este mês</p>
+                                    <p className="text-[9px] font-black uppercase text-muted tracking-widest">Horas de trabalho este mês</p>
                                     <Link
-                                      href={`/admin/equipa/dias-trabalho?professor=${linha.professorId}&mes=${mesStr}`}
+                                      href={`/admin/equipa/horas-trabalho?professor=${linha.professorId}&mes=${mesStr}`}
                                       className="text-[10px] font-black text-accent hover:text-accent-hover"
                                     >
-                                      Ver dias
+                                      Ver horas
                                     </Link>
                                   </div>
                                   <div className="flex items-center justify-between text-xs bg-surface border border-border/60 rounded-xl px-4 py-2.5">
                                     <span className="text-secondary font-bold">
-                                      {linha.somaDias} {linha.somaDias === 1 ? 'dia' : 'dias'}{linha.valorDiaAtivo != null ? ` × ${linha.valorDiaAtivo.toFixed(2)}€` : ' (sem valor por dia definido)'}
+                                      {formatarDuracao(linha.minutosFechados)}{linha.valorHoraAtivo != null ? ` × ${linha.valorHoraAtivo.toFixed(2)}€ / hora` : ' (sem valor por hora definido)'}
                                     </span>
-                                    <span className="font-mono font-bold text-primary">{linha.valorDias.toFixed(2)}€</span>
+                                    <span className="font-mono font-bold text-primary">{linha.valorHoras.toFixed(2)}€</span>
                                   </div>
+                                  {linha.semValorHoraAviso && (
+                                    <p className="text-[9px] text-warning font-bold flex items-center gap-1 mt-1.5">
+                                      <AlertTriangle size={10} /> Sem valor por hora definido — soma 0€
+                                    </p>
+                                  )}
+                                  {linha.registosAbertos > 0 && (
+                                    <p className="text-[9px] text-warning font-bold flex items-center gap-1 mt-1.5">
+                                      <AlertTriangle size={10} /> {linha.registosAbertos} {linha.registosAbertos === 1 ? 'turno em aberto' : 'turnos em aberto'} — não {linha.registosAbertos === 1 ? 'conta' : 'contam'} até ser{linha.registosAbertos === 1 ? '' : 'em'} fechado{linha.registosAbertos === 1 ? '' : 's'}
+                                    </p>
+                                  )}
                                 </div>
                               </>
                             )}

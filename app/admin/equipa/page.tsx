@@ -18,7 +18,7 @@ function formatarMesAno(valor: string) {
 }
 
 type ModoFormPeriodo = 'valor' | 'terminar';
-type FormPeriodoAberto = { tipo: 'salario' | 'valor_dia'; modo: ModoFormPeriodo } | null;
+type FormPeriodoAberto = { tipo: 'salario' | 'valor_hora'; modo: ModoFormPeriodo } | null;
 
 // Editor de um período (salário mensal OU valor por dia de trabalho) — mesmo
 // padrão visual de Gestão → Custos (alterar/terminar a partir de um mês),
@@ -192,7 +192,7 @@ export default function AdminTeam() {
   // período, nunca aqui).
   const [tipoRemuneracaoSelecionado, setTipoRemuneracaoSelecionado] = useState<TipoRemuneracaoMes>('variavel');
   const [periodosSalario, setPeriodosSalario] = useState<PeriodoCustoFixo[]>([]);
-  const [periodosValorDia, setPeriodosValorDia] = useState<PeriodoCustoFixo[]>([]);
+  const [periodosValorHora, setPeriodosValorHora] = useState<PeriodoCustoFixo[]>([]);
   const [loadingPeriodos, setLoadingPeriodos] = useState(false);
   const [periodoFormAberto, setPeriodoFormAberto] = useState<FormPeriodoAberto>(null);
   const [periodoFormDe, setPeriodoFormDe] = useState('');
@@ -527,9 +527,9 @@ export default function AdminTeam() {
 
     setLoadingPeriodos(true);
     try {
-      const { salario, valorDia } = await obterPeriodosDoProfessor(member.id);
+      const { salario, valorHora } = await obterPeriodosDoProfessor(member.id);
       setPeriodosSalario(salario);
-      setPeriodosValorDia(valorDia);
+      setPeriodosValorHora(valorHora);
     } catch (e: any) {
       showError('Erro ao carregar períodos de remuneração: ' + e.message);
     } finally {
@@ -540,7 +540,7 @@ export default function AdminTeam() {
   const fecharTarifaModal = () => {
     setTarifaModalMember(null);
     setPeriodosSalario([]);
-    setPeriodosValorDia([]);
+    setPeriodosValorHora([]);
     setPeriodoFormAberto(null);
     setPeriodoFormDe('');
     setPeriodoFormValor('');
@@ -577,15 +577,15 @@ export default function AdminTeam() {
 
   // --- Períodos de remuneração (salário mensal / valor por dia) ---
 
-  const abrirPeriodoFormValor = (tipo: 'salario' | 'valor_dia') => {
-    const periodos = tipo === 'salario' ? periodosSalario : periodosValorDia;
+  const abrirPeriodoFormValor = (tipo: 'salario' | 'valor_hora') => {
+    const periodos = tipo === 'salario' ? periodosSalario : periodosValorHora;
     const estado = estadoCustoFixoNoMes(periodos, mesAtual);
     setPeriodoFormDe(mesAtual);
     setPeriodoFormValor(estado.estado === 'ativo' && estado.valor != null ? String(estado.valor) : '');
     setPeriodoFormAberto({ tipo, modo: 'valor' });
   };
 
-  const abrirPeriodoFormTerminar = (tipo: 'salario' | 'valor_dia') => {
+  const abrirPeriodoFormTerminar = (tipo: 'salario' | 'valor_hora') => {
     setPeriodoFormDe(mesAtual);
     setPeriodoFormValor('');
     setPeriodoFormAberto({ tipo, modo: 'terminar' });
@@ -599,9 +599,9 @@ export default function AdminTeam() {
 
   const recarregarPeriodos = async () => {
     if (!tarifaModalMember) return;
-    const { salario, valorDia } = await obterPeriodosDoProfessor(tarifaModalMember.id);
+    const { salario, valorHora } = await obterPeriodosDoProfessor(tarifaModalMember.id);
     setPeriodosSalario(salario);
-    setPeriodosValorDia(valorDia);
+    setPeriodosValorHora(valorHora);
     fetchTeam();
   };
 
@@ -661,7 +661,7 @@ export default function AdminTeam() {
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
 
   const estadoSalarioAtual = tarifaModalMember ? estadoCustoFixoNoMes(periodosSalario, mesAtual) : null;
-  const estadoValorDiaAtual = tarifaModalMember ? estadoCustoFixoNoMes(periodosValorDia, mesAtual) : null;
+  const estadoValorHoraAtual = tarifaModalMember ? estadoCustoFixoNoMes(periodosValorHora, mesAtual) : null;
 
   return (
     <main className="min-h-screen bg-page text-primary p-6 max-w-5xl mx-auto">
@@ -687,10 +687,10 @@ export default function AdminTeam() {
             <UserCog size={16} /> O Meu Perfil
           </Link>
           <Link
-            href="/admin/equipa/dias-trabalho"
+            href="/admin/equipa/horas-trabalho"
             className="flex items-center gap-2 bg-surface border border-border px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-secondary hover:text-primary hover:bg-raised transition-colors"
           >
-            <CalendarClock size={16} /> Dias de Trabalho
+            <CalendarClock size={16} /> Horas de Trabalho
           </Link>
         </div>
       </div>
@@ -911,8 +911,8 @@ export default function AdminTeam() {
                 onConfirmar={handleConfirmarPeriodo}
                 salvando={salvandoPeriodo}
                 notaBloqueio={
-                  estadoValorDiaAtual?.estado === 'ativo'
-                    ? `Este professor tem valor por dia ativo em ${formatarMesAno(mesAtual)} — termina-o primeiro para definir salário.`
+                  estadoValorHoraAtual?.estado === 'ativo'
+                    ? `Este professor tem valor por hora ativo em ${formatarMesAno(mesAtual)} — termina-o primeiro para definir salário.`
                     : undefined
                 }
               />
@@ -1090,17 +1090,17 @@ export default function AdminTeam() {
                   )}
                 </div>
 
-                {/* VALOR POR DIA DE TRABALHO — mesmo editor de período, tipo valor_dia */}
+                {/* VALOR POR HORA DE TRABALHO — mesmo editor de período, tipo valor_hora */}
                 <div className="pt-6 border-t border-border">
-                  <h3 className="text-xs font-black uppercase text-muted tracking-widest mb-3">Valor por Dia de Trabalho</h3>
+                  <h3 className="text-xs font-black uppercase text-muted tracking-widest mb-3">Valor por Hora de Trabalho</h3>
                   <BlocoPeriodoRemuneracao
-                    periodos={periodosValorDia}
+                    periodos={periodosValorHora}
                     mesAtual={mesAtual}
-                    sufixo="/dia"
-                    formAberto={periodoFormAberto?.tipo === 'valor_dia'}
-                    formModo={periodoFormAberto?.tipo === 'valor_dia' ? periodoFormAberto.modo : undefined}
-                    onAbrirValor={() => abrirPeriodoFormValor('valor_dia')}
-                    onAbrirTerminar={() => abrirPeriodoFormTerminar('valor_dia')}
+                    sufixo="/hora"
+                    formAberto={periodoFormAberto?.tipo === 'valor_hora'}
+                    formModo={periodoFormAberto?.tipo === 'valor_hora' ? periodoFormAberto.modo : undefined}
+                    onAbrirValor={() => abrirPeriodoFormValor('valor_hora')}
+                    onAbrirTerminar={() => abrirPeriodoFormTerminar('valor_hora')}
                     onFechar={fecharPeriodoForm}
                     formDe={periodoFormDe}
                     setFormDe={setPeriodoFormDe}
@@ -1110,7 +1110,7 @@ export default function AdminTeam() {
                     salvando={salvandoPeriodo}
                     notaBloqueio={
                       estadoSalarioAtual?.estado === 'ativo'
-                        ? `Este professor está de salário em ${formatarMesAno(mesAtual)} — termina o salário primeiro para definir valor por dia.`
+                        ? `Este professor está de salário em ${formatarMesAno(mesAtual)} — termina o salário primeiro para definir valor por hora.`
                         : undefined
                     }
                   />
