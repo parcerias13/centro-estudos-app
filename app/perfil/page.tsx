@@ -3,21 +3,15 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, User, Lock, Save, Loader2, Mail, KeyRound, Clock, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, User, Loader2, Mail, Clock, ShieldCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ehEmailFachada, usernameSemSufixo } from '@/lib/username';
 
 export default function StudentProfile() {
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [studentData, setStudentData] = useState<any>(null);
   const [stats, setStats] = useState({ totalHours: 0, totalVisits: 0, weekVisits: 0 });
-  
-  // Formulário de Password
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [message, setMessage] = useState({ type: '', text: '' });
 
   const router = useRouter();
   
@@ -81,36 +75,6 @@ export default function StudentProfile() {
     setLoading(false);
   };
 
-  const handleUpdatePassword = async (e: any) => {
-    e.preventDefault();
-    setMessage({ type: '', text: '' });
-
-    if (newPassword.length < 6) {
-      setMessage({ type: 'error', text: 'A password deve ter pelo menos 6 caracteres.' });
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setMessage({ type: 'error', text: 'As passwords não coincidem.' });
-      return;
-    }
-
-    setSaving(true);
-
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword
-    });
-
-    if (error) {
-      setMessage({ type: 'error', text: 'Erro: ' + error.message });
-    } else {
-      setMessage({ type: 'success', text: 'Password atualizada com segurança!' });
-      setNewPassword('');
-      setConfirmPassword('');
-    }
-    setSaving(false);
-  };
-
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={32} /></div>;
 
   return (
@@ -162,58 +126,6 @@ export default function StudentProfile() {
                 <p className="text-3xl font-black text-primary">{stats.totalHours}<span className="text-sm font-bold text-muted ml-1">h</span></p>
                 <p className="text-[10px] font-black uppercase tracking-widest text-muted mt-1">Tempo de Estudo</p>
             </div>
-        </div>
-
-        {/* ZONA DE SEGURANÇA (ALTERAR PASSWORD) */}
-        <div className="bg-surface border border-border p-8 rounded-[2.5rem] shadow-xl">
-          <h3 className="font-black text-sm uppercase tracking-widest mb-6 flex items-center gap-2 text-secondary">
-            <Lock size={18} className="text-yellow-500" /> Segurança da Conta
-          </h3>
-          
-          <form onSubmit={handleUpdatePassword} className="space-y-5">
-            <div>
-              <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">Nova Password</label>
-              <div className="relative mt-1">
-                <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={18} />
-                <input 
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Mínimo 6 caracteres"
-                  className="w-full bg-page border border-border text-primary pl-12 pr-4 py-4 rounded-2xl outline-none focus:border-yellow-500 transition-all font-medium placeholder:text-muted"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">Confirmar Password</label>
-              <div className="relative mt-1">
-                <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={18} />
-                <input 
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repetir password"
-                  className="w-full bg-page border border-border text-primary pl-12 pr-4 py-4 rounded-2xl outline-none focus:border-yellow-500 transition-all font-medium placeholder:text-muted"
-                />
-              </div>
-            </div>
-
-            {message.text && (
-              <div className={`p-4 rounded-2xl text-xs font-black uppercase tracking-widest text-center border ${message.type === 'error' ? 'bg-danger-bg text-danger border-danger/20' : 'bg-success-bg text-success border-success/20'}`}>
-                {message.text}
-              </div>
-            )}
-
-            <button 
-              type="submit" 
-              disabled={saving || !newPassword}
-              className="w-full bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed text-yellow-950 font-black py-4 rounded-2xl transition-all active:scale-95 shadow-lg shadow-yellow-900/20 flex items-center justify-center gap-2 mt-2"
-            >
-              {saving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-              {saving ? 'A ATUALIZAR...' : 'GRAVAR NOVA PASSWORD'}
-            </button>
-          </form>
         </div>
 
       </div>

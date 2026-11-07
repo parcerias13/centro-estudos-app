@@ -47,6 +47,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Campos obrigatórios em falta.' }, { status: 400 })
   }
 
+  if (typeof password !== 'string' || password.length < 6) {
+    return NextResponse.json({ error: 'A palavra-passe tem de ter pelo menos 6 caracteres.' }, { status: 400 })
+  }
+
   const roleNormalizado = String(roleRecebido).toLowerCase()
   if (roleNormalizado !== 'admin' && roleNormalizado !== 'professor' && roleNormalizado !== 'secretaria') {
     return NextResponse.json({ error: 'Cargo inválido.' }, { status: 400 })

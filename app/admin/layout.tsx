@@ -9,11 +9,11 @@ import { subscreverNotasConfirmadas } from '@/lib/eventoNotasAdmin'
 import { subscreverAlteracoesVistas } from '@/lib/eventoAlteracoesAdmin'
 import { contarNotasPendentes } from '@/lib/notas'
 import { contarAlteracoesPorVer } from '@/lib/alteracoes'
-import { LayoutDashboard, Users, ClipboardCheck, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle, FileBarChart, Bell } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardCheck, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle, FileBarChart, Bell, UserCog } from 'lucide-react'
 
 const ROLE_ALLOWED_MENU: Record<string, string[]> = {
-  professor: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Disciplinas e Materiais', 'Explicações'],
-  secretaria: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Refeitório', 'Histórico', 'Mensagens', 'Alterações'],
+  professor: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Disciplinas e Materiais', 'Explicações', 'O Meu Perfil'],
+  secretaria: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Refeitório', 'Histórico', 'Mensagens', 'Alterações', 'O Meu Perfil'],
 }
 
 export default function AdminLayout({
@@ -176,6 +176,7 @@ export default function AdminLayout({
     { name: 'Relatório Mensal', href: '/admin/relatorio-mensal', icon: FileBarChart },
     { name: 'Equipa', href: '/admin/equipa', icon: Shield },
     { name: 'Gestão', href: '/admin/gestao', icon: Settings },
+    { name: 'O Meu Perfil', href: '/admin/perfil', icon: UserCog },
   ]
 
   const visibleMenuItems =

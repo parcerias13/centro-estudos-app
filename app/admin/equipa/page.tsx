@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Shield, Plus, Trash2, Loader2, Save, Mail, User, Lock, X, AlertTriangle, Pencil, CalendarClock } from 'lucide-react';
+import { ArrowLeft, Shield, Plus, Trash2, Loader2, Save, Mail, User, Lock, X, AlertTriangle, Pencil, CalendarClock, KeyRound, Eye, EyeOff, Copy } from 'lucide-react';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { getHojeLisboa } from '@/lib/dataLisboa';
 import { estadoCustoFixoNoMes, mesParaData, mensagemErroCusto, type PeriodoCustoFixo } from '@/lib/custos';
@@ -168,6 +168,12 @@ export default function AdminTeam() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('professor');
   const [password, setPassword] = useState(''); // ESTADO MOVIDO PARA DENTRO
+
+  // Repor palavra-passe de um professor/secretaria (nunca admin) — mesmo
+  // padrão de "mostrar uma só vez" já usado para alunos em alunos/editar.
+  const [resetLoadingId, setResetLoadingId] = useState<string | null>(null);
+  const [resetResultado, setResetResultado] = useState<{ member: any; password: string } | null>(null);
+  const [mostrarResetResultado, setMostrarResetResultado] = useState(false);
 
   // Tipo de remuneração atual (implícito, por mês) de cada professor — para
   // a etiqueta na lista e para excluir professores de salário do aviso de
@@ -426,6 +432,12 @@ export default function AdminTeam() {
     e.preventDefault();
     if (!email || !name || !password) return;
     setFormError(null);
+
+    if (password.length < 6) {
+      setFormError('A palavra-passe tem de ter pelo menos 6 caracteres.');
+      return;
+    }
+
     setSubmitting(true);
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -454,6 +466,44 @@ export default function AdminTeam() {
       fetchTeam();
     }
     setSubmitting(false);
+  };
+
+  const handleReporPasswordStaff = async (member: any) => {
+    if (!confirm(`A palavra-passe atual de ${member.name} deixa de funcionar imediatamente. Vais receber uma nova para lhe entregar pessoalmente. Continuar?`)) return;
+    setResetLoadingId(member.id);
+    try {
+      const res = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffId: member.id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMostrarResetResultado(false);
+        setResetResultado({ member, password: body.password });
+      } else {
+        showError(body?.error || `Erro ao repor a palavra-passe (${res.status}).`);
+      }
+    } catch (err: any) {
+      showError(err?.message || 'Erro de rede ao repor a palavra-passe.');
+    } finally {
+      setResetLoadingId(null);
+    }
+  };
+
+  const fecharResetResultado = () => {
+    setResetResultado(null);
+    setMostrarResetResultado(false);
+  };
+
+  const copiarPasswordReposta = async () => {
+    if (!resetResultado) return;
+    try {
+      await navigator.clipboard.writeText(resetResultado.password);
+      showSuccess('Copiado.');
+    } catch {
+      showError('Não foi possível copiar — copia manualmente.');
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -722,6 +772,7 @@ export default function AdminTeam() {
 
           {team.map((member) => {
             const isProfessor = member.role?.toLowerCase() === 'professor';
+            const isAdminMember = member.role?.toLowerCase() === 'admin';
             const tipoAtual = tipoAtualPorProfessor[member.id];
             return (
               <div key={member.id} data-testid={`membro-${member.id}`} className="bg-surface border border-border p-4 rounded-xl flex justify-between items-center group hover:border-border transition-all">
@@ -771,6 +822,17 @@ export default function AdminTeam() {
                       className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-accent hover:bg-accent-soft rounded-lg transition-colors"
                     >
                       Remuneração
+                    </button>
+                  )}
+                  {!isAdminMember && (
+                    <button
+                      onClick={() => handleReporPasswordStaff(member)}
+                      disabled={resetLoadingId === member.id}
+                      title="Repor palavra-passe"
+                      className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-warning hover:bg-warning/10 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {resetLoadingId === member.id ? <Loader2 size={13} className="animate-spin" /> : <KeyRound size={13} />}
+                      Repor Palavra-Passe
                     </button>
                   )}
                   <button
@@ -1047,6 +1109,60 @@ export default function AdminTeam() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {resetResultado && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) fecharResetResultado(); }}
+        >
+          <div className="bg-surface border border-border w-full max-w-md rounded-3xl shadow-2xl p-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black text-primary">Palavra-Passe de {resetResultado.member.name}</h2>
+              <button onClick={fecharResetResultado} className="text-muted hover:text-primary transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            <p className="text-[11px] font-bold text-warning bg-warning/10 border border-warning/20 rounded-xl px-4 py-3 mb-4">
+              Mostrada uma só vez. Entregue-a pessoalmente.
+            </p>
+
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={mostrarResetResultado ? 'text' : 'password'}
+                  readOnly
+                  value={resetResultado.password}
+                  className="w-full bg-page border border-border p-4 pr-12 rounded-xl outline-none font-mono text-sm text-primary"
+                />
+                <button
+                  type="button"
+                  onClick={() => setMostrarResetResultado((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors"
+                >
+                  {mostrarResetResultado ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={copiarPasswordReposta}
+                title="Copiar"
+                className="px-4 bg-raised hover:bg-border border border-border rounded-xl transition-all active:scale-95 text-secondary hover:text-primary shrink-0"
+              >
+                <Copy size={16} />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={fecharResetResultado}
+              className="w-full mt-6 py-3 bg-accent hover:bg-accent-hover text-on-accent rounded-xl font-black text-sm transition-all active:scale-95"
+            >
+              Concluído
+            </button>
           </div>
         </div>
       )}

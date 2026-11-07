@@ -346,9 +346,14 @@ export default function EncarregadosPage() {
         )}
       </Link>
 
-      <Link href="/encarregados/codigo" className="flex items-center justify-center gap-2 text-muted hover:text-primary text-xs font-bold uppercase tracking-widest transition-colors py-2">
-        <KeyRound size={14} /> Alterar Código
-      </Link>
+      <div className="flex items-center justify-center gap-6">
+        <Link href="/encarregados/codigo" className="flex items-center justify-center gap-2 text-muted hover:text-primary text-xs font-bold uppercase tracking-widest transition-colors py-2">
+          <KeyRound size={14} /> Alterar Código
+        </Link>
+        <Link href="/encarregados/password" className="flex items-center justify-center gap-2 text-muted hover:text-primary text-xs font-bold uppercase tracking-widest transition-colors py-2">
+          <Lock size={14} /> Alterar Palavra-Passe
+        </Link>
+      </div>
 
       <StatusToast toast={toast} />
     </main>

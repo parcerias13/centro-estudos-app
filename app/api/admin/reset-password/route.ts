@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { randomInt } from 'node:crypto'
+import { exigirAdmin } from '@/lib/apiAuth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,57 +17,51 @@ function gerarPasswordSegura(tamanho = 10): string {
 }
 
 export async function POST(req: Request) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
-        },
-      },
+  const auth = await exigirAdmin()
+  if ('erro' in auth) return auth.erro
+  const centroAdmin = auth.centro_id
+
+  const { alunoId, staffId, novaPassword } = await req.json()
+
+  if (alunoId && staffId) {
+    return NextResponse.json({ error: 'Indica apenas um: alunoId ou staffId.' }, { status: 400 })
+  }
+
+  let targetId: string
+
+  if (staffId !== undefined) {
+    if (!staffId || typeof staffId !== 'string' || !REGEX_UUID.test(staffId)) {
+      return NextResponse.json({ error: 'ID da equipa inválido.' }, { status: 400 })
     }
-  )
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
+    // Confirma que o alvo é professor ou secretaria do mesmo centro deste
+    // admin — nunca outro admin, nunca de outro centro. 404 genérico em
+    // todos os casos, para não revelar se o id existe noutro centro nem
+    // se pertence a um admin.
+    const { data: staffAlvo } = await supabaseAdmin.from('staff').select('id, centro_id, role').eq('id', staffId).maybeSingle()
+    const papelAlvo = staffAlvo?.role?.toLowerCase()
+    if (!staffAlvo || staffAlvo.centro_id !== centroAdmin || papelAlvo === 'admin') {
+      return NextResponse.json({ error: 'Membro da equipa não encontrado.' }, { status: 404 })
+    }
+    targetId = staffId
+  } else {
+    if (!alunoId || typeof alunoId !== 'string' || !REGEX_UUID.test(alunoId)) {
+      return NextResponse.json({ error: 'ID do aluno inválido.' }, { status: 400 })
+    }
 
-  const { data: staffData } = await supabaseAdmin
-    .from('staff')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (staffData?.role?.toLowerCase() !== 'admin') {
-    return NextResponse.json({ error: 'Sem permissões de administrador.' }, { status: 403 })
+    // Confirma que o alvo é mesmo um aluno do centro deste admin — nunca um
+    // staff, nunca de outro centro. 404 genérico em ambos os casos, para não
+    // revelar se o id existe noutro centro.
+    const { data: aluno } = await supabaseAdmin.from('alunos').select('id, centro_id').eq('id', alunoId).maybeSingle()
+    if (!aluno || aluno.centro_id !== centroAdmin) {
+      return NextResponse.json({ error: 'Aluno não encontrado.' }, { status: 404 })
+    }
+    targetId = alunoId
   }
 
-  const { alunoId, novaPassword } = await req.json()
-
-  if (!alunoId || typeof alunoId !== 'string' || !REGEX_UUID.test(alunoId)) {
-    return NextResponse.json({ error: 'ID do aluno inválido.' }, { status: 400 })
-  }
-
-  const centroAdmin = user.app_metadata?.centro_id
-  if (!centroAdmin) {
-    return NextResponse.json({ error: 'Centro do administrador não identificado.' }, { status: 403 })
-  }
-
-  // Confirma que o alvo é mesmo um aluno do centro deste admin — nunca um
-  // staff, nunca de outro centro. 404 genérico em ambos os casos, para não
-  // revelar se o id existe noutro centro.
-  const { data: aluno } = await supabaseAdmin.from('alunos').select('id, centro_id').eq('id', alunoId).maybeSingle()
-  if (!aluno || aluno.centro_id !== centroAdmin) {
-    return NextResponse.json({ error: 'Aluno não encontrado.' }, { status: 404 })
-  }
-
-  // Sem novaPassword: o admin pediu para gerar uma, o servidor gera-a aqui
-  // com crypto (nunca Math.random no cliente) e devolve-a uma vez. Com
-  // novaPassword: o admin escreveu uma à mão, usa-se tal como está.
+  // Sem novaPassword: pediu-se para gerar uma, o servidor gera-a aqui com
+  // crypto (nunca Math.random no cliente) e devolve-a uma vez. Com
+  // novaPassword: escreveu-se uma à mão, usa-se tal como está.
   let passwordFinal = novaPassword
   if (passwordFinal == null || passwordFinal === '') {
     passwordFinal = gerarPasswordSegura()
@@ -76,7 +69,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'A password deve ter no mínimo 6 caracteres.' }, { status: 400 })
   }
 
-  const { error } = await supabaseAdmin.auth.admin.updateUserById(alunoId, { password: passwordFinal })
+  const { error } = await supabaseAdmin.auth.admin.updateUserById(targetId, { password: passwordFinal })
 
   if (error) {
     console.error('reset-password: falha ao atualizar password', error)
