@@ -26,12 +26,22 @@
   --color-warning: #9A6B10;
   --color-warning-bg: #FBF1DE;
   --color-warning-hover: #835B0E;
+  --color-agenda-accent: #7E22CE;
+
+  /* paleta decorativa da agenda (sem significado semântico — nunca usar
+     para estados; só para distinguir disciplinas visualmente) */
+  --color-agenda-d1: #7E22CE;
+  --color-agenda-d2: #4F46E5;
+  --color-agenda-d3: #0369A1;
+  --color-agenda-d4: #A21CAF;
+  --color-agenda-d5: #475569;
 
   /* texto sobre preenchimentos sólidos (accent/success/danger/warning) */
   --color-on-accent: #FFFFFF;
   --color-on-success: #FFFFFF;
   --color-on-danger: #FFFFFF;
   --color-on-warning: #FFFFFF;
+  --color-on-agenda-accent: #FFFFFF;
 
   /* texto */
   --color-primary: #241F18;
