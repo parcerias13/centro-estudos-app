@@ -63,7 +63,7 @@ export default function MinhasFixasPage() {
     (async () => {
       const [{ data: subData }, { data: alunosData }] = await Promise.all([
         supabase.from('subjects').select('id, name, centro_id, anos_aplicaveis').eq('centro_id', centroId).order('name'),
-        supabase.from('alunos').select('id, nome, ano_escolar').eq('ativo', true).order('nome'),
+        supabase.from('alunos').select('id, nome, ano_escolar, sala_estudo, faz_explicacoes').eq('ativo', true).order('nome'),
       ]);
       setSubjects(subData || []);
       setAlunosAtivos(alunosData || []);

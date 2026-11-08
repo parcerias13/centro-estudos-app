@@ -66,7 +66,7 @@ export default function SeriesExplicacoesPage() {
       const [{ data: profData }, { data: subData }, { data: alunosData }] = await Promise.all([
         supabase.from('staff').select('id, name').eq('role', 'professor').order('name'),
         supabase.from('subjects').select('id, name, centro_id, anos_aplicaveis').eq('centro_id', centroId).order('name'),
-        supabase.from('alunos').select('id, nome, ano_escolar').eq('ativo', true).order('nome'),
+        supabase.from('alunos').select('id, nome, ano_escolar, sala_estudo, faz_explicacoes').eq('ativo', true).order('nome'),
       ]);
       setProfessores(profData || []);
       setSubjects(subData || []);

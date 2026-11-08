@@ -17,6 +17,7 @@ import { getHojeLisboa } from '@/lib/dataLisboa';
 import { mesParaData } from '@/lib/custos';
 import { tipoNoMes } from '@/lib/remuneracaoProfessores';
 import { sanitizarPedidoExplicacao, type PedidoExplicacaoSeguro } from '@/lib/formatoMensagens';
+import { modalidadeDoAluno, filtrarAlunosParaExplicacao, AVISO_ALUNO_SALA_ESTUDO, SEM_RESULTADOS_SO_EXPLICACOES } from '@/lib/modalidadeAlunos';
 
 // «Nome · 7.º ano» — mesmo rótulo em toda a página (lista de alunos da
 // modal, banners de pedidos, e os nomes mostrados no detalhe da sessão).
@@ -264,7 +265,7 @@ function ExplicacoesPageContent() {
       const [{ data: { user } }, { data: subData }, { data: alunosData }, { data: professoresData }, { error: erroGeracao }] = await Promise.all([
         supabase.auth.getUser(),
         supabase.from('subjects').select('id, name, centro_id, anos_aplicaveis').order('name'),
-        supabase.from('alunos').select('id, nome, ano_escolar').eq('ativo', true).order('nome'),
+        supabase.from('alunos').select('id, nome, ano_escolar, sala_estudo, faz_explicacoes').eq('ativo', true).order('nome'),
         supabase.from('staff').select('id, name').eq('role', 'professor').order('name'),
         supabase.rpc('gerar_sessoes_series'),
       ]);
@@ -1256,6 +1257,10 @@ function NovaExplicacaoModal({
 }: any) {
   const [alunoIds, setAlunoIds] = useState<string[]>(initialAlunoIds || []);
   const [buscaAluno, setBuscaAluno] = useState('');
+  // Desligada por defeito a cada abertura do formulário — nunca guardada
+  // (nem em localStorage, nem entre sessões). Ligada, a pesquisa passa a
+  // incluir também os alunos só de sala de estudo.
+  const [mostrarSalaEstudo, setMostrarSalaEstudo] = useState(false);
   // Pré-preenchidos a partir do pedido da família quando existe — a próxima
   // ocorrência do primeiro dia pedido, e a hora só se o texto livre do
   // horário tiver uma hora legível. Tudo continua editável a seguir.
@@ -1295,7 +1300,7 @@ function NovaExplicacaoModal({
     setAlunoIds((prev) => (jaSelecionado ? prev.filter((a) => a !== id) : [...prev, id]));
   };
 
-  const alunosFiltrados = alunosAtivos.filter((a: any) => a.nome.toLowerCase().includes(buscaAluno.toLowerCase()));
+  const alunosFiltrados = filtrarAlunosParaExplicacao(alunosAtivos, buscaAluno, mostrarSalaEstudo, alunoIds);
 
   // Disciplinas comuns aos alunos selecionados — sem ninguém selecionado
   // ainda, mostra tudo. Disciplina continua opcional, por isso não há aviso
@@ -1457,24 +1462,41 @@ function NovaExplicacaoModal({
                 className="w-full bg-page border border-border text-primary pl-9 pr-3 py-2.5 rounded-xl outline-none focus:border-accent text-sm disabled:opacity-50"
               />
             </div>
+            <label className="flex items-center gap-2 min-h-11 text-xs font-bold text-secondary cursor-pointer">
+              <input
+                type="checkbox"
+                checked={mostrarSalaEstudo}
+                onChange={(e) => setMostrarSalaEstudo(e.target.checked)}
+                disabled={etapa !== 'nova'}
+                className="shrink-0 accent-accent disabled:opacity-50"
+              />
+              <span>Mostrar também os alunos de sala de estudo</span>
+            </label>
             <div className="max-h-40 overflow-y-auto mt-2 space-y-1 border border-border rounded-xl p-2">
               {alunosFiltrados.length === 0 ? (
-                <p className="text-xs text-muted italic p-2">Nenhum aluno encontrado.</p>
+                <p className="text-xs text-muted italic p-2">
+                  {mostrarSalaEstudo ? 'Nenhum aluno encontrado.' : SEM_RESULTADOS_SO_EXPLICACOES}
+                </p>
               ) : (
                 alunosFiltrados.map((aluno: any) => {
                   const selecionado = alunoIds.includes(aluno.id);
+                  const avisoSalaEstudo = selecionado && modalidadeDoAluno(aluno) === 'sala_estudo';
                   return (
-                    <button
-                      key={aluno.id}
-                      type="button"
-                      onClick={() => toggleAluno(aluno.id)}
-                      disabled={etapa !== 'nova'}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-50 ${
-                        selecionado ? 'bg-accent text-on-accent' : 'bg-page text-primary hover:bg-raised'
-                      }`}
-                    >
-                      {rotuloAluno(aluno.nome, aluno.ano_escolar)}
-                    </button>
+                    <div key={aluno.id}>
+                      <button
+                        type="button"
+                        onClick={() => toggleAluno(aluno.id)}
+                        disabled={etapa !== 'nova'}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-50 ${
+                          selecionado ? 'bg-accent text-on-accent' : 'bg-page text-primary hover:bg-raised'
+                        }`}
+                      >
+                        {rotuloAluno(aluno.nome, aluno.ano_escolar)}
+                      </button>
+                      {avisoSalaEstudo && (
+                        <p className="text-[10px] text-warning font-bold mt-1 px-1">{AVISO_ALUNO_SALA_ESTUDO}</p>
+                      )}
+                    </div>
                   );
                 })
               )}

@@ -99,9 +99,13 @@ async function criarAluno(nome: string, anoEscolar: number, sufixo: string) {
   const email = `teste-expl-${sufixo}@example.invalid`;
   const password = gerarPasswordSegura();
   const id = await criarUtilizadorAuth(email, password, { centro_id: centroId });
+  // faz_explicacoes: true — o filtro por modalidade na escolha de alunos
+  // para uma explicação só mostra por defeito quem faz explicações; estes
+  // alunos são escolhidos nos testes sem ligar "Mostrar também os alunos
+  // de sala de estudo".
   const { error } = await supabaseAdmin.from('alunos').insert({
     id, nome, email, email_encarregado: `enc-expl-${sufixo}@example.invalid`,
-    data_nascimento: '2012-01-01', ano_escolar: anoEscolar, centro_id: centroId, ativo: true,
+    data_nascimento: '2012-01-01', ano_escolar: anoEscolar, centro_id: centroId, ativo: true, faz_explicacoes: true,
   });
   if (error) throw new Error(`criar aluno ${nome}: ${error.message}`);
   return id;

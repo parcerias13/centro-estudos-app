@@ -14,6 +14,7 @@ import { Loader2, Plus, Search, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { disciplinasComuns } from '@/lib/disciplinas';
 import { getHojeLisboa } from '@/lib/dataLisboa';
+import { modalidadeDoAluno, filtrarAlunosParaExplicacao, AVISO_ALUNO_SALA_ESTUDO, SEM_RESULTADOS_SO_EXPLICACOES } from '@/lib/modalidadeAlunos';
 
 export const DIAS_SEMANA = [
   { valor: 1, label: 'Seg' },
@@ -91,6 +92,10 @@ export function FormularioSerie({ modo, professorFixo, professores, subjects, al
   const [duracaoHoras, setDuracaoHoras] = useState('');
   const [alunoIds, setAlunoIds] = useState<string[]>([]);
   const [buscaAluno, setBuscaAluno] = useState('');
+  // Desligada por defeito a cada abertura do formulário — nunca guardada
+  // (nem em localStorage, nem entre sessões). Ligada, a pesquisa passa a
+  // incluir também os alunos só de sala de estudo.
+  const [mostrarSalaEstudo, setMostrarSalaEstudo] = useState(false);
   const [dataInicio, setDataInicio] = useState(() => getHojeLisboa());
   const [semDataFim, setSemDataFim] = useState(true);
   const [dataFim, setDataFim] = useState('');
@@ -109,7 +114,7 @@ export function FormularioSerie({ modo, professorFixo, professores, subjects, al
     setAlunoIds((prev) => (jaSelecionado ? prev.filter((a) => a !== id) : [...prev, id]));
   };
 
-  const alunosFiltrados = alunosAtivos.filter((a: any) => a.nome.toLowerCase().includes(buscaAluno.toLowerCase()));
+  const alunosFiltrados = filtrarAlunosParaExplicacao(alunosAtivos, buscaAluno, mostrarSalaEstudo, alunoIds);
   const disciplinasComunsSerie = disciplinasComuns(
     subjects,
     alunoIds.map((id) => alunosAtivos.find((a: any) => a.id === id)?.ano_escolar)
@@ -187,23 +192,39 @@ export function FormularioSerie({ modo, professorFixo, professores, subjects, al
             className="w-full bg-surface border border-border text-primary pl-9 pr-3 py-2.5 rounded-xl outline-none focus:border-accent text-sm"
           />
         </div>
+        <label className="flex items-center gap-2 min-h-11 text-xs font-bold text-secondary cursor-pointer">
+          <input
+            type="checkbox"
+            checked={mostrarSalaEstudo}
+            onChange={(e) => setMostrarSalaEstudo(e.target.checked)}
+            className="shrink-0 accent-accent"
+          />
+          <span>Mostrar também os alunos de sala de estudo</span>
+        </label>
         <div className="max-h-40 overflow-y-auto mt-2 space-y-1 border border-border rounded-xl p-2">
           {alunosFiltrados.length === 0 ? (
-            <p className="text-xs text-muted italic p-2">Nenhum aluno encontrado.</p>
+            <p className="text-xs text-muted italic p-2">
+              {mostrarSalaEstudo ? 'Nenhum aluno encontrado.' : SEM_RESULTADOS_SO_EXPLICACOES}
+            </p>
           ) : (
             alunosFiltrados.map((aluno: any) => {
               const selecionado = alunoIds.includes(aluno.id);
+              const avisoSalaEstudo = selecionado && modalidadeDoAluno(aluno) === 'sala_estudo';
               return (
-                <button
-                  key={aluno.id}
-                  type="button"
-                  onClick={() => toggleAluno(aluno.id)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition-all ${
-                    selecionado ? 'bg-accent text-on-accent' : 'bg-page text-primary hover:bg-raised'
-                  }`}
-                >
-                  {rotuloAluno(aluno.nome, aluno.ano_escolar)}
-                </button>
+                <div key={aluno.id}>
+                  <button
+                    type="button"
+                    onClick={() => toggleAluno(aluno.id)}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition-all ${
+                      selecionado ? 'bg-accent text-on-accent' : 'bg-page text-primary hover:bg-raised'
+                    }`}
+                  >
+                    {rotuloAluno(aluno.nome, aluno.ano_escolar)}
+                  </button>
+                  {avisoSalaEstudo && (
+                    <p className="text-[10px] text-warning font-bold mt-1 px-1">{AVISO_ALUNO_SALA_ESTUDO}</p>
+                  )}
+                </div>
               );
             })
           )}
