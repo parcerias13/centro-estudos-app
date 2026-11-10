@@ -5,8 +5,9 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { disciplinasParaAno } from '@/lib/disciplinas';
-import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw, ClipboardList, Lock } from 'lucide-react';
+import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw, ClipboardList, Lock, FolderOpen } from 'lucide-react';
 import { LAB_AI_ATIVO } from '@/lib/features';
+import { contarMaterialNovoAluno } from '@/lib/materialAluno';
 
 export default function StudentHome() {
   const { toast, showError } = useStatusToast();
@@ -22,6 +23,7 @@ export default function StudentHome() {
   const [limitData, setLimitData] = useState({ visits: 0, limit: 0 });
   const [showSwitchList, setShowSwitchList] = useState(false);
   const [encarregadosNaoLidas, setEncarregadosNaoLidas] = useState(0);
+  const [materialNovoCount, setMaterialNovoCount] = useState(0);
 
 
   const fetchData = useCallback(async () => {
@@ -97,6 +99,12 @@ export default function StudentHome() {
       .eq('autor', 'centro')
       .is('lida_pela_familia_em', null);
     setEncarregadosNaoLidas(naoLidasCount || 0);
+
+    try {
+      setMaterialNovoCount(await contarMaterialNovoAluno(supabase, user.id));
+    } catch {
+      setMaterialNovoCount(0);
+    }
 
     setLoading(false);
   }, [supabase]);
@@ -279,6 +287,13 @@ export default function StudentHome() {
                    <ClipboardList size={24} className="text-accent" />
                    <span className="text-[8px] font-black uppercase tracking-widest text-accent">Notas</span>
                  </Link>
+                 <Link href="/material" className="relative bg-surface border border-border p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group">
+                   {materialNovoCount > 0 && (
+                     <span className="absolute top-2 right-2 bg-danger text-on-danger text-[9px] font-black min-w-5 h-5 px-1 rounded-full flex items-center justify-center">{materialNovoCount}</span>
+                   )}
+                   <FolderOpen size={24} className="text-teal-500" />
+                   <span className="text-[8px] font-black uppercase tracking-widest text-secondary">Material</span>
+                 </Link>
               </div>
 
               <Link href="/encarregados" className="bg-surface border border-border p-4 rounded-2xl flex items-center justify-between group">
@@ -349,6 +364,19 @@ export default function StudentHome() {
                           </div>
                         </div>
                     </Link>
+                    <Link href="/material" className="col-span-2 bg-surface border border-border p-5 rounded-3xl flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-raised p-3 rounded-2xl text-teal-500"><FolderOpen size={22} /></div>
+                          <div>
+                            <p className="font-black text-primary text-base">O Meu Material</p>
+                            <p className="text-[10px] text-muted font-bold uppercase tracking-widest">Fichas, resumos e apontamentos</p>
+                          </div>
+                        </div>
+                        {materialNovoCount > 0 && (
+                          <span className="bg-danger text-on-danger text-[10px] font-black min-w-5 h-5 px-1.5 rounded-full flex items-center justify-center shrink-0">{materialNovoCount}</span>
+                        )}
+                    </Link>
+
                     <Link href="/encarregados" className="col-span-2 bg-surface border border-border p-5 rounded-3xl flex items-center justify-between">
                         <div className="flex items-center gap-4">
                           <div className="bg-raised p-3 rounded-2xl text-muted"><Lock size={22} /></div>

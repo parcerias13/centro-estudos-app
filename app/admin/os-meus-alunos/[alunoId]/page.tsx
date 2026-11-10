@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -8,11 +8,16 @@ import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { getHojeLisboa, dataLisboaDe, horaLisboaDe } from '@/lib/dataLisboa';
 import { mesParaData } from '@/lib/custos';
 import { buscarAlunosFixosAtivos, type AlunoFixo } from '@/lib/osMeusAlunos';
+import {
+  CATEGORIAS_MATERIAL, ACCEPT_MATERIAL, TAMANHO_MAXIMO_BYTES, type CategoriaMaterial, type MaterialAluno, type TipoPermitidoMaterial,
+  validarFicheiroMaterial, validarTitulo, validarNota, carregarMaterial, listarMaterialProfessor, apagarMaterial,
+  obterUrlAssinadaMaterial, rotuloCategoriaMaterial, formatarTamanhoFicheiro,
+} from '@/lib/materialAluno';
 import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import {
   ArrowLeft, Star, Loader2, Clock, ClipboardCheck, CalendarClock, GraduationCap, NotebookPen,
-  Save, ShieldAlert,
+  Save, ShieldAlert, FolderOpen, Upload, Trash2, ExternalLink, Eye, EyeOff,
 } from 'lucide-react';
 
 const TEXTO_MAX_CADERNO = 5000;
@@ -45,7 +50,7 @@ type Resumo = {
 
 const HISTORICO_PAGINA = 20;
 
-type Aba = 'resumo' | 'sessoes' | 'testes' | 'notas';
+type Aba = 'resumo' | 'sessoes' | 'testes' | 'notas' | 'material';
 
 export default function DetalheAlunoFixoPage() {
   const params = useParams<{ alunoId: string }>();
@@ -80,6 +85,22 @@ export default function DetalheAlunoFixoPage() {
   const [cadernoCarregado, setCadernoCarregado] = useState(false);
   const [carregandoCaderno, setCarregandoCaderno] = useState(false);
   const [guardandoCaderno, setGuardandoCaderno] = useState(false);
+
+  const [materialLista, setMaterialLista] = useState<MaterialAluno[]>([]);
+  const [materialCarregado, setMaterialCarregado] = useState(false);
+  const [carregandoMaterial, setCarregandoMaterial] = useState(false);
+
+  const [formCategoria, setFormCategoria] = useState<CategoriaMaterial>('ficha_casa');
+  const [formTitulo, setFormTitulo] = useState('');
+  const [formNota, setFormNota] = useState('');
+  const [ficheiroEscolhido, setFicheiroEscolhido] = useState<File | null>(null);
+  const [tipoFicheiroEscolhido, setTipoFicheiroEscolhido] = useState<TipoPermitidoMaterial | null>(null);
+  const [erroFicheiro, setErroFicheiro] = useState<string | null>(null);
+  const [validandoFicheiro, setValidandoFicheiro] = useState(false);
+  const [carregandoUpload, setCarregandoUpload] = useState(false);
+  const [apagandoMaterialId, setApagandoMaterialId] = useState<string | null>(null);
+  const [abrindoMaterialId, setAbrindoMaterialId] = useState<string | null>(null);
+  const fileInputMaterialRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -294,6 +315,130 @@ export default function DetalheAlunoFixoPage() {
     }
   };
 
+  const carregarMaterialTab = useCallback(async () => {
+    if (!professorId || !alunoId) return;
+    setCarregandoMaterial(true);
+    try {
+      const lista = await listarMaterialProfessor(supabase, professorId, alunoId);
+      setMaterialLista(lista);
+    } catch (e: any) {
+      showError('Erro ao carregar o material: ' + e.message);
+    } finally {
+      setCarregandoMaterial(false);
+      setMaterialCarregado(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [professorId, alunoId]);
+
+  useEffect(() => {
+    if (fixo && aba === 'material' && !materialCarregado) carregarMaterialTab();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixo, aba, materialCarregado]);
+
+  const limparFormMaterial = () => {
+    setFormTitulo('');
+    setFormNota('');
+    setFicheiroEscolhido(null);
+    setTipoFicheiroEscolhido(null);
+    setErroFicheiro(null);
+    if (fileInputMaterialRef.current) fileInputMaterialRef.current.value = '';
+  };
+
+  const handleEscolherFicheiroMaterial = async (file: File | null) => {
+    setFicheiroEscolhido(null);
+    setTipoFicheiroEscolhido(null);
+    setErroFicheiro(null);
+    if (!file) return;
+    setValidandoFicheiro(true);
+    try {
+      const erro = await validarFicheiroMaterial(file);
+      if (erro) {
+        setErroFicheiro(erro);
+        return;
+      }
+      setFicheiroEscolhido(file);
+      setTipoFicheiroEscolhido(file.type as TipoPermitidoMaterial);
+    } finally {
+      setValidandoFicheiro(false);
+    }
+  };
+
+  const handleCarregarMaterial = async () => {
+    if (!professorId || !centroId || !alunoId || carregandoUpload) return;
+    const erroTitulo = validarTitulo(formTitulo);
+    if (erroTitulo) { showError(erroTitulo); return; }
+    const erroNota = validarNota(formNota);
+    if (erroNota) { showError(erroNota); return; }
+    if (!ficheiroEscolhido || !tipoFicheiroEscolhido) { showError('Escolhe um ficheiro.'); return; }
+
+    setCarregandoUpload(true);
+    try {
+      const novo = await carregarMaterial(supabase, {
+        file: ficheiroEscolhido,
+        tipo: tipoFicheiroEscolhido,
+        centroId,
+        alunoId,
+        professorId,
+        categoria: formCategoria,
+        titulo: formTitulo,
+        nota: formNota,
+      });
+      setMaterialLista((atual) => [novo, ...atual]);
+      limparFormMaterial();
+      setFormCategoria('ficha_casa');
+      showSuccess('Material carregado.');
+    } catch (e: any) {
+      showError('Erro ao carregar o material: ' + e.message);
+    } finally {
+      setCarregandoUpload(false);
+    }
+  };
+
+  const handleAbrirMaterial = (material: MaterialAluno) => {
+    if (abrindoMaterialId) return;
+    // Separador aberto de forma SÍNCRONA dentro do clique — Safari bloqueia
+    // window.open() depois de um await, mesmo dentro de um handler de clique.
+    const novaJanela = window.open('', '_blank');
+    if (!novaJanela) {
+      showError('O browser bloqueou o separador. Permite pop-ups para abrir ficheiros.');
+      return;
+    }
+    try { novaJanela.opener = null; } catch {}
+    setAbrindoMaterialId(material.id);
+    (async () => {
+      try {
+        const { url, erro } = await obterUrlAssinadaMaterial(supabase, material.caminho);
+        if (!url) {
+          novaJanela.close();
+          showError('Não foi possível abrir o ficheiro: ' + erro);
+          return;
+        }
+        novaJanela.location.href = url;
+      } catch (e: any) {
+        novaJanela.close();
+        showError('Não foi possível abrir o ficheiro: ' + (e?.message || 'erro inesperado'));
+      } finally {
+        setAbrindoMaterialId(null);
+      }
+    })();
+  };
+
+  const handleApagarMaterial = async (material: MaterialAluno) => {
+    if (apagandoMaterialId) return;
+    if (!confirm(`Apagar "${material.titulo}"? Esta ação não pode ser desfeita.`)) return;
+    setApagandoMaterialId(material.id);
+    try {
+      const { avisoFicheiro } = await apagarMaterial(supabase, material);
+      setMaterialLista((atual) => atual.filter((m) => m.id !== material.id));
+      if (avisoFicheiro) showError(avisoFicheiro);
+      else showSuccess('Material apagado.');
+    } catch (e: any) {
+      showError('Erro ao apagar o material: ' + e.message);
+    } finally {
+      setApagandoMaterialId(null);
+    }
+  };
+
   if (loadingPagina || loadingFixo) {
     return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
   }
@@ -339,6 +484,7 @@ export default function DetalheAlunoFixoPage() {
           { id: 'sessoes' as const, label: 'Sessões', icon: CalendarClock },
           { id: 'testes' as const, label: 'Testes', icon: GraduationCap },
           { id: 'notas' as const, label: 'As minhas notas', icon: NotebookPen },
+          { id: 'material' as const, label: 'Material', icon: FolderOpen },
         ].map((t) => (
           <button
             key={t.id}
@@ -490,6 +636,122 @@ export default function DetalheAlunoFixoPage() {
             </div>
           </div>
         )
+      )}
+
+      {aba === 'material' && (
+        <div className="space-y-6">
+          <div className="bg-surface border border-border rounded-3xl p-5 space-y-4">
+            <p className="text-sm font-black text-primary flex items-center gap-2"><Upload size={16} className="text-accent" /> Novo material</p>
+
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted mb-1.5 block">Categoria</label>
+              <select
+                value={formCategoria}
+                onChange={(e) => setFormCategoria(e.target.value as CategoriaMaterial)}
+                className="w-full bg-page border border-border text-primary p-3 rounded-2xl outline-none focus:border-accent text-sm"
+              >
+                {CATEGORIAS_MATERIAL.map((c) => (
+                  <option key={c.id} value={c.id}>{c.rotulo}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted mb-1.5 block">Título</label>
+              <input
+                type="text"
+                value={formTitulo}
+                onChange={(e) => setFormTitulo(e.target.value.slice(0, 120))}
+                maxLength={120}
+                placeholder="Ex.: Ficha de revisão — Capítulo 3"
+                className="w-full bg-page border border-border text-primary p-3 rounded-2xl outline-none focus:border-accent text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted mb-1.5 block">Nota (opcional)</label>
+              <textarea
+                value={formNota}
+                onChange={(e) => setFormNota(e.target.value.slice(0, 500))}
+                maxLength={500}
+                rows={3}
+                placeholder="Observações para o aluno..."
+                className="w-full bg-page border border-border text-primary p-3 rounded-2xl outline-none focus:border-accent text-sm resize-y"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted mb-1.5 block">Ficheiro</label>
+              <input
+                ref={fileInputMaterialRef}
+                type="file"
+                accept={ACCEPT_MATERIAL}
+                onChange={(e) => handleEscolherFicheiroMaterial(e.target.files?.[0] ?? null)}
+                className="w-full text-sm text-secondary file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:bg-accent file:text-on-accent file:font-black file:text-xs file:uppercase file:tracking-widest"
+              />
+              <p className="text-[10px] text-muted mt-1.5">PDF, JPEG, PNG, DOC ou DOCX · máx. {formatarTamanhoFicheiro(TAMANHO_MAXIMO_BYTES)}</p>
+              {validandoFicheiro && <p className="text-[10px] text-muted mt-1.5 flex items-center gap-1"><Loader2 className="animate-spin" size={10} /> A validar ficheiro...</p>}
+              {erroFicheiro && <p className="text-xs text-danger font-bold mt-1.5">{erroFicheiro}</p>}
+              {ficheiroEscolhido && !erroFicheiro && (
+                <p className="text-xs text-success font-bold mt-1.5">{ficheiroEscolhido.name} · {formatarTamanhoFicheiro(ficheiroEscolhido.size)}</p>
+              )}
+            </div>
+
+            <button
+              onClick={handleCarregarMaterial}
+              disabled={carregandoUpload || validandoFicheiro || !ficheiroEscolhido}
+              className="w-full min-h-11 flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-on-accent px-5 py-3 rounded-2xl font-black text-sm transition-all active:scale-95 disabled:opacity-50"
+            >
+              {carregandoUpload ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />} Carregar
+            </button>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Material carregado</p>
+            {carregandoMaterial && !materialCarregado ? (
+              <div className="flex justify-center py-8"><Loader2 className="animate-spin text-accent" size={20} /></div>
+            ) : materialLista.length === 0 ? (
+              <p className="text-muted italic text-sm">Ainda não carregaste material para este aluno.</p>
+            ) : (
+              <div className="space-y-2">
+                {materialLista.map((m) => (
+                  <div key={m.id} data-material-item={m.id} className="bg-surface border border-border rounded-2xl p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-primary break-words">{m.titulo}</p>
+                        <p className="text-[10px] text-muted font-black uppercase tracking-widest mt-0.5">
+                          {rotuloCategoriaMaterial(m.categoria)} · {formatarDataCurta(dataLisboaDe(m.criado_em))} · {formatarTamanhoFicheiro(m.tamanho)}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                        m.visto_em ? 'bg-success-bg text-success' : 'bg-warning-bg text-warning'
+                      }`}>
+                        {m.visto_em ? <><Eye size={10} /> Visto pelo aluno</> : <><EyeOff size={10} /> Ainda não visto</>}
+                      </span>
+                    </div>
+                    {m.nota && <p className="text-xs text-secondary break-words">{m.nota}</p>}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => handleAbrirMaterial(m)}
+                        disabled={abrindoMaterialId === m.id}
+                        className="min-h-9 flex items-center gap-1.5 bg-page border border-border hover:border-accent text-secondary px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50"
+                      >
+                        {abrindoMaterialId === m.id ? <Loader2 className="animate-spin" size={11} /> : <ExternalLink size={11} />} Abrir
+                      </button>
+                      <button
+                        onClick={() => handleApagarMaterial(m)}
+                        disabled={apagandoMaterialId === m.id}
+                        className="min-h-9 flex items-center gap-1.5 bg-danger-bg border border-danger/30 hover:bg-danger/10 text-danger px-3 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50"
+                      >
+                        {apagandoMaterialId === m.id ? <Loader2 className="animate-spin" size={11} /> : <Trash2 size={11} />} Apagar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       <StatusToast toast={toast} />
