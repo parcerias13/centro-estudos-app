@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 const ROLE_ALLOWED_PATHS: Record<string, string[]> = {
-  professor: ['/admin/notas', '/admin/agenda', '/admin/disciplinas', '/admin/explicacoes', '/admin/perfil', '/admin/horas'],
+  professor: ['/admin/notas', '/admin/agenda', '/admin/disciplinas', '/admin/explicacoes', '/admin/perfil', '/admin/horas', '/admin/os-meus-alunos'],
   secretaria: ['/admin/alunos', '/admin/notas', '/admin/agenda', '/admin/refeitorio', '/admin/historico', '/admin/relatorio', '/admin/mensagens', '/admin/alteracoes', '/admin/perfil'],
 }
 

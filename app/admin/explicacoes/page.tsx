@@ -18,6 +18,7 @@ import { mesParaData } from '@/lib/custos';
 import { tipoNoMes } from '@/lib/remuneracaoProfessores';
 import { sanitizarPedidoExplicacao, type PedidoExplicacaoSeguro } from '@/lib/formatoMensagens';
 import { modalidadeDoAluno, filtrarAlunosParaExplicacao, AVISO_ALUNO_SALA_ESTUDO, SEM_RESULTADOS_SO_EXPLICACOES } from '@/lib/modalidadeAlunos';
+import { buscarAlunosFixosAtivos, idsDeAlunosFixos } from '@/lib/osMeusAlunos';
 
 // «Nome · 7.º ano» — mesmo rótulo em toda a página (lista de alunos da
 // modal, banners de pedidos, e os nomes mostrados no detalhe da sessão).
@@ -367,6 +368,25 @@ function ExplicacoesPageContent() {
       });
     return () => { ativo = false; };
   }, [sessoes]);
+
+  // Alunos fixos ativos do PRÓPRIO professor — só para o realce "Fixo" no
+  // picker de Nova Explicação (NovaExplicacaoModal). Nunca para o admin:
+  // fica sempre vazio fora do papel professor, mesmo que o professor
+  // selecionado no seletor do admin tenha fixos (o realce é só uma
+  // conveniência do professor a marcar a sua própria sessão solta).
+  const [fixosProfessorIds, setFixosProfessorIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (role !== 'professor' || !selectedProfessorId) {
+      setFixosProfessorIds(new Set());
+      return;
+    }
+    let ativo = true;
+    buscarAlunosFixosAtivos(supabase, selectedProfessorId, getHojeLisboa())
+      .then((fixos) => { if (ativo) setFixosProfessorIds(idsDeAlunosFixos(fixos)); })
+      .catch((e: any) => { if (ativo) showError('Erro ao verificar os teus alunos fixos: ' + e.message); });
+    return () => { ativo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, selectedProfessorId]);
 
   const diasDaSemana = eachDayOfInterval({
     start: currentWeekStart,
@@ -781,6 +801,7 @@ function ExplicacoesPageContent() {
           centroId={centroId}
           subjects={subjects}
           alunosAtivos={alunosAtivos}
+          fixosProfessorIds={fixosProfessorIds}
           initialAlunoIds={pedidoPreSelecionado ? [pedidoPreSelecionado.alunoId] : undefined}
           initialDisciplinaId={pedidoPreSelecionado?.disciplinaId ?? undefined}
           pedidoMensagemId={pedidoPreSelecionado?.id}
@@ -1251,7 +1272,7 @@ function DetalheExplicacaoModal({ sessao, role, souSalarioNoMesAtual, professore
 type EtapaExplicacao = 'nova' | 'alunos' | 'rpc';
 
 function NovaExplicacaoModal({
-  professorId, centroId, subjects, alunosAtivos, initialAlunoIds, initialDisciplinaId, pedidoMensagemId, pedidoAlunoId,
+  professorId, centroId, subjects, alunosAtivos, fixosProfessorIds, initialAlunoIds, initialDisciplinaId, pedidoMensagemId, pedidoAlunoId,
   pedidoDetalhe,
   onClose, onCreated, showError, showSuccess,
 }: any) {
@@ -1300,7 +1321,13 @@ function NovaExplicacaoModal({
     setAlunoIds((prev) => (jaSelecionado ? prev.filter((a) => a !== id) : [...prev, id]));
   };
 
-  const alunosFiltrados = filtrarAlunosParaExplicacao(alunosAtivos, buscaAluno, mostrarSalaEstudo, alunoIds);
+  // Fixos do professor primeiro (sort estável — preserva a ordem alfabética
+  // original de alunosAtivos dentro de cada grupo); fixosProfessorIds vem
+  // sempre vazio fora do papel professor, por isso esta troca nunca
+  // acontece para o admin.
+  const alunosFiltrados = [...filtrarAlunosParaExplicacao(alunosAtivos, buscaAluno, mostrarSalaEstudo, alunoIds)].sort(
+    (a: any, b: any) => (fixosProfessorIds?.has(a.id) ? 0 : 1) - (fixosProfessorIds?.has(b.id) ? 0 : 1)
+  );
 
   // Disciplinas comuns aos alunos selecionados — sem ninguém selecionado
   // ainda, mostra tudo. Disciplina continua opcional, por isso não há aviso
@@ -1481,17 +1508,23 @@ function NovaExplicacaoModal({
                 alunosFiltrados.map((aluno: any) => {
                   const selecionado = alunoIds.includes(aluno.id);
                   const avisoSalaEstudo = selecionado && modalidadeDoAluno(aluno) === 'sala_estudo';
+                  const ehFixo = fixosProfessorIds?.has(aluno.id);
                   return (
                     <div key={aluno.id}>
                       <button
                         type="button"
                         onClick={() => toggleAluno(aluno.id)}
                         disabled={etapa !== 'nova'}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-50 ${
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 ${
                           selecionado ? 'bg-accent text-on-accent' : 'bg-page text-primary hover:bg-raised'
                         }`}
                       >
-                        {rotuloAluno(aluno.nome, aluno.ano_escolar)}
+                        <span className="min-w-0 break-words">{rotuloAluno(aluno.nome, aluno.ano_escolar)}</span>
+                        {ehFixo && (
+                          <span className="shrink-0 px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest bg-success-bg text-success border border-success/30">
+                            Fixo
+                          </span>
+                        )}
                       </button>
                       {avisoSalaEstudo && (
                         <p className="text-[10px] text-warning font-bold mt-1 px-1">{AVISO_ALUNO_SALA_ESTUDO}</p>

@@ -9,10 +9,10 @@ import { subscreverNotasConfirmadas } from '@/lib/eventoNotasAdmin'
 import { subscreverAlteracoesVistas } from '@/lib/eventoAlteracoesAdmin'
 import { contarNotasPendentes } from '@/lib/notas'
 import { contarAlteracoesPorVer } from '@/lib/alteracoes'
-import { LayoutDashboard, Users, ClipboardCheck, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle, FileBarChart, Bell, UserCog, Clock } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardCheck, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle, FileBarChart, Bell, UserCog, Clock, Star } from 'lucide-react'
 
 const ROLE_ALLOWED_MENU: Record<string, string[]> = {
-  professor: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Disciplinas e Materiais', 'Explicações', 'Horas de Trabalho', 'O Meu Perfil'],
+  professor: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Disciplinas e Materiais', 'Explicações', 'Os Meus Alunos', 'Horas de Trabalho', 'O Meu Perfil'],
   secretaria: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Refeitório', 'Histórico', 'Mensagens', 'Alterações', 'O Meu Perfil'],
 }
 
@@ -171,6 +171,7 @@ export default function AdminLayout({
     { name: 'Alterações', href: '/admin/alteracoes', icon: Bell },
     { name: 'Disciplinas e Materiais', href: '/admin/disciplinas', icon: BookOpen },
     { name: 'Explicações', href: '/admin/explicacoes', icon: GraduationCap },
+    { name: 'Os Meus Alunos', href: '/admin/os-meus-alunos', icon: Star },
     { name: 'Performance', href: '/admin/performance', icon: BarChart3 },
     { name: 'Pagamentos', href: '/admin/pagamentos', icon: Wallet },
     { name: 'Relatório Mensal', href: '/admin/relatorio-mensal', icon: FileBarChart },
@@ -182,7 +183,7 @@ export default function AdminLayout({
 
   const visibleMenuItems =
     role === 'admin'
-      ? menuItems.filter((item) => item.name !== 'O Meu Perfil' && item.name !== 'Horas de Trabalho')
+      ? menuItems.filter((item) => item.name !== 'O Meu Perfil' && item.name !== 'Horas de Trabalho' && item.name !== 'Os Meus Alunos')
       : role && ROLE_ALLOWED_MENU[role]
         ? menuItems.filter((item) => ROLE_ALLOWED_MENU[role].includes(item.name))
         : []
