@@ -7,10 +7,10 @@ import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { contarAlteracoesPorVer } from '@/lib/alteracoes';
 import { avisarAlteracoesVistas } from '@/lib/eventoAlteracoesAdmin';
 import {
-  Bell, Loader2, CalendarX, CalendarCheck, CalendarDays, UserCog, Eye, RotateCcw, CheckCheck,
+  Bell, Loader2, CalendarX, CalendarCheck, CalendarDays, UserCog, Eye, RotateCcw, CheckCheck, UserX, Undo2,
 } from 'lucide-react';
 
-type Tipo = 'cancelada' | 'reativada' | 'horario' | 'professor';
+type Tipo = 'cancelada' | 'reativada' | 'horario' | 'professor' | 'cancelada_aluno';
 
 type LinhaAlteracao = {
   id: string;
@@ -21,7 +21,11 @@ type LinhaAlteracao = {
   depois: Record<string, any> | null;
   motivo: string | null;
   autor_id: string | null;
-  contexto: { disciplina?: string; data?: string; hora_inicio?: string; alunos?: string[]; professor?: string; professor_antigo?: string } | null;
+  aluno_id: string | null;
+  contexto: {
+    disciplina?: string; data?: string; hora_inicio?: string; alunos?: string[]; professor?: string; professor_antigo?: string;
+    aluno?: string; tardio?: boolean; sessao_cancelada?: boolean; grupo?: boolean; gratis_horas?: number; professor_id?: string;
+  } | null;
   criada_em: string;
   revertida_em: string | null;
   revertida_por: string | null;
@@ -39,6 +43,7 @@ const ROTULO_TIPO: Record<Tipo, string> = {
   reativada: 'Reposta',
   horario: 'Mudou de hora/dia',
   professor: 'Trocou de professor',
+  cancelada_aluno: 'Cancelada pelo aluno',
 };
 
 const CLASSES_TIPO: Record<Tipo, string> = {
@@ -46,6 +51,7 @@ const CLASSES_TIPO: Record<Tipo, string> = {
   reativada: 'bg-success-bg text-success',
   horario: 'bg-warning-bg text-warning',
   professor: 'bg-purple-500/10 text-purple-500',
+  cancelada_aluno: 'bg-orange-500/10 text-orange-500',
 };
 
 const ICONE_TIPO: Record<Tipo, typeof CalendarX> = {
@@ -53,6 +59,7 @@ const ICONE_TIPO: Record<Tipo, typeof CalendarX> = {
   reativada: CalendarCheck,
   horario: CalendarDays,
   professor: UserCog,
+  cancelada_aluno: UserX,
 };
 
 function capitalizar(s: string): string {
@@ -91,6 +98,19 @@ function resumoAntesDepois(linha: LinhaAlteracao): string {
     const novo = linha.contexto?.professor || '—';
     return `${antigo} → ${novo}`;
   }
+  if (linha.tipo === 'cancelada_aluno') {
+    const cobrada = linha.contexto?.tardio ? 'Cobrada' : 'Não cobrada';
+    const sessao = linha.contexto?.sessao_cancelada ? 'Sessão cancelada' : 'A sessão continua';
+    return `${cobrada} · ${sessao}`;
+  }
+  return '—';
+}
+
+/** Nomes dos alunos envolvidos — a maioria dos tipos traz `alunos` (array);
+ * 'cancelada_aluno' traz só o aluno que cancelou, em `aluno` (singular). */
+function nomesAlunosDaLinha(linha: LinhaAlteracao): string {
+  if (linha.contexto?.alunos?.length) return linha.contexto.alunos.join(', ');
+  if (linha.contexto?.aluno) return linha.contexto.aluno;
   return '—';
 }
 
@@ -115,6 +135,7 @@ export default function AlteracoesExplicacoesPage() {
   const [marcandoId, setMarcandoId] = useState<string | null>(null);
   const [marcandoTodas, setMarcandoTodas] = useState(false);
   const [revertendoId, setRevertendoId] = useState<string | null>(null);
+  const [repondoId, setRepondoId] = useState<string | null>(null);
 
   const podeReverter = role === 'admin';
 
@@ -239,6 +260,26 @@ export default function AlteracoesExplicacoesPage() {
     }
   };
 
+  const handleReporAluno = async (linha: LinhaAlteracao) => {
+    if (repondoId || !linha.aluno_id) return;
+    if (!confirm(`Repor ${linha.contexto?.aluno || 'o aluno'} nesta sessão? Volta a contar como ativa para ele.`)) return;
+
+    setRepondoId(linha.id);
+    try {
+      const { error } = await supabase.rpc('repor_participacao_aluno', {
+        p_explicacao: linha.explicacao_id,
+        p_aluno: linha.aluno_id,
+      });
+      if (error) {
+        showError('Não foi possível repor: ' + error.message);
+        return;
+      }
+      showSuccess(`${linha.contexto?.aluno || 'Aluno'} reposto nesta sessão.`);
+    } finally {
+      setRepondoId(null);
+    }
+  };
+
   if (loadingPagina) {
     return <div className="min-h-[60vh] flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
   }
@@ -280,6 +321,7 @@ export default function AlteracoesExplicacoesPage() {
               <option value="reativada">Reposta</option>
               <option value="horario">Mudou de hora/dia</option>
               <option value="professor">Trocou de professor</option>
+              <option value="cancelada_aluno">Cancelada pelo aluno</option>
             </select>
             {linhasFiltradas.some((l) => !l.vista_em) && (
               <button
@@ -327,8 +369,10 @@ export default function AlteracoesExplicacoesPage() {
                       podeReverter={podeReverter}
                       marcando={marcandoId === l.id}
                       revertendo={revertendoId === l.id}
+                      repondo={repondoId === l.id}
                       onMarcarVista={() => handleMarcarVista(l.id)}
                       onReverter={() => handleReverter(l)}
+                      onReporAluno={() => handleReporAluno(l)}
                     />
                   ))}
                 </tbody>
@@ -346,8 +390,10 @@ export default function AlteracoesExplicacoesPage() {
                   podeReverter={podeReverter}
                   marcando={marcandoId === l.id}
                   revertendo={revertendoId === l.id}
+                  repondo={repondoId === l.id}
                   onMarcarVista={() => handleMarcarVista(l.id)}
                   onReverter={() => handleReverter(l)}
+                  onReporAluno={() => handleReporAluno(l)}
                 />
               ))}
             </div>
@@ -402,11 +448,13 @@ type PropsLinha = {
   podeReverter: boolean;
   marcando: boolean;
   revertendo: boolean;
+  repondo: boolean;
   onMarcarVista: () => void;
   onReverter: () => void;
+  onReporAluno: () => void;
 };
 
-function Acoes({ linha, podeReverter, marcando, revertendo, onMarcarVista, onReverter }: PropsLinha) {
+function Acoes({ linha, podeReverter, marcando, revertendo, repondo, onMarcarVista, onReverter, onReporAluno }: PropsLinha) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {!linha.vista_em && (
@@ -414,7 +462,7 @@ function Acoes({ linha, podeReverter, marcando, revertendo, onMarcarVista, onRev
           {marcando ? <Loader2 className="animate-spin" size={12} /> : <Eye size={12} />} Marcar vista
         </button>
       )}
-      {podeReverter && (
+      {podeReverter && linha.tipo !== 'cancelada_aluno' && (
         <button
           onClick={onReverter}
           disabled={revertendo || !!linha.revertida_em}
@@ -424,13 +472,22 @@ function Acoes({ linha, podeReverter, marcando, revertendo, onMarcarVista, onRev
           {revertendo ? <Loader2 className="animate-spin" size={12} /> : <RotateCcw size={12} />} {linha.revertida_em ? 'Revertida' : 'Reverter'}
         </button>
       )}
+      {podeReverter && linha.tipo === 'cancelada_aluno' && (
+        <button
+          onClick={onReporAluno}
+          disabled={repondo}
+          className="text-accent hover:underline text-[11px] font-black uppercase flex items-center gap-1 disabled:opacity-40 disabled:no-underline"
+        >
+          {repondo ? <Loader2 className="animate-spin" size={12} /> : <Undo2 size={12} />} Repor aluno
+        </button>
+      )}
     </div>
   );
 }
 
 function LinhaDesktop(props: PropsLinha) {
   const { linha: l, nomeAutor, aviso } = props;
-  const alunos = (l.contexto?.alunos || []).join(', ') || '—';
+  const alunos = nomesAlunosDaLinha(l);
   return (
     <tr className="text-secondary hover:bg-raised/20 transition-colors align-top">
       <td className="p-3"><BadgeTipo tipo={l.tipo} /></td>
@@ -448,7 +505,7 @@ function LinhaDesktop(props: PropsLinha) {
 
 function CartaoMobile(props: PropsLinha) {
   const { linha: l, nomeAutor, aviso } = props;
-  const alunos = (l.contexto?.alunos || []).join(', ') || '—';
+  const alunos = nomesAlunosDaLinha(l);
   return (
     <div className="bg-page border border-border rounded-2xl p-4 space-y-2.5">
       <div className="flex items-start justify-between gap-2">

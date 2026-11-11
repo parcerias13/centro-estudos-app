@@ -46,7 +46,7 @@ export async function GET() {
   // por centro, para não a pôr nas mãos de cada admin.
   const { data: config, error } = await supabaseAdmin
     .from('config_centro')
-    .select('nome_centro, aviso_alteracoes_explicacao_ativo, modo_presencas')
+    .select('nome_centro, aviso_alteracoes_explicacao_ativo, modo_presencas, aluno_cancela_explicacoes, cancelamento_gratis_horas')
     .eq('id', centroId)
     .maybeSingle()
 
@@ -58,7 +58,10 @@ export async function PATCH(req: Request) {
   const centroId = await getAdminCentroId()
   if (!centroId) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
-  const { nome_centro, aviso_alteracoes_explicacao_ativo, modo_presencas } = await req.json()
+  const {
+    nome_centro, aviso_alteracoes_explicacao_ativo, modo_presencas,
+    aluno_cancela_explicacoes, cancelamento_gratis_horas,
+  } = await req.json()
 
   // email_remetente e resend_api_key deixaram de ser aceites aqui — a
   // chave é da plataforma, nunca por centro. Cada campo só entra no update
@@ -71,6 +74,17 @@ export async function PATCH(req: Request) {
   }
   if (modo_presencas === 'individual' || modo_presencas === 'lista_dia') {
     payload.modo_presencas = modo_presencas
+  }
+  if (typeof aluno_cancela_explicacoes === 'boolean') {
+    payload.aluno_cancela_explicacoes = aluno_cancela_explicacoes
+  }
+  if (
+    typeof cancelamento_gratis_horas === 'number' &&
+    Number.isInteger(cancelamento_gratis_horas) &&
+    cancelamento_gratis_horas >= 0 &&
+    cancelamento_gratis_horas <= 720
+  ) {
+    payload.cancelamento_gratis_horas = cancelamento_gratis_horas
   }
 
   const { error } = await supabaseAdmin

@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { disciplinasParaAno } from '@/lib/disciplinas';
-import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw, ClipboardList, Lock, FolderOpen } from 'lucide-react';
+import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw, ClipboardList, Lock, FolderOpen, CalendarClock } from 'lucide-react';
 import { LAB_AI_ATIVO } from '@/lib/features';
 import { contarMaterialNovoAluno } from '@/lib/materialAluno';
 
@@ -375,6 +375,16 @@ export default function StudentHome() {
                         {materialNovoCount > 0 && (
                           <span className="bg-danger text-on-danger text-[10px] font-black min-w-5 h-5 px-1.5 rounded-full flex items-center justify-center shrink-0">{materialNovoCount}</span>
                         )}
+                    </Link>
+
+                    <Link href="/minhas-explicacoes" className="col-span-2 bg-surface border border-border p-5 rounded-3xl flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-raised p-3 rounded-2xl text-blue-500"><CalendarClock size={22} /></div>
+                          <div>
+                            <p className="font-black text-primary text-base">As Minhas Explicações</p>
+                            <p className="text-[10px] text-muted font-bold uppercase tracking-widest">Sessões marcadas e cancelamentos</p>
+                          </div>
+                        </div>
                     </Link>
 
                     <Link href="/encarregados" className="col-span-2 bg-surface border border-border p-5 rounded-3xl flex items-center justify-between">

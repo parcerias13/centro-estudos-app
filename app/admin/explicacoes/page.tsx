@@ -9,7 +9,7 @@ import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Plus, X, GraduationCap, Loader2,
   Clock, Trash2, Save, Search, Users, AlertTriangle, HelpCircle, CalendarDays,
-  CheckCheck, Ban, RotateCcw, UserCog, CalendarClock, ListTree,
+  CheckCheck, Ban, RotateCcw, UserCog, CalendarClock, ListTree, Bell,
 } from 'lucide-react';
 import { startOfWeek, endOfWeek, addWeeks, addDays, eachDayOfInterval, format, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -59,28 +59,58 @@ function extrairHoraDoPedido(horario: string | null): string {
   return `${hora}:${minuto}`;
 }
 
+// Uma sessão individual cancelada tarde pelo próprio aluno fica 'ativa' e
+// 'dado' (cancelar_explicacao_aluno marca-a como dada, com a duração
+// prevista, para entrar nas contas sozinha) — nunca editável de volta pelo
+// toggle "Sessão dada?" (ver DetalheExplicacaoModal).
+function canceladaTardeIndividual(sessao: any): boolean {
+  const alunos = sessao.explicacoes_alunos || [];
+  return sessao.dado === true && alunos.length === 1 && alunos[0]?.cancelamento_tardio === true;
+}
+
 // Só apresentação: "Dada"/"Por dar" vêm direto de sessao.dado, sem comparar
 // datas; "Cancelada" tem sempre prioridade sobre o estado de dado (uma
 // sessão dada nunca fica cancelada — garantido por alterar_sessao).
-const getEstadoSessaoResumido = (sessao: any) =>
-  sessao.estado === 'cancelada'
-    ? { label: 'Cancelada', classes: 'bg-page text-muted border-border' }
-    : sessao.dado
-      ? { label: 'Dada', classes: 'bg-success-bg text-success border-success/30' }
-      : { label: 'Por dar', classes: 'bg-page text-muted border-border' };
+// "Cancelada pelo aluno" distingue-se de uma cancelada pelo centro: só
+// cancelar_explicacao_aluno escreve explicacoes_alunos.cancelado_em — uma
+// sessão cancelada via alterar_sessao (admin/professor) nunca tem nenhuma
+// linha de explicacoes_alunos com esse campo preenchido.
+const getEstadoSessaoResumido = (sessao: any) => {
+  const canceladaPeloAluno = (sessao.explicacoes_alunos || []).some((ea: any) => ea.cancelado_em);
+  if (sessao.estado === 'cancelada') {
+    return canceladaPeloAluno
+      ? { label: 'Cancelada pelo aluno', classes: 'bg-orange-500/10 text-orange-500 border-orange-500/30' }
+      : { label: 'Cancelada', classes: 'bg-page text-muted border-border' };
+  }
+  if (canceladaTardeIndividual(sessao)) {
+    return { label: 'Cancelada tarde (cobrada)', classes: 'bg-danger-bg text-danger border-danger/30' };
+  }
+  return sessao.dado
+    ? { label: 'Dada', classes: 'bg-success-bg text-success border-success/30' }
+    : { label: 'Por dar', classes: 'bg-page text-muted border-border' };
+};
 
 // Nomes separados por vírgula (sem o "· N.º ano" por nome, que rotuloAluno/
 // getNomeAluno sempre acrescentam — usados tal e qual nas modais) + o ano
 // escolar do grupo UMA vez só, à parte, tal como o desenho pede. Uma sessão
 // em grupo é sempre do mesmo ano (validado em toggleAluno), por isso o ano
-// do primeiro aluno já representa o grupo todo.
+// do primeiro aluno já representa o grupo todo. Em grupo, cada aluno que
+// cancelou leva a seguir "(cancelou)" ou "(cancelou tarde · cobrada)".
 function nomesEAnoDaSessao(sessao: any): { nomes: string; anoEscolar: number | null } {
-  const alunos = (sessao.explicacoes_alunos || [])
-    .map((ea: any) => (Array.isArray(ea.alunos) ? ea.alunos[0] : ea.alunos))
-    .filter(Boolean);
+  const linhas = sessao.explicacoes_alunos || [];
+  const emGrupo = linhas.length > 1;
+  const alunos = linhas
+    .map((ea: any) => ({ a: Array.isArray(ea.alunos) ? ea.alunos[0] : ea.alunos, ea }))
+    .filter((x: any) => x.a);
   return {
-    nomes: alunos.map((a: any) => a?.nome || 'Desconhecido').join(', '),
-    anoEscolar: alunos[0]?.ano_escolar ?? null,
+    nomes: alunos
+      .map(({ a, ea }: any) => {
+        const nome = a?.nome || 'Desconhecido';
+        if (!emGrupo || !ea.cancelado_em) return nome;
+        return `${nome} (${ea.cancelamento_tardio ? 'cancelou tarde · cobrada' : 'cancelou'})`;
+      })
+      .join(', '),
+    anoEscolar: alunos[0]?.a?.ano_escolar ?? null,
   };
 }
 
@@ -130,6 +160,14 @@ function ExplicacoesPageContent() {
   const [pedidosPendentes, setPedidosPendentes] = useState<any[]>([]);
   const [pedidosAbertos, setPedidosAbertos] = useState(false);
 
+  // Banner "N aviso(s) de alunos por ler" — só para professor. A RLS de
+  // explicacoes_alteracoes já só devolve as linhas do próprio professor
+  // (contexto.professor_id === ele), por isso o filtro aqui é só por tipo e
+  // por ainda não vista.
+  const [avisosAlunos, setAvisosAlunos] = useState<any[]>([]);
+  const [avisosAlunosAbertos, setAvisosAlunosAbertos] = useState(false);
+  const [marcandoAvisosLidos, setMarcandoAvisosLidos] = useState(false);
+
   // Selo vermelho no botão "Fixas" (só admin) — ver efeito mais abaixo.
   const [fixasPorValidar, setFixasPorValidar] = useState(0);
 
@@ -177,6 +215,36 @@ function ExplicacoesPageContent() {
     if (role !== 'admin' || !centroId) return;
     carregarPedidosPendentes(centroId);
   }, [role, centroId, carregarPedidosPendentes]);
+
+  const carregarAvisosAlunos = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('explicacoes_alteracoes')
+      .select('id, contexto, motivo, criada_em')
+      .eq('tipo', 'cancelada_aluno')
+      .is('vista_professor_em', null)
+      .order('criada_em', { ascending: false });
+    if (!error) setAvisosAlunos(data || []);
+  }, []);
+
+  useEffect(() => {
+    if (role !== 'professor') return;
+    carregarAvisosAlunos();
+  }, [role, carregarAvisosAlunos]);
+
+  const handleMarcarAvisosLidos = async () => {
+    if (marcandoAvisosLidos || avisosAlunos.length === 0) return;
+    setMarcandoAvisosLidos(true);
+    try {
+      const { error } = await supabase.rpc('marcar_avisos_professor_vistos', { p_ids: avisosAlunos.map((a) => a.id) });
+      if (error) {
+        showError('Não foi possível marcar os avisos como lidos: ' + error.message);
+        return;
+      }
+      setAvisosAlunos([]);
+    } finally {
+      setMarcandoAvisosLidos(false);
+    }
+  };
 
   // Selo vermelho no botão "Fixas" (só admin) — contagem de explicações
   // fixas por validar do centro. Mesmo padrão de atualização do selo
@@ -319,7 +387,7 @@ function ExplicacoesPageContent() {
 
       const { data, error } = await supabase
         .from('explicacoes')
-        .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, alunos(nome, ano_escolar)), subjects(name)')
+        .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, cancelado_em, cancelamento_tardio, alunos(nome, ano_escolar)), subjects(name)')
         .eq('professor_id', selectedProfessorId)
         .gte('data', format(currentWeekStart, 'yyyy-MM-dd'))
         .lte('data', format(weekEnd, 'yyyy-MM-dd'))
@@ -591,6 +659,58 @@ function ExplicacoesPageContent() {
         </div>
       )}
 
+      {role === 'professor' && avisosAlunos.length > 0 && (
+        <div className="bg-warning-bg border border-warning/20 rounded-2xl mb-8 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setAvisosAlunosAbertos((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 p-4 text-warning"
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <Bell size={18} className="shrink-0" />
+              <span className="font-black text-sm">{avisosAlunos.length} aviso{avisosAlunos.length > 1 ? 's' : ''} de alunos por ler</span>
+            </span>
+            {avisosAlunosAbertos ? <ChevronUp size={18} className="shrink-0" /> : <ChevronDown size={18} className="shrink-0" />}
+          </button>
+          {avisosAlunosAbertos && (
+            <div className="space-y-2 px-4 pb-4">
+              {avisosAlunos.map((a) => {
+                const c = a.contexto || {};
+                return (
+                  <div key={a.id} className="bg-page/60 rounded-xl px-3 py-2.5 text-sm space-y-1">
+                    <p className="font-bold text-primary break-words">
+                      {c.aluno ?? 'Aluno'} — {c.disciplina ?? 'Disciplina'}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {c.data ? format(new Date(`${c.data}T00:00:00`), "d 'de' MMMM", { locale: pt }) : ''}{c.hora_inicio ? ` · ${c.hora_inicio.slice(0, 5)}` : ''}
+                    </p>
+                    {a.motivo && <p className="text-xs text-secondary italic break-words">"{a.motivo}"</p>}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${c.tardio ? 'bg-danger-bg text-danger' : 'bg-page text-muted border border-border'}`}>
+                        {c.tardio ? 'Cobrada à família' : 'Não cobrada'}
+                      </span>
+                      {c.grupo && (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-page text-muted border border-border">
+                          A sessão continua marcada
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                onClick={handleMarcarAvisosLidos}
+                disabled={marcandoAvisosLidos}
+                className="flex items-center gap-1.5 bg-accent hover:bg-accent-hover disabled:opacity-40 text-on-accent px-4 py-2 rounded-xl font-black text-[11px] uppercase tracking-widest transition-all active:scale-95"
+              >
+                {marcandoAvisosLidos ? <Loader2 className="animate-spin" size={14} /> : <CheckCheck size={14} />} Marcar como lido
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {pedidoPreSelecionado && !selectedProfessorId && (
         <div className="bg-warning-bg border border-warning/20 rounded-2xl p-4 mb-8">
           <p className="font-bold text-sm text-warning">
@@ -855,6 +975,7 @@ function DetalheExplicacaoModal({ sessao, role, souSalarioNoMesAtual, professore
   const nAlunosSessao = (sessao.explicacoes_alunos || []).length;
   const podeAlterarSessao = role === 'admin' || role === 'professor';
   const cancelarMudarReporDesativado = sessao.dado;
+  const foiCanceladaTardeIndividual = canceladaTardeIndividual(sessao);
   const trocarProfessorDesativado = sessao.dado && role !== 'admin';
   const outrosProfessores = (professores || []).filter((p: any) => p.id !== sessao.professor_id);
 
@@ -903,7 +1024,7 @@ function DetalheExplicacaoModal({ sessao, role, souSalarioNoMesAtual, professore
 
       const { data, error: fetchError } = await supabase
         .from('explicacoes')
-        .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, alunos(nome, ano_escolar)), subjects(name)')
+        .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, cancelado_em, cancelamento_tardio, alunos(nome, ano_escolar)), subjects(name)')
         .eq('id', sessao.id)
         .single();
       if (fetchError) {
@@ -973,7 +1094,7 @@ function DetalheExplicacaoModal({ sessao, role, souSalarioNoMesAtual, professore
     // escrever na tabela relacionada (fica null até um pedido novo).
     const { data, error: fetchError } = await supabase
       .from('explicacoes')
-      .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, alunos(nome, ano_escolar)), subjects(name)')
+      .select('*, explicacoes_alunos(id, aluno_id, valor_cobrado_familia, cancelado_em, cancelamento_tardio, alunos(nome, ano_escolar)), subjects(name)')
       .eq('id', sessao.id)
       .single();
 
@@ -1044,28 +1165,34 @@ function DetalheExplicacaoModal({ sessao, role, souSalarioNoMesAtual, professore
         {sessao.subjects?.name && <p className="text-xs text-muted mb-6">{sessao.subjects.name}</p>}
 
         <div className="space-y-4">
-          <div className="bg-page p-4 rounded-2xl border border-border flex items-center justify-between">
-            <span className="font-bold text-sm text-primary">Sessão dada?</span>
-            <button
-              type="button"
-              onClick={() => setDado((v) => {
-                const novo = !v;
-                // Sessão de série (duracao_prevista_horas definida) — ao marcar
-                // como dada, pré-preenche as horas com a duração prevista, só
-                // se o campo ainda estiver vazio (nunca substitui um valor já
-                // escrito à mão).
-                if (novo && sessao.duracao_prevista_horas != null && horasDadas.trim() === '') {
-                  setHorasDadas(String(sessao.duracao_prevista_horas));
-                }
-                return novo;
-              })}
-              className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
-                dado ? 'bg-success-bg text-success border-success/30' : 'bg-raised text-muted border-border'
-              }`}
-            >
-              {dado ? 'Sim' : 'Não'}
-            </button>
-          </div>
+          {foiCanceladaTardeIndividual ? (
+            <div className="bg-danger-bg p-4 rounded-2xl border border-danger/30 flex items-center justify-between">
+              <span className="font-bold text-sm text-danger">Cancelada tarde (cobrada)</span>
+            </div>
+          ) : (
+            <div className="bg-page p-4 rounded-2xl border border-border flex items-center justify-between">
+              <span className="font-bold text-sm text-primary">Sessão dada?</span>
+              <button
+                type="button"
+                onClick={() => setDado((v) => {
+                  const novo = !v;
+                  // Sessão de série (duracao_prevista_horas definida) — ao marcar
+                  // como dada, pré-preenche as horas com a duração prevista, só
+                  // se o campo ainda estiver vazio (nunca substitui um valor já
+                  // escrito à mão).
+                  if (novo && sessao.duracao_prevista_horas != null && horasDadas.trim() === '') {
+                    setHorasDadas(String(sessao.duracao_prevista_horas));
+                  }
+                  return novo;
+                })}
+                className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                  dado ? 'bg-success-bg text-success border-success/30' : 'bg-raised text-muted border-border'
+                }`}
+              >
+                {dado ? 'Sim' : 'Não'}
+              </button>
+            </div>
+          )}
 
           <div>
             <label className="text-xs font-bold text-muted uppercase ml-1">Horas Dadas</label>
@@ -1103,7 +1230,14 @@ function DetalheExplicacaoModal({ sessao, role, souSalarioNoMesAtual, professore
               <p className="text-[9px] font-black uppercase text-muted tracking-widest">Cobrado à família</p>
               {sessao.explicacoes_alunos.map((ea: any) => (
                 <div key={ea.id} className="flex items-center justify-between text-xs">
-                  <span className="text-secondary font-bold">{ea.alunos?.nome ? rotuloAluno(ea.alunos.nome, ea.alunos.ano_escolar) : ''}</span>
+                  <span className="text-secondary font-bold">
+                    {ea.alunos?.nome ? rotuloAluno(ea.alunos.nome, ea.alunos.ano_escolar) : ''}
+                    {ea.cancelado_em && (
+                      <span className="ml-1.5 text-[9px] font-black uppercase text-danger">
+                        {ea.cancelamento_tardio ? '· Cancelou tarde (cobrada)' : '· Cancelou'}
+                      </span>
+                    )}
+                  </span>
                   {ea.valor_cobrado_familia != null ? (
                     <span className="font-bold text-primary">{Number(ea.valor_cobrado_familia).toFixed(2)}€</span>
                   ) : (

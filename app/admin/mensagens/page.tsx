@@ -15,11 +15,12 @@ import {
 import {
   Loader2, Search, MessageCircle, Send, ArrowLeft, ExternalLink, ChevronUp,
   FileText, HelpCircle, CalendarCheck, CheckCircle2, Clock, XCircle, Check, Paperclip, X,
-  CalendarX, CalendarDays, UserCog, PauseCircle,
+  CalendarX, CalendarDays, UserCog, PauseCircle, UserX,
 } from 'lucide-react';
 
 const ICONES_ALTERACAO: Record<ChaveIconeAlteracao, typeof CalendarCheck> = {
   cancelada: CalendarX, reativada: CalendarCheck, hora: Clock, dia: CalendarDays, professor: UserCog, pausa: PauseCircle,
+  cancelada_aluno: UserX,
 };
 
 const DIAS_SEMANA_ROTULO: Record<number, string> = { 1: 'Seg', 2: 'Ter', 3: 'Qua', 4: 'Qui', 5: 'Sex', 6: 'Sáb', 7: 'Dom' };

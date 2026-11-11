@@ -10,11 +10,12 @@ import { pt } from 'date-fns/locale';
  * arriscar desenhar undefined/objetos.
  */
 
-export type ChaveIconeAlteracao = 'cancelada' | 'reativada' | 'hora' | 'dia' | 'professor' | 'pausa';
+export type ChaveIconeAlteracao = 'cancelada' | 'reativada' | 'hora' | 'dia' | 'professor' | 'pausa' | 'cancelada_aluno';
 
 export type AlteracaoCartao =
   | { tipo: 'cancelada'; icone: 'cancelada'; disciplina: string; data: string; hora: string }
   | { tipo: 'reativada'; icone: 'reativada'; disciplina: string; data: string; hora: string }
+  | { tipo: 'cancelada_aluno'; icone: 'cancelada_aluno'; disciplina: string; data: string; hora: string; tardio: boolean }
   | {
       tipo: 'horario';
       icone: 'hora' | 'dia';
@@ -57,6 +58,13 @@ export function sanitizarAlteracaoExplicacao(payload: unknown): AlteracaoCartao 
     const hora = str(p.hora_inicio);
     if (!data || !hora) return null;
     return { tipo: 'reativada', icone: 'reativada', disciplina, data, hora };
+  }
+
+  if (tipoAlteracao === 'cancelada_aluno') {
+    const data = str(p.data);
+    const hora = str(p.hora_inicio);
+    if (!data || !hora) return null;
+    return { tipo: 'cancelada_aluno', icone: 'cancelada_aluno', disciplina, data, hora, tardio: p.tardio === true };
   }
 
   if (tipoAlteracao === 'horario') {
@@ -111,6 +119,8 @@ export function tituloAlteracao(a: AlteracaoCartao): string {
       return 'Sessão cancelada';
     case 'reativada':
       return 'Sessão reposta';
+    case 'cancelada_aluno':
+      return 'Cancelada pelo aluno';
     case 'professor':
       return 'Mudança de professor';
     case 'pausa':
@@ -131,6 +141,13 @@ export function linhasAlteracao(a: AlteracaoCartao): string[] {
       ];
     case 'reativada':
       return [`A explicação de ${a.disciplina} de ${formatarDataExtensoAlteracao(a.data)}, às ${formatarHoraAlteracao(a.hora)}, voltou a estar marcada.`];
+    case 'cancelada_aluno':
+      return [
+        `O aluno cancelou a explicação de ${a.disciplina} de ${formatarDataExtensoAlteracao(a.data)}, às ${formatarHoraAlteracao(a.hora)}.`,
+        a.tardio
+          ? 'Como foi cancelada com pouca antecedência, esta sessão será cobrada.'
+          : 'Não terá custos.',
+      ];
     case 'professor':
       return [`A explicação de ${a.disciplina} de ${formatarDataExtensoAlteracao(a.data)}, às ${formatarHoraAlteracao(a.hora)}, passa a ser dada por ${a.professorNovo}.`];
     case 'pausa':

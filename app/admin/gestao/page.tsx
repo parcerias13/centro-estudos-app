@@ -14,7 +14,7 @@ import { pt } from 'date-fns/locale';
 import {
   Building2, Save, Loader2, DollarSign, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Plus, Trash2, RefreshCw, ShieldAlert, Receipt, GraduationCap, Pencil, Bell, Users,
-  Layers, Calculator, AlertTriangle,
+  Layers, Calculator, AlertTriangle, Ban,
 } from 'lucide-react';
 import {
   CICLOS_INFO, LABEL_CICLO, cicloDoAno, escolherPrecoPorAlunos, valorCobrado,
@@ -47,6 +47,11 @@ export default function GestaoTotalPage() {
   const [salvandoAviso, setSalvandoAviso] = useState(false);
   const [modoPresencas, setModoPresencas] = useState<'individual' | 'lista_dia'>('individual');
   const [salvandoModoPresencas, setSalvandoModoPresencas] = useState(false);
+  const [alunoCancelaAtivo, setAlunoCancelaAtivo] = useState(false);
+  const [salvandoAlunoCancela, setSalvandoAlunoCancela] = useState(false);
+  const [horasGratisTexto, setHorasGratisTexto] = useState('24');
+  const [salvandoHorasGratis, setSalvandoHorasGratis] = useState(false);
+  const [erroHorasGratis, setErroHorasGratis] = useState<string | null>(null);
 
   const [servicos, setServicos] = useState<any[]>([]);
 
@@ -185,6 +190,10 @@ export default function GestaoTotalPage() {
         setNomeCentro(config.nome_centro || '');
         setAvisoAlteracoesAtivo(!!config.aviso_alteracoes_explicacao_ativo);
         setModoPresencas(config.modo_presencas === 'lista_dia' ? 'lista_dia' : 'individual');
+        setAlunoCancelaAtivo(!!config.aluno_cancela_explicacoes);
+        setHorasGratisTexto(
+          Number.isInteger(config.cancelamento_gratis_horas) ? String(config.cancelamento_gratis_horas) : '24'
+        );
       }
     } catch (error) {
       console.error("Erro no load:", error);
@@ -247,6 +256,49 @@ export default function GestaoTotalPage() {
     if (res.ok) {
       setModoPresencas(novoValor);
       showSuccess(novoValor === 'lista_dia' ? 'Dashboard a mostrar a Lista do Dia.' : 'Dashboard a mostrar o check-in individual.');
+    } else {
+      const body = await res.json().catch(() => ({}));
+      showError(body?.error || `Erro ao guardar (${res.status}). Tenta novamente.`);
+    }
+  };
+
+  const handleToggleAlunoCancela = async () => {
+    const novoValor = !alunoCancelaAtivo;
+    setSalvandoAlunoCancela(true);
+    const res = await fetch('/api/config-centro', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aluno_cancela_explicacoes: novoValor }),
+    });
+    setSalvandoAlunoCancela(false);
+
+    if (res.ok) {
+      setAlunoCancelaAtivo(novoValor);
+      showSuccess(novoValor ? 'Os alunos já podem cancelar explicações.' : 'Cancelamento pelos alunos desativado.');
+    } else {
+      const body = await res.json().catch(() => ({}));
+      showError(body?.error || `Erro ao guardar (${res.status}). Tenta novamente.`);
+    }
+  };
+
+  const handleGuardarHorasGratis = async () => {
+    const valor = parseInt(horasGratisTexto.trim(), 10);
+    if (!Number.isInteger(valor) || valor < 0 || valor > 720) {
+      setErroHorasGratis('Indica um número de horas entre 0 e 720.');
+      return;
+    }
+    setErroHorasGratis(null);
+    setSalvandoHorasGratis(true);
+    const res = await fetch('/api/config-centro', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cancelamento_gratis_horas: valor }),
+    });
+    setSalvandoHorasGratis(false);
+
+    if (res.ok) {
+      setHorasGratisTexto(String(valor));
+      showSuccess('Prazo de cancelamento gratuito atualizado.');
     } else {
       const body = await res.json().catch(() => ({}));
       showError(body?.error || `Erro ao guardar (${res.status}). Tenta novamente.`);
@@ -1429,6 +1481,58 @@ export default function GestaoTotalPage() {
               >
                 Lista do dia
               </button>
+            </div>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-border space-y-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2.5 bg-page/50 rounded-xl text-muted shrink-0">
+                <Ban size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-sm text-primary">Cancelamento de explicações pelos alunos</p>
+                <p className="text-[10px] text-muted mt-0.5">Permite ao aluno cancelar as suas próprias sessões antes de começarem.</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-xs font-bold text-secondary">Os alunos podem cancelar explicações</p>
+              <button
+                type="button"
+                onClick={handleToggleAlunoCancela}
+                disabled={salvandoAlunoCancela}
+                className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all disabled:opacity-50 ${
+                  alunoCancelaAtivo ? 'bg-success-bg text-success border-success/30' : 'bg-raised text-muted border-border'
+                }`}
+              >
+                {salvandoAlunoCancela ? <Loader2 size={12} className="animate-spin" /> : alunoCancelaAtivo ? 'Ativo' : 'Inativo'}
+              </button>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-xs font-bold text-secondary">Cancelamento gratuito até (horas antes)</label>
+                <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    type="number"
+                    min={0}
+                    max={720}
+                    value={horasGratisTexto}
+                    onChange={(e) => setHorasGratisTexto(e.target.value)}
+                    className="w-20 bg-page border border-border text-primary text-sm p-2 rounded-xl outline-none focus:border-accent transition-all text-center"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleGuardarHorasGratis}
+                    disabled={salvandoHorasGratis}
+                    className="flex items-center gap-1 bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
+                  >
+                    {salvandoHorasGratis ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Guardar
+                  </button>
+                </div>
+              </div>
+              <p className="text-[10px] text-muted mt-1.5">Depois disto, o cancelamento é permitido mas a sessão é cobrada à família.</p>
+              {erroHorasGratis && <p className="text-[10px] text-danger font-bold mt-1">{erroHorasGratis}</p>}
             </div>
           </div>
         </section>
