@@ -23,7 +23,7 @@ const supabaseAdmin = createClient(
 );
 
 const PAGINAS = [
-  '/admin', '/admin/alunos', '/admin/pagamentos', '/admin/mensagens', '/admin/relatorio-mensal',
+  '/admin', '/admin/alunos', '/admin/pagamentos', '/admin/mensagens',
   '/', '/notas', '/agenda', '/perfil', '/biblioteca', '/encarregados', '/encarregados/mensagens',
 ];
 

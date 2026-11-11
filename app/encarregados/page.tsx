@@ -10,8 +10,62 @@ import { getHojeLisboa } from '@/lib/dataLisboa';
 import { getAnoLetivoAtual } from '@/lib/anoLetivo';
 import {
   ArrowLeft, Lock, Unlock, Loader2, AlertTriangle, DollarSign, ClipboardList,
-  MessageCircle, KeyRound,
+  MessageCircle, KeyRound, ChevronLeft, ChevronRight, CheckCircle2, Clock,
 } from 'lucide-react';
+
+type LinhaExplicacaoResumo = {
+  data: string;
+  hora_inicio: string;
+  disciplina: string;
+  valor: number | null;
+  grupo: boolean;
+  cancelada_tarde: boolean;
+};
+
+type LinhaExtraResumo = { nome: string; quantidade: number; total: number };
+
+type ResumoMes = {
+  ano: number;
+  mes: number;
+  presencas: { dias: number; datas: string[] };
+  mensalidade: { valor: number; pago: boolean } | null;
+  explicacoes: { linhas: LinhaExplicacaoResumo[]; total: number; sem_preco: number; pago: boolean };
+  extras: { linhas: LinhaExtraResumo[]; total: number };
+  total_mes: number;
+};
+
+/** Mesmo formato de euros do resto do projeto: "12.34€" (sem espaço). */
+function euro(valor: number): string {
+  return `${Number(valor).toFixed(2)}€`;
+}
+
+/** "dd/MM" por extração direta da string yyyy-MM-dd — nunca um Date, para nunca escorregar de dia por fuso. */
+function dataCurta(dataISO: string): string {
+  return `${dataISO.slice(8, 10)}/${dataISO.slice(5, 7)}`;
+}
+
+/** "novembro de 2026" — só para apresentação; ano/mes vêm sempre do servidor, nunca de new Date() local. */
+function nomeMesPorExtenso(ano: number, mes: number): string {
+  return new Intl.DateTimeFormat('pt-PT', { month: 'long', year: 'numeric' }).format(new Date(ano, mes - 1, 1));
+}
+
+/** "Segunda-feira, 3 de novembro" — a data já é um dia civil fixo (coluna date), por isso um Date à meia-noite local nunca desloca o dia. */
+function diaDaSemanaPorExtenso(dataISO: string): string {
+  const data = new Date(`${dataISO}T00:00:00`);
+  return new Intl.DateTimeFormat('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' }).format(data);
+}
+
+function SeloPago({ pago }: { pago: boolean }) {
+  return pago ? (
+    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-success-bg text-success shrink-0">
+      <CheckCircle2 size={11} /> Pago
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-warning-bg text-warning shrink-0">
+      <Clock size={11} /> Por pagar
+    </span>
+  );
+}
 
 export default function EncarregadosPage() {
   const router = useRouter();
@@ -31,10 +85,34 @@ export default function EncarregadosPage() {
 
   // Visão geral
   const [nome, setNome] = useState('');
-  const [resumo, setResumo] = useState<any>(null);
+  const [mesesDisponiveis, setMesesDisponiveis] = useState<Array<{ ano: number; mes: number }>>([]);
+  const [indiceMes, setIndiceMes] = useState(0);
+  const [resumoMes, setResumoMes] = useState<ResumoMes | null>(null);
+  const [carregandoResumoMes, setCarregandoResumoMes] = useState(false);
+  const [diasAbertos, setDiasAbertos] = useState(false);
+  const [extrasAbertos, setExtrasAbertos] = useState(false);
   const [notasResumo, setNotasResumo] = useState<{ confirmadas: number; porConfirmar: number } | null>(null);
   const [naoLidas, setNaoLidas] = useState<number | null>(0);
   const [carregandoVisaoGeral, setCarregandoVisaoGeral] = useState(false);
+
+  // Pede resumo_mes_encarregado para um mês concreto — chamado tanto no
+  // arranque (mês atual) como pelas setas de navegação.
+  const carregarResumoMes = useCallback(async (ano: number, mes: number) => {
+    setCarregandoResumoMes(true);
+    setDiasAbertos(false);
+    setExtrasAbertos(false);
+    try {
+      const { data, error } = await supabase.rpc('resumo_mes_encarregado', { p_ano: ano, p_mes: mes });
+      if (error) {
+        showError('Não foi possível carregar o resumo do mês: ' + error.message);
+        setResumoMes(null);
+        return;
+      }
+      setResumoMes(data as ResumoMes);
+    } finally {
+      setCarregandoResumoMes(false);
+    }
+  }, [showError]);
 
   const carregarVisaoGeral = useCallback(async (uid: string) => {
     touch();
@@ -43,18 +121,18 @@ export default function EncarregadosPage() {
       // getHojeLisboa() — nunca new Date() local, o fuso do browser da família
       // pode não ser Europe/Lisbon.
       const [anoStr, mesStr] = getHojeLisboa().split('-');
-      const ano = Number(anoStr);
-      const mes = Number(mesStr);
+      const anoAtual = Number(anoStr);
+      const mesAtual = Number(mesStr);
 
       const [
         { data: aluno },
-        { data: resumoData, error: resumoError },
+        { data: mesesData, error: mesesError },
         { data: examsData, error: examsError },
         { data: notasPeriodoData, error: notasPeriodoError },
         { count: naoLidasCount, error: naoLidasError },
       ] = await Promise.all([
         supabase.from('alunos').select('nome').eq('id', uid).maybeSingle(),
-        supabase.rpc('extrato_resumo_encarregado', { p_ano: ano, p_mes: mes }),
+        supabase.rpc('meses_resumo_encarregado'),
         supabase.from('exams').select('nota_valor, nota_confirmada').eq('aluno_id', uid),
         supabase.from('notas_periodo').select('nota_confirmada').eq('aluno_id', uid).eq('ano_letivo', getAnoLetivoAtual()),
         supabase.from('mensagens').select('id', { count: 'exact', head: true }).eq('aluno_id', uid).eq('autor', 'centro').is('lida_pela_familia_em', null),
@@ -64,11 +142,21 @@ export default function EncarregadosPage() {
 
       // Nunca zeros em silêncio: se alguma consulta falhar, avisa e mostra
       // "—" nesse número em vez de um valor inventado.
-      if (resumoError) {
-        showError('Não foi possível carregar o extrato do mês: ' + resumoError.message);
-        setResumo(null);
+      if (mesesError) {
+        showError('Não foi possível carregar os meses disponíveis: ' + mesesError.message);
+        setMesesDisponiveis([]);
+        setResumoMes(null);
       } else {
-        setResumo(resumoData);
+        const lista = (mesesData || []) as Array<{ ano: number; mes: number }>;
+        setMesesDisponiveis(lista);
+        const indiceAtual = lista.findIndex((m) => m.ano === anoAtual && m.mes === mesAtual);
+        const indiceInicial = indiceAtual >= 0 ? indiceAtual : 0;
+        setIndiceMes(indiceInicial);
+        if (lista.length > 0) {
+          await carregarResumoMes(lista[indiceInicial].ano, lista[indiceInicial].mes);
+        } else {
+          setResumoMes(null);
+        }
       }
 
       if (examsError || notasPeriodoError) {
@@ -92,7 +180,7 @@ export default function EncarregadosPage() {
     } finally {
       setCarregandoVisaoGeral(false);
     }
-  }, [showError]);
+  }, [showError, carregarResumoMes]);
 
   useEffect(() => {
     (async () => {
@@ -167,7 +255,11 @@ export default function EncarregadosPage() {
   useEffect(() => {
     const cancelar = subscribe(() => {
       setDesbloqueado(false);
-      setResumo(null);
+      setMesesDisponiveis([]);
+      setIndiceMes(0);
+      setResumoMes(null);
+      setDiasAbertos(false);
+      setExtrasAbertos(false);
       setNotasResumo(null);
       setNaoLidas(0);
     });
@@ -176,6 +268,25 @@ export default function EncarregadosPage() {
 
   const handleBloquear = () => {
     lock();
+  };
+
+  // As setas só percorrem os meses devolvidos por meses_resumo_encarregado:
+  // a lista vem do mais recente (índice 0, sempre o mês atual) para o mais
+  // antigo — "anterior" avança o índice (mês mais antigo), "seguinte" recua.
+  const handleMesAnterior = () => {
+    const novoIndice = indiceMes + 1;
+    if (novoIndice >= mesesDisponiveis.length) return;
+    setIndiceMes(novoIndice);
+    const m = mesesDisponiveis[novoIndice];
+    carregarResumoMes(m.ano, m.mes);
+  };
+
+  const handleMesSeguinte = () => {
+    const novoIndice = indiceMes - 1;
+    if (novoIndice < 0) return;
+    setIndiceMes(novoIndice);
+    const m = mesesDisponiveis[novoIndice];
+    carregarResumoMes(m.ano, m.mes);
   };
 
   // bloqueadoAte não deve deixar os campos disabled para sempre — limpa-se
@@ -280,42 +391,156 @@ export default function EncarregadosPage() {
         </button>
       </header>
 
-      <section className="bg-surface border border-border rounded-3xl p-6 shadow-xl space-y-4">
+      <section data-testid="resumo-mes" className="bg-surface border border-border rounded-3xl p-6 shadow-xl space-y-5">
         <h2 className="text-xs font-black uppercase text-muted tracking-widest flex items-center gap-2">
           <DollarSign size={14} className="text-accent" /> Resumo do Mês
         </h2>
 
-        {carregandoVisaoGeral ? (
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            data-testid="resumo-mes-anterior"
+            onClick={handleMesAnterior}
+            disabled={carregandoVisaoGeral || carregandoResumoMes || indiceMes >= mesesDisponiveis.length - 1}
+            aria-label="Mês anterior"
+            className="w-11 h-11 shrink-0 flex items-center justify-center rounded-xl bg-page border border-border text-secondary hover:text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <p data-testid="resumo-mes-titulo" className="font-bold text-sm text-primary capitalize text-center flex-1">
+            {mesesDisponiveis.length > 0 ? nomeMesPorExtenso(mesesDisponiveis[indiceMes].ano, mesesDisponiveis[indiceMes].mes) : '—'}
+          </p>
+          <button
+            type="button"
+            data-testid="resumo-mes-seguinte"
+            onClick={handleMesSeguinte}
+            disabled={carregandoVisaoGeral || carregandoResumoMes || indiceMes <= 0}
+            aria-label="Mês seguinte"
+            className="w-11 h-11 shrink-0 flex items-center justify-center rounded-xl bg-page border border-border text-secondary hover:text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
+
+        {carregandoVisaoGeral || carregandoResumoMes ? (
           <div className="flex justify-center py-6"><Loader2 className="animate-spin text-accent" size={24} /></div>
-        ) : resumo ? (
-          <>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[9px] text-muted font-black uppercase mb-1">Mensalidade</p>
-                <p className="font-mono font-bold text-lg">{Number(resumo.mensalidade_base).toFixed(2)}€</p>
-              </div>
-              <div>
-                <p className="text-[9px] text-warning font-black uppercase mb-1">Extras</p>
-                <p className="font-mono font-bold text-lg text-warning">+{Number(resumo.total_extras).toFixed(2)}€</p>
-              </div>
-              <div>
-                <p className="text-[9px] text-accent font-black uppercase mb-1">Explicações</p>
-                <p className="font-mono font-bold text-lg text-accent">+{Number(resumo.total_explicacoes).toFixed(2)}€</p>
-              </div>
-              <div>
-                <p className="text-[9px] text-muted font-black uppercase mb-1">Total do Mês</p>
-                <p className="font-mono font-black text-lg">{Number(resumo.total_mes).toFixed(2)}€</p>
-              </div>
-            </div>
-            {resumo.explicacoes_sem_preco > 0 && (
-              <p className="text-[10px] text-warning font-bold flex items-center gap-1.5 bg-warning-bg border border-warning/20 rounded-xl px-3 py-2">
-                <AlertTriangle size={12} />
-                Preço não definido — {resumo.explicacoes_sem_preco} {resumo.explicacoes_sem_preco === 1 ? 'sessão' : 'sessões'} sem valor
-              </p>
-            )}
-          </>
+        ) : !resumoMes ? (
+          <p className="text-muted text-sm italic">Não foi possível carregar o resumo deste mês.</p>
+        ) : resumoMes.presencas.dias === 0 && resumoMes.explicacoes.linhas.length === 0 && resumoMes.extras.linhas.length === 0 && !resumoMes.mensalidade ? (
+          <p className="text-muted text-sm italic">Sem movimentos neste mês.</p>
         ) : (
-          <p className="text-muted text-sm italic">Não foi possível carregar o extrato deste mês.</p>
+          <div className="space-y-5">
+            {/* Presenças */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p data-testid="presencas-dias" className="text-sm">
+                  <span className="font-bold text-primary">{resumoMes.presencas.dias}</span>{' '}
+                  <span className="text-secondary">{resumoMes.presencas.dias === 1 ? 'dia de presença' : 'dias de presença'}</span>
+                </p>
+                {resumoMes.presencas.dias > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setDiasAbertos((a) => !a)}
+                    className="min-h-11 px-3 text-[10px] font-black uppercase tracking-widest text-accent flex items-center gap-1 shrink-0"
+                  >
+                    Ver dias
+                  </button>
+                )}
+              </div>
+              {diasAbertos && resumoMes.presencas.datas.length > 0 && (
+                <ul data-testid="presencas-lista" className="bg-page border border-border rounded-2xl p-3 space-y-1">
+                  {resumoMes.presencas.datas.map((d) => (
+                    <li key={d} className="text-xs text-secondary capitalize">{diaDaSemanaPorExtenso(d)}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* Explicações */}
+            {resumoMes.explicacoes.linhas.length > 0 && (
+              <div className="space-y-2 border-t border-border pt-4">
+                <p className="text-[9px] text-accent font-black uppercase tracking-widest">Explicações</p>
+                <div className="space-y-1.5">
+                  {resumoMes.explicacoes.linhas.map((l, i) => (
+                    <div key={i} data-testid="explicacoes-linha" className="flex items-start justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-primary">{dataCurta(l.data)} · {l.hora_inicio.slice(0, 5)}</span>
+                        <span className="text-secondary">{l.disciplina}</span>
+                        {l.grupo && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-accent-soft text-accent">Grupo</span>
+                        )}
+                        {l.cancelada_tarde && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-danger-bg text-danger">Cancelada tarde (cobrada)</span>
+                        )}
+                      </div>
+                      <span className="font-mono font-bold text-primary shrink-0">{l.valor != null ? euro(l.valor) : '—'}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between pt-1 gap-2">
+                  <p data-testid="explicacoes-total" className="text-xs font-black text-primary">Total das explicações: <span className="font-mono">{euro(resumoMes.explicacoes.total)}</span></p>
+                  <span data-testid="explicacoes-selo"><SeloPago pago={resumoMes.explicacoes.pago} /></span>
+                </div>
+                {resumoMes.explicacoes.sem_preco > 0 && (
+                  <p className="text-[10px] text-warning font-bold flex items-center gap-1.5 bg-warning-bg border border-warning/20 rounded-xl px-3 py-2">
+                    <AlertTriangle size={12} />
+                    {resumoMes.explicacoes.sem_preco} {resumoMes.explicacoes.sem_preco === 1 ? 'sessão' : 'sessões'} ainda sem preço
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Mensalidade */}
+            {resumoMes.mensalidade && (
+              <div data-testid="mensalidade-bloco" className="flex items-center justify-between border-t border-border pt-4">
+                <div>
+                  <p className="text-[9px] text-muted font-black uppercase mb-1">Mensalidade</p>
+                  <p data-testid="mensalidade-valor" className="font-mono font-bold text-lg text-primary">{euro(resumoMes.mensalidade.valor)}</p>
+                </div>
+                <span data-testid="mensalidade-selo"><SeloPago pago={resumoMes.mensalidade.pago} /></span>
+              </div>
+            )}
+
+            {/* Extras */}
+            {resumoMes.extras.linhas.length > 0 && (
+              <div className="border-t border-border pt-4 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[9px] text-warning font-black uppercase mb-1">Extras</p>
+                    <p data-testid="extras-total" className="font-mono font-bold text-lg text-warning">{euro(resumoMes.extras.total)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setExtrasAbertos((a) => !a)}
+                    className="min-h-11 px-3 text-[10px] font-black uppercase tracking-widest text-accent flex items-center gap-1 shrink-0"
+                  >
+                    Ver detalhe
+                  </button>
+                </div>
+                {extrasAbertos && (
+                  <ul data-testid="extras-lista" className="bg-page border border-border rounded-2xl p-3 space-y-1">
+                    {resumoMes.extras.linhas.map((e, i) => (
+                      <li key={i} className="flex items-center justify-between gap-2 text-xs text-secondary">
+                        <span>{e.nome} × {e.quantidade}</span>
+                        <span className="font-mono font-bold text-primary shrink-0">{euro(e.total)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {/* Total do mês */}
+            <div className="border-t border-border pt-4 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-black uppercase text-muted tracking-widest">Total do Mês</p>
+                <p data-testid="total-mes" className="font-mono font-black text-xl text-primary">{euro(resumoMes.total_mes)}</p>
+              </div>
+              {resumoMes.ano === Number(getHojeLisboa().split('-')[0]) && resumoMes.mes === Number(getHojeLisboa().split('-')[1]) && (
+                <p data-testid="aviso-mes-atual" className="text-[10px] text-muted italic">O mês ainda não acabou: o total pode subir.</p>
+              )}
+            </div>
+          </div>
         )}
       </section>
 

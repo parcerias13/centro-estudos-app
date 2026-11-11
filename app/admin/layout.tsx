@@ -9,7 +9,7 @@ import { subscreverNotasConfirmadas } from '@/lib/eventoNotasAdmin'
 import { subscreverAlteracoesVistas } from '@/lib/eventoAlteracoesAdmin'
 import { contarNotasPendentes } from '@/lib/notas'
 import { contarAlteracoesPorVer } from '@/lib/alteracoes'
-import { LayoutDashboard, Users, ClipboardCheck, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle, FileBarChart, Bell, UserCog, Clock, Star } from 'lucide-react'
+import { LayoutDashboard, Users, ClipboardCheck, Calendar, Utensils, History, BookOpen, BarChart3, Wallet, GraduationCap, Shield, Settings, X, Menu, LogOut, MessageCircle, Bell, UserCog, Clock, Star } from 'lucide-react'
 
 const ROLE_ALLOWED_MENU: Record<string, string[]> = {
   professor: ['Dashboard', 'Alunos', 'Notas', 'Agenda', 'Disciplinas e Materiais', 'Explicações', 'Os Meus Alunos', 'Horas de Trabalho', 'O Meu Perfil'],
@@ -174,7 +174,6 @@ export default function AdminLayout({
     { name: 'Os Meus Alunos', href: '/admin/os-meus-alunos', icon: Star },
     { name: 'Performance', href: '/admin/performance', icon: BarChart3 },
     { name: 'Pagamentos', href: '/admin/pagamentos', icon: Wallet },
-    { name: 'Relatório Mensal', href: '/admin/relatorio-mensal', icon: FileBarChart },
     { name: 'Equipa', href: '/admin/equipa', icon: Shield },
     { name: 'Gestão', href: '/admin/gestao', icon: Settings },
     { name: 'Horas de Trabalho', href: '/admin/horas', icon: Clock },
