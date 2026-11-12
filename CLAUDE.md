@@ -1,168 +1,94 @@
-# Gestor de Operações — Centros de Estudo (Portugal)
+# StudyCloud — Gestor de Operações para Centros de Estudo (Portugal)
 
-## Visão Geral
-Sistema de gestão operacional para centros de estudo em Portugal.
-Marca: **StudyCloud**.
-Atualmente em fase de testes num centro real no Porto ("Lígia").
-**Objetivo: lançamento no mercado em setembro 2026.**
+SaaS multi-centro para centros de estudo em Portugal, construído a solo por Luís. O produto chama-se **StudyCloud** (nome antigo: CogniLab). Produção: https://app.studycloud.pt. Repositório: GitHub parcerias13/centro-estudos-app.
+
+> Este ficheiro é lido no início de cada conversa. Mantém-no curto e factual. Se o código contradisser o que está aqui, **pára e pergunta**: o código manda, e este ficheiro deve ser corrigido.
 
 ---
 
-## Stack Técnica
+## Centros (nunca misturar)
 
-- **Framework:** Next.js (React) com TypeScript (.tsx)
-- **Base de Dados / Backend:** Supabase (PostgreSQL + PostgREST)
-- **Autenticação:** Supabase Auth (roles via JWT `app_metadata`)
-- **Email:** Resend (envio automático de extratos) — API key exclusivamente server-side
-- **Ambiente:** VS Code + Claude Code
-- **Deploy:** (a definir)
+| Centro | Papel | Regra |
+|---|---|---|
+| **Trupe Lias** (`1ea25b5c-3838-46d9-b434-717472526211`) | Centro REAL, em uso | NUNCA testar contra ele. NUNCA apagar nem alterar dados dele sem ordem explícita do Luís. |
+| **Centro teste** (`c28909c4-f4e5-4cda-82de-a2ecb8e7063d`) | Antigo piloto «Lígia»; hoje centro de ensaio manual do Luís (admin@centro.pt) | Não corras testes automáticos contra ele. |
+| **CogniLab Demo** (`becb7828-d59c-4ab9-8469-39ac552e378d`) | Centro de avaliação externa, BLOQUEADO de propósito (`banned_until`) | NUNCA tentes entrar nas contas dele. `tests/permissoes-professor.spec.ts` depende dele e fica FORA das corridas completas. |
+| **ZZTESTE …** | Centros descartáveis criados pelos testes (`novo-centro.mjs`) e apagados no fim (`apagar-centro.mjs`) | Os testes só mexem nestes. `apagar-centro.mjs` recusa qualquer nome que não comece por «ZZTESTE». |
+| «Teste Admin Chamador/Alvo …» | Restos de testes antigos | Não apagar sem ordem do Luís. |
 
----
+## Regras de segurança (obrigatórias)
 
-## Estrutura de Pastas
+- **Credenciais:** nunca ler, mostrar, copiar, redigir nem processar com `sed`, `grep` ou regex ficheiros de credenciais (`credenciais*.txt`, `.env*`, `ids.json`, chaves, tokens, palavras-passe). Para sessões de teste, usa os scripts autorizados (`~/Desktop/gestao-centros/*.mjs`, para os centros ZZTESTE; `~/Desktop/demo-centro/entrar.mjs`, para o centro Demo), que leem as credenciais sem as mostrar; se faltar uma conta, pede a palavra-passe ao utilizador ou cria uma conta temporária por script em vez de ler o ficheiro.
+- **Dados de menores (RGPD):** privacidade e segurança são prioridade absoluta.
+- **Base de dados:** NÃO alteres RLS, gatilhos, funções nem buckets sem ordem explícita. O SQL é escrito e aplicado pelo Luís (no Supabase). Se uma tarefa precisar de SQL novo, **pára e diz-o**.
+- **Nunca** apagues contas de autenticação nem centros fora de um ZZTESTE criado por ti.
+- **Operações privilegiadas** (criar utilizadores, repor palavras-passe, configuração do centro…) só em rotas `app/api/**` com a chave de serviço, nunca no browser. Nunca expor a chave de serviço nem a do Resend ao cliente.
 
-```
-app/
-├── admin/
-│   ├── agenda/
-│   ├── alunos/          # Gestão de fichas e perfis de alunos
-│   │   ├── editar/
-│   │   ├── extrato/
-│   │   └── novo/
-│   ├── biblioteca/
-│   ├── disciplinas/
-│   ├── equipa/
-│   ├── gestao/          # Área restrita a admins (bug resolvido em 2026-05-15)
-│   ├── historico/
-│   ├── performance/
-│   ├── refeitorio/      # Lançamento de consumos diários
-│   ├── relatorio/
-│   └── salas/
-├── api/
-│   ├── config-centro/   # API route para configuração do centro (usa service role)
-│   ├── lab/             # Módulo LabAI (em desenvolvimento)
-│   └── send-report/     # Envio de extratos por email
-├── agenda/
-├── aluno/               # Área do aluno
-├── biblioteca/
-├── login/
-└── perfil/
-```
+## Como trabalhamos
 
----
+- Investigar → mostrar o que encontraste → confirmar → aplicar → testar → commit e push direto para `main` (sem PRs).
+- **Só fazes commit quando o Luís manda**, só dos ficheiros esperados (`git status --short` primeiro; se aparecer qualquer outro, pára). Um só `git push origin main`; se falhar com «fatal error in commit_refs_rules», espera 2 minutos e repete no máximo duas vezes; **nunca `--force`**.
+- Um passo de cada vez, com validação. Decisões de negócio: apresenta análise e opinião, mas a decisão é sempre do Luís.
+- Antes de SQL no Supabase o Luís faz backup (`cd ~/StudyCloud-backups && node backup.mjs`).
+- O bloco entre `<!-- BEGIN:nextjs-agent-rules -->` e `<!-- END:nextjs-agent-rules -->` no fim deste ficheiro é gerado pelo `next dev`: não o edites à mão.
 
-## Funcionalidades Implementadas (MVP "Lígia")
+## Stack
 
-- ✅ Gestão de perfis de alunos (fichas completas, alocação a turmas/ciclos)
-- ✅ Views SQL dinâmicas (`alunos_com_ciclo`) para categorização por ano escolar
-- ✅ Modelo de mensalidade fixa (`mensalidade_base`)
-- ✅ Registo de presenças (check-in / check-out digital)
-- ✅ Geração e envio automático de extratos mensais por email (Resend)
-- ✅ Gestão de extras (lanches, transportes, refeições) que acumulam no extrato
-- ✅ Autenticação com roles (admin vs aluno/encarregado) — verificação server-side via JWT
-- ✅ Separador "Gestão" funcional e protegido (bug resolvido — service role + JWT app_metadata)
-- ✅ Supabase client unificado como singleton em toda a aplicação (`@/lib/supabase`)
-- ✅ Soft-delete removido completamente — deleção direta sem `deleted_at`
-- ✅ Diário de bordo com coluna unificada `aluno_id` (sem duplicação com `student_id`)
-- ✅ Refeitório com filtro de alunos presentes alinhado com o dashboard
-- ✅ API route `criar-staff` server-side com `app_metadata.role` + rollback
-- ✅ Middleware com controlo de acesso por role (admin/professor/secretaria)
-- ✅ Menu lateral filtrado por role
-- ✅ Importação de Excel de alunos com template formatado (xlsx + exceljs)
-- ✅ Campos NIF e morada do encarregado na ficha de aluno
-- ✅ Exportação de faturação mensal em Excel com seleção de alunos
-- ✅ Check-in manual em lote com dropdown de disciplina e toast desfazer
+Next.js (App Router) + TypeScript · Supabase (PostgreSQL + PostgREST + RLS + Auth + Storage + pg_cron) · Resend (email, DESLIGADO por agora) · Vercel (deploy automático a cada push para `main`) · Tailwind v4 · date-fns · lucide-react · Playwright. Ambiente: VS Code + Claude Code. Localhost e produção **partilham a mesma base de dados** (os dados não passam pelo git; o código só chega à produção depois do push).
 
----
+## Mapa da aplicação (resumo; confirma no código)
 
-## Trabalho Recente
+- **Staff** (`app/admin/**`): Dashboard (presenças ao vivo, «Lista do Dia», «Turno de Hoje» do professor), alunos, equipa (+ horas de trabalho e remuneração), horas, gestão (custos, despesas, serviços, preços das explicações por ciclo, modo de presenças, cancelamento pelo aluno), pagamentos, performance, explicações (+ fixas, fixas por validar), os-meus-alunos (professor), agenda, notas, mensagens, alterações, histórico, refeitório, salas, relatório do aluno, perfil, disciplinas.
+- **Aluno** (conta partilhada com a família): início (check-in e cartões), agenda (testes em calendário), minhas-explicações (ver e cancelar), material, notas, biblioteca, e a **Área dos Encarregados** (`app/encarregados/**`, atrás de um código de 4 dígitos): Resumo do Mês, mensagens, palavra-passe.
+- **API** (`app/api/**`): rotas com chave de serviço (criar aluno/staff, repor palavra-passe, config do centro, modo de presenças, alterar palavra-passe…).
+- **Menus por cargo:** `middleware.ts` (`ROLE_ALLOWED_PATHS`) e `app/admin/layout.tsx` (`ROLE_ALLOWED_MENU`). O admin tem acesso total a `/admin/*`; esconde-se itens do menu, não se bloqueiam rotas ao admin. O `middleware.ts` está marcado como obsoleto pelo Next (migrar para `proxy` é dívida conhecida).
 
-### 2026-05-16 (hoje)
-- Refeitório: filtro de alunos presentes corrigido para usar a mesma lógica do dashboard
-- `diario_bordo`: substituição de `student_id` por `aluno_id` nas queries da página de alunos
-- Supabase client unificado como singleton em 19 ficheiros (eliminou 107 linhas de código duplicado)
+## Base de dados — convenções
 
-### 2026-05-15
-- Bug "Gestão" resolvido: verificação de role admin movida para server-side via JWT `app_metadata`
-- Middleware de autenticação corrigido para ler role do JWT (sem chamada extra à base de dados)
-- API key do Resend movida para API Route server-side (segurança)
-- `centro_id` da Lígia corrigido na página de Gestão e na `api/config-centro`
-- Soft-delete (`deleted_at`) removido completamente do código e da base de dados
-- Marca unificada para "StudyCloud" em `app/layout.tsx` e `app/admin/layout.tsx`
-- `student_id` duplicado removido do `diario_bordo` — mantido apenas `aluno_id`
-- Primeira passagem de unificação do Supabase client singleton (ficheiros admin core)
+- `centro_id` em todas as tabelas com âmbito de centro, com **RLS** por `centro_id = get_centro_id()` (função que lê o `centro_id` do JWT). O JWT leva `role` e `centro_id` em `app_metadata`. Cargos: `admin`, `professor`, `secretaria`, `aluno`.
+- Todo o insert inclui `centro_id`, lido de `supabase.auth.getUser()` → `user.app_metadata.centro_id`, com guard se vier em falta.
+- A lógica de dinheiro e de regras vive em **SQL** (gatilhos e RPCs `SECURITY DEFINER`), não no cliente: preço por ciclo e grupo (`calcular_valores_explicacao`), registo de horas dos professores, fecho das 22:00 UTC (`checkout_em_massa`, pg_cron), criação das mensalidades no dia 1 (`gerar_mensalidades_do_mes`, pg_cron), `resumo_mes_encarregado`, `minhas_explicacoes`, `cancelar_explicacao_aluno`, etc.
+- **Explicações:** sessões (`explicacoes` + `explicacoes_alunos`) e fixas (`series_explicacoes*`). Restrição `explicacoes_serie_coerente`: `serie_id` e `data_serie` ou estão os dois preenchidos ou os dois nulos; índice único por (`serie_id`, `data_serie`). O cancelamento tardio pelo aluno passa a sessão a «dada» (conta como qualquer outra).
+- **Notas:** `exams` e `notas_periodo` têm gatilhos que impedem o aluno de forjar confirmações; só se mostra a nota se estiver confirmada.
+- **Pagamentos:** manuais, sem gateway (sem Stripe). Mensalidade = linha do mês em `mensalidades` (nunca a `mensalidade_base` da ficha, que só serve de base às presenças). As explicações pagam-se em `pagamentos_explicacoes_familia`. Os extras somam-se ao extrato. Faturação certificada fica fora da app (exporta-se Excel).
+- `supabase-schema.sql` e `supabase-rls.sql` estão **desatualizados**: não confies neles. Confirma colunas e regras por introspeção no Supabase.
 
----
+## Convenções de código
 
-## Estado do Multitenancy (2026-05-16)
+- TypeScript obrigatório; componentes em PascalCase; sem `console.log` de debug no código final.
+- **Datas e horas:** NUNCA `new Date()` nem `toISOString()` para decidir o dia, o mês ou a hora. Usa `getHojeLisboa()`, `dataLisboaDe()` e `horaLisboaDe()` de `lib/dataLisboa.ts` (fuso Europe/Lisbon).
+- **Erros sempre visíveis:** `useStatusToast` / `StatusToast` (`lib/statusToast`), nunca `alert()` nem falhas silenciosas.
+- **UI:** ícones `lucide-react` (sem emojis); Sora nos títulos e Inter no corpo; mobile primeiro (360–430 px sem scroll horizontal, alvos de toque de 44 px).
+- **Tailwind v4:** o nome de um token de cor NÃO pode incluir o prefixo do utilitário (`--color-page`, nunca `--color-bg-page`), senão a classe não é gerada e o CSS falha em silêncio. `success`, `danger` e `warning` são só para estados semânticos, nunca para decoração.
 
-### ✅ Já feito
-- `centro_id` presente na tabela de centros e referenciado na lógica de gestão (Lígia)
-- Supabase client como singleton — base limpa para injetar contexto de tenant
-- Verificação de admin server-side — pronta para ser parametrizada por centro
+## Testes (Playwright)
 
-### 🔴 Por fazer — Crítico para setembro 2026
-- [ ] Adicionar `centro_id` a **todas as tabelas** (alunos, presenças, extras, diario_bordo, etc.)
-- [ ] Implementar RLS (Row Level Security) no Supabase por `centro_id`
-- [ ] Injetar `centro_id` do utilizador autenticado em todas as queries (sem hardcode)
-- [ ] Criar mecanismo de onboarding para novos centros (registo + configuração inicial)
-- [ ] Testes com dois centros em simultâneo para validar isolamento de dados
+- Só em centros **ZZTESTE** criados por `~/Desktop/gestao-centros/novo-centro.mjs`, com sessões reais; chave de serviço só para preparar e verificar; no fim apagar com `apagar-centro.mjs` e confirmar que não resta nada.
+- **Nunca** contra o Trupe Lias; **nunca** entrar no centro Demo; excluir `tests/permissoes-professor.spec.ts` das corridas completas.
+- **Modo económico:** ao depurar, só os specs afetados; a suite completa UMA vez no fim, com `--workers=2`.
+- **Os testes não podem depender da hora do dia nem do dia do mês:** calcula instantes relativos a «agora» e ao dia de Lisboa, e usa `test.skip` com a razão escrita quando um cenário ficaria instável junto de uma fronteira. Evita correr a suite de madrugada.
+- Sessões de fixas inseridas à mão: preenche `serie_id` E `data_serie`.
+- Falhas conhecidas de infraestrutura: timeouts de `tests/mensalidades-geracao.spec.ts` e de limpeza (`afterAll`) por contenção. Confirma sempre isolado antes de concluir que é regressão.
 
----
+## Estado do negócio
 
-## Decisões Arquiteturais
+- Preços (por centro): 79 €/mês até 40 alunos, 119 € até 80, 149 € acima; desconto de fundador de 40% vitalício para os primeiros 3 a 5 centros. Sem Stripe nem gateway: os centros recebem por MB Way ou transferência, e a app só dá visibilidade (pago ou não, por aluno e mês).
+- Email desligado: os avisos às famílias existem só dentro da app (mensagens). Um email mensal de lembrete fica previsto para quando houver `suporte@studycloud.pt` e Resend.
+- Onboarding de novos centros é manual (`novo-centro.mjs` + Supabase); não há fluxo de produto.
 
-- **Single-Tenant (provisório):** arquitetura fechada no centro da Lígia para validar produto real antes de escalar
-- **Lógica de negócio na base de dados:** Views e triggers em PostgreSQL via Supabase
-- **Sem backend custom:** toda a API é servida via PostgREST (Supabase)
-- **Sem soft-delete:** deleção é permanente — simplifica queries e evita dados "fantasma"
-- **Supabase client singleton:** importar sempre de `@/lib/supabase`, nunca criar instâncias locais
+## Dívida técnica conhecida
 
----
+- Todo o staff lê a ficha de todos os alunos do centro (incluindo mensalidade) e a tabela `staff` (incluindo tarifas dos colegas).
+- `middleware.ts` obsoleto (Next pede `proxy`). `confirm()` nativos ainda existem em alguns ecrãs.
+- Testes que dependem da hora do dia; limpeza dos testes frágil; contas de autenticação órfãs de testes por limpar.
+- Aviso por email e notificações não existem: o professor e as famílias só veem os avisos dentro da app.
 
-## Roadmap — Por Fazer (Prioridade para Setembro 2026)
+<!-- BEGIN:nextjs-agent-rules -->
 
-### 🎯 Próximo a Fazer (imediato)
-- [ ] Integração Stripe (pagamentos)
-- [ ] Chatbot/LabAI
+# This is NOT the Next.js you know
 
-### 🔴 Crítico
-- [ ] Refactoring completo para multitenancy (ver secção acima)
-- [ ] RLS por `centro_id` em todas as tabelas do Supabase
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 
-### 🟡 Alta Prioridade
-- [ ] Motor financeiro com Stripe (pagamento direto pelos extratos)
-- [ ] Integração com APIs de faturação certificadas (InvoiceXpress ou Primavera)
-- [ ] Landing page comercial (conversão + agendamento de demos)
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
-### 🟢 Médio Prazo
-- [ ] Módulo LabAI (tutor de IA por aluno — modelo B2B2C, 3€/aluno/mês)
-- [ ] TDD automático para todo o código novo
-- [ ] PRDs formais para cada feature antes de implementar
-
----
-
-## Convenções de Código
-
-- TypeScript obrigatório em todos os ficheiros (.tsx / .ts)
-- Componentes em PascalCase
-- **Supabase client:** importar sempre o singleton de `@/lib/supabase` — nunca chamar `createBrowserClient` diretamente
-- Lógica de dados preferencialmente em Server Components ou API Routes do Next.js
-- Verificações de autenticação/autorização sempre server-side (JWT `app_metadata`)
-- Sem soft-delete: usar deleção direta
-
----
-
-## Credenciais e Testes
-
-- **Regra obrigatória:** Nunca ler, mostrar, copiar, redigir nem processar com `sed`, `grep` ou regex ficheiros de credenciais (`credenciais*.txt`, `.env*`, `ids.json`). As sessões de teste obtêm-se SÓ por `~/Desktop/demo-centro/entrar.mjs`, que lê as palavras-passe sem as imprimir; se faltar uma conta, pede a palavra-passe ao utilizador ou cria uma conta temporária por script em vez de ler o ficheiro.
-
----
-
-## Contexto de Negócio
-
-- **Marca:** StudyCloud
-- **Cliente atual:** Centro de estudo "Lígia", Porto
-- **Modelo:** SaaS B2B para centros de estudo em Portugal
-- **Monetização futura:** mensalidade por centro + fee por transação (Stripe) + LabAI (3€/aluno/mês)
-- **RGPD:** dados de menores — privacidade e segurança são prioridade absoluta
+<!-- END:nextjs-agent-rules -->
