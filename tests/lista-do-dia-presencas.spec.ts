@@ -247,7 +247,7 @@ test.describe('Lista do Dia — centro descartável ZZTESTE', () => {
   test('Gestão: admin muda para Lista do Dia; professor não vê a Gestão', async ({ browser }) => {
     const contextAdmin = await browser.newContext({ storageState: adminState });
     const pageAdmin = await contextAdmin.newPage();
-    await pageAdmin.goto(`${BASE_URL}/admin/gestao`, { waitUntil: 'networkidle' });
+    await pageAdmin.goto(`${BASE_URL}/admin/gestao?aba=regras`, { waitUntil: 'networkidle' });
     await expect(pageAdmin.getByRole('heading', { name: /gestão operacional/i })).toBeVisible({ timeout: 15_000 });
     await pageAdmin.getByRole('button', { name: /^lista do dia$/i }).click();
     await expect(pageAdmin.getByText(/dashboard a mostrar a lista do dia/i)).toBeVisible({ timeout: 10_000 });
@@ -258,7 +258,7 @@ test.describe('Lista do Dia — centro descartável ZZTESTE', () => {
 
     const contextProf = await browser.newContext({ storageState: professorState });
     const pageProf = await contextProf.newPage();
-    await pageProf.goto(`${BASE_URL}/admin/gestao`, { waitUntil: 'networkidle' });
+    await pageProf.goto(`${BASE_URL}/admin/gestao?aba=regras`, { waitUntil: 'networkidle' });
     await expect(pageProf.getByRole('heading', { name: /gestão operacional/i })).toHaveCount(0);
     await contextProf.close();
   });

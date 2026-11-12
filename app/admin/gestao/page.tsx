@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { getHojeLisboa } from '@/lib/dataLisboa';
@@ -34,7 +35,16 @@ const TIPOS_PRECO_FAMILIA = [
 ] as const;
 const TIPO_PRECO_LABEL: Record<string, string> = { fixo: 'Fixo por sessão', por_hora: 'Por hora' };
 
-export default function GestaoTotalPage() {
+const ABAS_GESTAO = [
+  { id: 'custos', label: 'Custos' },
+  { id: 'precos', label: 'Preços' },
+  { id: 'regras', label: 'Regras do centro' },
+] as const;
+type AbaGestao = typeof ABAS_GESTAO[number]['id'];
+
+function GestaoTotalPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast, showError, showSuccess } = useStatusToast();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -131,6 +141,33 @@ export default function GestaoTotalPage() {
   const [simAno, setSimAno] = useState('6');
   const [simAlunos, setSimAlunos] = useState('1');
   const [simHoras, setSimHoras] = useState('1');
+
+  // Separador ativo — guardado no endereço (?aba=custos|precos|regras), nunca
+  // em estado local: sem parâmetro ou valor inválido cai em "custos", para
+  // abrir o endereço direto ou recarregar mostrarem sempre o separador certo.
+  const abaParam = searchParams.get('aba');
+  const abaAtiva: AbaGestao = ABAS_GESTAO.some((a) => a.id === abaParam) ? (abaParam as AbaGestao) : 'custos';
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const mudarAba = (aba: AbaGestao) => {
+    router.replace(`/admin/gestao?aba=${aba}`, { scroll: false });
+  };
+
+  const handleTabKeyDown = (e: React.KeyboardEvent, indiceAtual: number) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    const proximo = e.key === 'ArrowRight'
+      ? (indiceAtual + 1) % ABAS_GESTAO.length
+      : (indiceAtual - 1 + ABAS_GESTAO.length) % ABAS_GESTAO.length;
+    mudarAba(ABAS_GESTAO[proximo].id);
+    tabRefs.current[proximo]?.focus();
+  };
+
+  // Bloco recolhível "Exceções por disciplina (avançado)" — começa aberto só
+  // se o centro já tiver pelo menos uma exceção quando os dados chegam;
+  // depois de o admin tocar no botão, a escolha dele passa a mandar sempre.
+  const [excecoesPrecoAbertoManual, setExcecoesPrecoAbertoManual] = useState<boolean | null>(null);
+  const excecoesPrecoAbertas = excecoesPrecoAbertoManual !== null ? excecoesPrecoAbertoManual : precosFamilia.length > 0;
 
   const aplicarPrecosCicloCarregados = (dados: PrecoCiclo[]) => {
     const { porCiclo, extra } = agruparPrecosCiclo(dados);
@@ -858,31 +895,54 @@ export default function GestaoTotalPage() {
   }
 
   return (
-    <main className="min-h-screen bg-page p-4 md:p-12 text-primary font-sans">
-      <header className="mb-12 flex justify-between items-end max-w-6xl mx-auto">
+    <main className="min-h-screen min-w-0 bg-page p-4 md:p-12 text-primary font-sans">
+      <header className="mb-8 flex justify-between items-end max-w-6xl mx-auto">
         <div>
           <p className="text-accent font-black uppercase text-[10px] tracking-[0.3em] mb-2">Painel de Controlo</p>
           <h1 className="text-4xl font-black italic uppercase tracking-tighter">Gestão Operacional</h1>
         </div>
-        <button 
-          onClick={loadTudo} 
+        <button
+          onClick={loadTudo}
           className="p-4 bg-surface/50 rounded-2xl border border-border hover:text-accent transition-all hover:bg-raised"
         >
           <RefreshCw size={20} />
         </button>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
-        
+      <div className="grid grid-cols-1 max-w-6xl mx-auto mb-8">
+        <div role="tablist" aria-label="Secções de gestão" className="min-w-0 flex gap-2 overflow-x-auto pb-1">
+          {ABAS_GESTAO.map((t, i) => (
+            <button
+              key={t.id}
+              ref={(el) => { tabRefs.current[i] = el; }}
+              type="button"
+              role="tab"
+              id={`tab-${t.id}`}
+              aria-selected={abaAtiva === t.id}
+              aria-controls={`painel-${t.id}`}
+              tabIndex={abaAtiva === t.id ? 0 : -1}
+              onClick={() => mudarAba(t.id)}
+              onKeyDown={(e) => handleTabKeyDown(e, i)}
+              className={`shrink-0 min-h-11 px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all ${
+                abaAtiva === t.id ? 'bg-accent text-on-accent' : 'bg-surface text-secondary border border-border hover:text-primary'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-        {/* BLOCO 3: CUSTOS DO CENTRO (fixos + variáveis) */}
-        <section className="bg-surface border border-border/60 p-6 md:p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm lg:col-span-2">
+      {abaAtiva === 'custos' && (
+      <div role="tabpanel" id="painel-custos" aria-labelledby="tab-custos" className="grid grid-cols-1 max-w-6xl mx-auto">
+        {/* CUSTOS DO CENTRO (fixos + variáveis) */}
+        <section className="bg-surface border border-border/60 p-6 md:p-8 rounded-2xl shadow-sm backdrop-blur-sm">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <div className="p-3 bg-warning-bg rounded-2xl text-warning shrink-0">
                 <Receipt size={24} />
               </div>
-              <h3 className="text-primary font-black uppercase text-sm tracking-widest">Custos do Centro</h3>
+              <h3 className="text-primary font-bold text-base">Custos do Centro</h3>
             </div>
             <div className="flex items-center bg-page border border-border rounded-2xl overflow-hidden p-1 shadow-xl shrink-0 self-start sm:self-auto">
               <button
@@ -1106,9 +1166,7 @@ export default function GestaoTotalPage() {
                       </div>
                     );
                   }) : (
-                    <div className="text-center py-10 border-2 border-dashed border-border/50 rounded-[2rem]">
-                      <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem custos fixos</p>
-                    </div>
+                    <p className="text-muted font-bold text-xs text-center py-3">Sem custos fixos.</p>
                   )}
                 </div>
 
@@ -1260,418 +1318,27 @@ export default function GestaoTotalPage() {
                       <span className="font-mono font-black text-warning text-lg shrink-0">{Number(d.valor).toFixed(2)} €</span>
                     </div>
                   )) : (
-                    <div className="text-center py-10 border-2 border-dashed border-border/50 rounded-[2rem]">
-                      <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem custos variáveis este mês</p>
-                    </div>
+                    <p className="text-muted font-bold text-xs text-center py-3">Sem custos variáveis este mês.</p>
                   )}
                 </div>
               </div>
             </div>
           )}
         </section>
+      </div>
+      )}
 
-        {/* BLOCO 2: SERVIÇOS EXTRA */}
-        <section className="bg-surface border border-border/60 p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm">
-          <div className="flex justify-between items-center mb-8">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-success-bg rounded-2xl text-success">
-                <DollarSign size={24} />
-              </div>
-              <h3 className="text-primary font-black uppercase text-sm tracking-widest">Tarifário de Extras</h3>
-            </div>
-            <button
-              onClick={() => { setShowNovoServico(v => !v); setCriarError(null); }}
-              className={`p-2 rounded-xl border transition-all active:scale-90 ${showNovoServico ? 'bg-border text-primary border-border' : 'bg-success-bg text-success border-success/20 hover:bg-success hover:text-on-success'}`}
-            >
-              <Plus size={20} />
-            </button>
-          </div>
+      {abaAtiva === 'precos' && (
+      <div role="tabpanel" id="painel-precos" aria-labelledby="tab-precos" className="grid grid-cols-1 max-w-3xl mx-auto gap-8">
 
-          {showNovoServico && (
-            <form onSubmit={handleCreateService} className="mb-6 bg-page/50 border border-border rounded-3xl p-5 space-y-4">
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-muted uppercase ml-1">Nome</label>
-                <input
-                  type="text"
-                  value={novoNome}
-                  onChange={e => setNovoNome(e.target.value)}
-                  placeholder="ex: Almoço, Transporte"
-                  className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-success outline-none transition-all"
-                  autoFocus
-                />
-              </div>
-              <div className="flex gap-3">
-                <div className="flex-1 space-y-1">
-                  <label className="text-[9px] font-black text-muted uppercase ml-1">Preço (€)</label>
-                  <input
-                    type="number"
-                    value={novoPreco}
-                    onChange={e => setNovoPreco(e.target.value)}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-mono font-black text-success focus:border-success outline-none transition-all"
-                  />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <label className="text-[9px] font-black text-muted uppercase ml-1">Custo (€)</label>
-                  <input
-                    type="number"
-                    value={novoCusto}
-                    onChange={e => setNovoCusto(e.target.value)}
-                    placeholder="opcional"
-                    min="0"
-                    step="0.01"
-                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-mono font-black text-muted focus:border-accent outline-none transition-all"
-                  />
-                </div>
-              </div>
-              {criarError && (
-                <p className="text-danger text-[11px] font-bold px-1">{criarError}</p>
-              )}
-              <div className="flex gap-3">
-                <button
-                  type="submit"
-                  disabled={criando}
-                  className="flex-1 py-3 bg-success hover:bg-success-hover text-on-success rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-                >
-                  {criando ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                  Criar Serviço
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowNovoServico(false); setCriarError(null); setNovoNome(''); setNovoPreco(''); setNovoCusto(''); }}
-                  className="px-5 py-3 bg-raised hover:bg-border rounded-2xl font-black text-sm transition-all active:scale-95"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          )}
-
-          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-            {servicos.length > 0 ? servicos.map(s => (
-              <div 
-                key={s.id} 
-                className="bg-page/40 border border-border/50 p-5 rounded-3xl flex items-center justify-between group hover:border-border transition-all"
-              >
-                <div className="flex flex-col">
-                  <span className="font-black uppercase text-[11px] text-secondary tracking-tight">{s.nome}</span>
-                  <button 
-                    onClick={() => handleDeleteService(s.id, s.nome)} 
-                    className="text-[9px] text-danger/40 font-bold uppercase mt-1 opacity-0 group-hover:opacity-100 transition-all hover:text-danger"
-                  >
-                    Remover Serviço
-                  </button>
-                </div>
-                <div className="flex flex-col gap-1.5 items-end shrink-0">
-                  <div className="flex items-center gap-2 bg-surface py-1.5 px-3 rounded-xl border border-border">
-                    <span className="text-[8px] font-black uppercase text-muted tracking-widest w-9">Preço</span>
-                    <input
-                      type="number"
-                      defaultValue={s.preco}
-                      onBlur={(e) => updatePrecoServico(s.id, e.target.value)}
-                      className="w-14 bg-transparent text-right font-mono text-success font-black text-base outline-none"
-                    />
-                    <span className="text-muted font-black text-xs">€</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-surface py-1.5 px-3 rounded-xl border border-border">
-                    <span className="text-[8px] font-black uppercase text-muted tracking-widest w-9">Custo</span>
-                    <input
-                      type="number"
-                      defaultValue={s.custo ?? ''}
-                      placeholder="—"
-                      onBlur={(e) => updateCustoServico(s.id, e.target.value)}
-                      className="w-14 bg-transparent text-right font-mono text-muted font-black text-base outline-none placeholder:text-muted/40"
-                    />
-                    <span className="text-muted font-black text-xs">€</span>
-                  </div>
-                </div>
-              </div>
-            )) : (
-              <div className="text-center py-12 border-2 border-dashed border-border/50 rounded-[2rem]">
-                <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem serviços extra definidos</p>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* BLOCO 1: INSTITUIÇÃO */}
-        <section className="bg-surface border border-border/60 p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="p-3 bg-accent-soft rounded-2xl text-accent">
-              <Building2 size={24} />
-            </div>
-            <h3 className="text-primary font-black uppercase text-sm tracking-widest">Configuração do Centro</h3>
-          </div>
-
-          <form onSubmit={handleSaveCentro} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-muted uppercase ml-1">Nome da Instituição</label>
-              <input 
-                type="text" 
-                value={nomeCentro} 
-                onChange={e => setNomeCentro(e.target.value)} 
-                className="w-full bg-page/50 border border-border p-4 rounded-2xl font-bold text-sm focus:border-accent outline-none transition-all" 
-              />
-            </div>
-            <button
-              type="submit" 
-              disabled={submitting} 
-              className={`w-full p-5 rounded-[1.5rem] font-black flex items-center justify-center gap-3 transition-all active:scale-95 ${success ? 'bg-success text-on-success shadow-lg shadow-success/20' : 'bg-accent hover:bg-accent-hover text-on-accent shadow-lg shadow-accent/20'}`}
-            >
-              {submitting ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-              {success ? 'DADOS ATUALIZADOS' : 'GUARDAR ALTERAÇÕES'}
-            </button>
-            {saveError && (
-              <p className="text-danger text-[11px] font-bold px-1 pt-2">{saveError}</p>
-            )}
-          </form>
-
-          <div className="mt-6 pt-6 border-t border-border flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2.5 bg-page/50 rounded-xl text-muted shrink-0">
-                <Bell size={18} />
-              </div>
-              <div className="min-w-0">
-                <p className="font-bold text-sm text-primary">Avisar as famílias das alterações às explicações</p>
-                <p className="text-[10px] text-muted mt-0.5">Cancelamentos, remarcações e trocas de professor.</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleToggleAvisoAlteracoes}
-              disabled={salvandoAviso}
-              className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all disabled:opacity-50 ${
-                avisoAlteracoesAtivo ? 'bg-success-bg text-success border-success/30' : 'bg-raised text-muted border-border'
-              }`}
-            >
-              {salvandoAviso ? <Loader2 size={12} className="animate-spin" /> : avisoAlteracoesAtivo ? 'Ativo' : 'Inativo'}
-            </button>
-          </div>
-
-          <div className="mt-6 pt-6 border-t border-border flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2.5 bg-page/50 rounded-xl text-muted shrink-0">
-                <Users size={18} />
-              </div>
-              <div className="min-w-0">
-                <p className="font-bold text-sm text-primary">Presenças no Dashboard</p>
-                <p className="text-[10px] text-muted mt-0.5">Como admin/professor/secretaria marcam presenças.</p>
-              </div>
-            </div>
-            <div className="shrink-0 flex items-center bg-page border border-border rounded-full overflow-hidden p-1">
-              <button
-                type="button"
-                onClick={() => handleAlterarModoPresencas('individual')}
-                disabled={salvandoModoPresencas}
-                className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
-                  modoPresencas === 'individual' ? 'bg-accent text-on-accent' : 'text-muted hover:text-secondary'
-                }`}
-              >
-                Individual
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAlterarModoPresencas('lista_dia')}
-                disabled={salvandoModoPresencas}
-                className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
-                  modoPresencas === 'lista_dia' ? 'bg-accent text-on-accent' : 'text-muted hover:text-secondary'
-                }`}
-              >
-                Lista do dia
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-6 pt-6 border-t border-border space-y-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2.5 bg-page/50 rounded-xl text-muted shrink-0">
-                <Ban size={18} />
-              </div>
-              <div className="min-w-0">
-                <p className="font-bold text-sm text-primary">Cancelamento de explicações pelos alunos</p>
-                <p className="text-[10px] text-muted mt-0.5">Permite ao aluno cancelar as suas próprias sessões antes de começarem.</p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-xs font-bold text-secondary">Os alunos podem cancelar explicações</p>
-              <button
-                type="button"
-                onClick={handleToggleAlunoCancela}
-                disabled={salvandoAlunoCancela}
-                className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all disabled:opacity-50 ${
-                  alunoCancelaAtivo ? 'bg-success-bg text-success border-success/30' : 'bg-raised text-muted border-border'
-                }`}
-              >
-                {salvandoAlunoCancela ? <Loader2 size={12} className="animate-spin" /> : alunoCancelaAtivo ? 'Ativo' : 'Inativo'}
-              </button>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between gap-4">
-                <label className="text-xs font-bold text-secondary">Cancelamento gratuito até (horas antes)</label>
-                <div className="flex items-center gap-2 shrink-0">
-                  <input
-                    type="number"
-                    min={0}
-                    max={720}
-                    value={horasGratisTexto}
-                    onChange={(e) => setHorasGratisTexto(e.target.value)}
-                    className="w-20 bg-page border border-border text-primary text-sm p-2 rounded-xl outline-none focus:border-accent transition-all text-center"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleGuardarHorasGratis}
-                    disabled={salvandoHorasGratis}
-                    className="flex items-center gap-1 bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
-                  >
-                    {salvandoHorasGratis ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Guardar
-                  </button>
-                </div>
-              </div>
-              <p className="text-[10px] text-muted mt-1.5">Depois disto, o cancelamento é permitido mas a sessão é cobrada à família.</p>
-              {erroHorasGratis && <p className="text-[10px] text-danger font-bold mt-1">{erroHorasGratis}</p>}
-            </div>
-          </div>
-        </section>
-
-        {/* BLOCO 4: PREÇOS DE EXPLICAÇÕES (FAMÍLIA) */}
-        <section className="bg-surface border border-border/60 p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm">
-          <div className="flex justify-between items-center mb-8">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-accent-soft rounded-2xl text-accent">
-                <GraduationCap size={24} />
-              </div>
-              <h3 className="text-primary font-black uppercase text-sm tracking-widest">Preços de Explicações</h3>
-            </div>
-            <button
-              onClick={() => (precoEditandoId === null ? abrirNovoPreco() : fecharFormPreco())}
-              className={`p-2 rounded-xl border transition-all active:scale-90 ${precoEditandoId !== null ? 'bg-border text-primary border-border' : 'bg-accent-soft text-accent border-accent/20 hover:bg-accent hover:text-on-accent'}`}
-            >
-              <Plus size={20} />
-            </button>
-          </div>
-
-          {precoEditandoId !== null && (
-            <div className="mb-6 bg-page/50 border border-border rounded-3xl p-5 space-y-4">
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-muted uppercase ml-1">Disciplina</label>
-                <select
-                  value={precoDisciplinaId}
-                  onChange={(e) => { setPrecoDisciplinaId(e.target.value); setPrecoAno(''); }}
-                  className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none"
-                >
-                  <option value="">Disciplina...</option>
-                  {subjects.map((s: any) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-muted uppercase ml-1">Ano</label>
-                <select
-                  value={precoAno}
-                  onChange={(e) => setPrecoAno(e.target.value)}
-                  disabled={!precoDisciplinaId}
-                  className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none disabled:opacity-50"
-                >
-                  <option value="">Todos os anos</option>
-                  {anosParaDisciplina(precoDisciplinaId).map((ano) => (
-                    <option key={ano} value={ano}>{ano}º Ano</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex gap-3">
-                <div className="flex-1 space-y-1">
-                  <label className="text-[9px] font-black text-muted uppercase ml-1">Tipo</label>
-                  <select
-                    value={precoTipo}
-                    onChange={(e) => setPrecoTipo(e.target.value)}
-                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none"
-                  >
-                    <option value="">Tipo...</option>
-                    {TIPOS_PRECO_FAMILIA.map((t) => (
-                      <option key={t.valor} value={t.valor}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex-1 space-y-1">
-                  <label className="text-[9px] font-black text-muted uppercase ml-1">Valor (€)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={precoValor}
-                    onChange={(e) => setPrecoValor(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-mono font-black text-accent focus:border-accent outline-none transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={handleSalvarPreco}
-                  disabled={savingPreco}
-                  className="flex-1 py-3 bg-accent hover:bg-accent-hover text-on-accent rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-                >
-                  {savingPreco ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                  Guardar Preço
-                </button>
-                <button
-                  type="button"
-                  onClick={fecharFormPreco}
-                  disabled={savingPreco}
-                  className="px-5 py-3 bg-raised hover:bg-border rounded-2xl font-black text-sm transition-all active:scale-95"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-            {precosFamilia.length > 0 ? precosFamilia.map((p: any) => (
-              <div
-                key={p.id}
-                className="bg-page/40 border border-border/50 p-5 rounded-3xl flex items-center justify-between group hover:border-border transition-all"
-              >
-                <div className="flex flex-col min-w-0">
-                  <span className="font-black uppercase text-[11px] text-secondary tracking-tight truncate">{p.subjects?.name}</span>
-                  <span className="text-[10px] text-muted font-bold mt-0.5">
-                    {p.ano_escolar != null ? `${p.ano_escolar}º ano` : 'Todos os anos'} · {TIPO_PRECO_LABEL[p.tipo] ?? p.tipo}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 shrink-0 ml-3">
-                  <span className="font-mono font-black text-accent text-lg">{Number(p.valor).toFixed(2)} €</span>
-                  <button type="button" onClick={() => editarPreco(p)} className="p-1.5 text-muted hover:text-accent transition-colors">
-                    <Pencil size={14} />
-                  </button>
-                  <button type="button" onClick={() => handleApagarPreco(p.id)} className="p-1.5 text-muted hover:text-danger transition-colors">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            )) : (
-              <div className="text-center py-12 border-2 border-dashed border-border/50 rounded-[2rem]">
-                <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem preços definidos</p>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* BLOCO 5: PREÇOS DAS EXPLICAÇÕES POR CICLO */}
-        <section data-testid="precos-ciclo-secao" className="bg-surface border border-border/60 p-6 md:p-8 rounded-[2.5rem] shadow-2xl backdrop-blur-sm lg:col-span-2">
+        {/* EXPLICAÇÕES (preços por ciclo) — vem primeiro: é o preço que a maior parte dos alunos usa */}
+        <section data-testid="precos-ciclo-secao" className="bg-surface border border-border/60 p-6 md:p-8 rounded-2xl shadow-sm backdrop-blur-sm">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-2">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <div className="p-3 bg-accent-soft rounded-2xl text-accent shrink-0">
                 <Layers size={24} />
               </div>
-              <h3 className="text-primary font-black uppercase text-sm tracking-widest">Preços das Explicações</h3>
+              <h3 className="text-primary font-bold text-base">Explicações</h3>
             </div>
             <div className="flex items-center bg-page border border-border rounded-2xl overflow-hidden p-1 shadow-xl shrink-0 self-start sm:self-auto">
               <button
@@ -1838,9 +1505,455 @@ export default function GestaoTotalPage() {
           </div>
         </section>
 
+        {/* EXTRAS */}
+        <section className="bg-surface border border-border/60 p-6 md:p-8 rounded-2xl shadow-sm backdrop-blur-sm">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-3 bg-success-bg rounded-2xl text-success">
+                <DollarSign size={24} />
+              </div>
+              <h3 className="text-primary font-bold text-base">Extras</h3>
+            </div>
+            <button
+              onClick={() => { setShowNovoServico(v => !v); setCriarError(null); }}
+              className={`p-2 rounded-xl border transition-all active:scale-90 ${showNovoServico ? 'bg-border text-primary border-border' : 'bg-success-bg text-success border-success/20 hover:bg-success hover:text-on-success'}`}
+            >
+              <Plus size={20} />
+            </button>
+          </div>
+
+          {showNovoServico && (
+            <form onSubmit={handleCreateService} className="mb-6 bg-page/50 border border-border rounded-3xl p-5 space-y-4">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-muted uppercase ml-1">Nome</label>
+                <input
+                  type="text"
+                  value={novoNome}
+                  onChange={e => setNovoNome(e.target.value)}
+                  placeholder="ex: Almoço, Transporte"
+                  className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-success outline-none transition-all"
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1">
+                  <label className="text-[9px] font-black text-muted uppercase ml-1">Preço (€)</label>
+                  <input
+                    type="number"
+                    value={novoPreco}
+                    onChange={e => setNovoPreco(e.target.value)}
+                    placeholder="0.00"
+                    min="0"
+                    step="0.01"
+                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-mono font-black text-success focus:border-success outline-none transition-all"
+                  />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label className="text-[9px] font-black text-muted uppercase ml-1">Custo (€)</label>
+                  <input
+                    type="number"
+                    value={novoCusto}
+                    onChange={e => setNovoCusto(e.target.value)}
+                    placeholder="opcional"
+                    min="0"
+                    step="0.01"
+                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-mono font-black text-muted focus:border-accent outline-none transition-all"
+                  />
+                </div>
+              </div>
+              {criarError && (
+                <p className="text-danger text-[11px] font-bold px-1">{criarError}</p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={criando}
+                  className="flex-1 py-3 bg-success hover:bg-success-hover text-on-success rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {criando ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  Criar Serviço
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowNovoServico(false); setCriarError(null); setNovoNome(''); setNovoPreco(''); setNovoCusto(''); }}
+                  className="px-5 py-3 bg-raised hover:bg-border rounded-2xl font-black text-sm transition-all active:scale-95"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            {servicos.length > 0 ? servicos.map(s => (
+              <div 
+                key={s.id} 
+                className="bg-page/40 border border-border/50 p-5 rounded-3xl flex items-center justify-between group hover:border-border transition-all"
+              >
+                <div className="flex flex-col min-w-0">
+                  <span className="font-black uppercase text-[11px] text-secondary tracking-tight">{s.nome}</span>
+                  <button
+                    onClick={() => handleDeleteService(s.id, s.nome)}
+                    className="text-[9px] text-danger/40 font-bold uppercase mt-1 opacity-0 group-hover:opacity-100 transition-all hover:text-danger text-left"
+                  >
+                    Remover Serviço
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 bg-surface py-1.5 px-3 rounded-xl border border-border">
+                    <span className="text-[8px] font-black uppercase text-muted tracking-widest w-9">Preço</span>
+                    <input
+                      type="number"
+                      defaultValue={s.preco}
+                      onBlur={(e) => updatePrecoServico(s.id, e.target.value)}
+                      className="w-14 bg-transparent text-right font-mono text-success font-black text-base outline-none"
+                    />
+                    <span className="text-muted font-black text-xs">€</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-surface py-1.5 px-3 rounded-xl border border-border">
+                    <span className="text-[8px] font-black uppercase text-muted tracking-widest w-9">Custo</span>
+                    <input
+                      type="number"
+                      defaultValue={s.custo ?? ''}
+                      placeholder="—"
+                      onBlur={(e) => updateCustoServico(s.id, e.target.value)}
+                      className="w-14 bg-transparent text-right font-mono text-muted font-black text-base outline-none placeholder:text-muted/40"
+                    />
+                    <span className="text-muted font-black text-xs">€</span>
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <div className="text-center py-12 border-2 border-dashed border-border/50 rounded-[2rem]">
+                <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem serviços extra definidos</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* EXCEÇÕES POR DISCIPLINA (AVANÇADO) — recolhido por defeito; começa
+            aberto só se o centro já tiver pelo menos uma exceção quando os
+            dados chegam, para nenhum preço ficar escondido sem o admin saber. */}
+        <section className="bg-surface border border-border/60 rounded-2xl shadow-sm backdrop-blur-sm overflow-hidden">
+          <button
+            type="button"
+            data-testid="precos-disciplina-secao"
+            aria-expanded={excecoesPrecoAbertas}
+            aria-controls="precos-disciplina-conteudo"
+            onClick={() => setExcecoesPrecoAbertoManual(!excecoesPrecoAbertas)}
+            className="w-full flex items-center justify-between gap-3 p-6 md:p-8 text-left min-h-11"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-3 bg-accent-soft rounded-2xl text-accent shrink-0">
+                <GraduationCap size={24} />
+              </div>
+              <h3 className="text-primary font-bold text-base">Exceções por disciplina (avançado)</h3>
+            </div>
+            {excecoesPrecoAbertas ? <ChevronUp size={20} className="shrink-0 text-muted" /> : <ChevronDown size={20} className="shrink-0 text-muted" />}
+          </button>
+
+          {excecoesPrecoAbertas && (
+          <div id="precos-disciplina-conteudo" className="px-6 md:px-8 pb-6 md:pb-8">
+          <p className="text-xs text-muted font-bold mb-6 max-w-xl">
+            Só se uma disciplina tiver um preço diferente do do ciclo (por exemplo, preparação para exames). Uma disciplina com preço próprio passa à frente do preço do ciclo.
+          </p>
+
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={() => (precoEditandoId === null ? abrirNovoPreco() : fecharFormPreco())}
+              className={`p-2 rounded-xl border transition-all active:scale-90 ${precoEditandoId !== null ? 'bg-border text-primary border-border' : 'bg-accent-soft text-accent border-accent/20 hover:bg-accent hover:text-on-accent'}`}
+            >
+              <Plus size={20} />
+            </button>
+          </div>
+
+          {precoEditandoId !== null && (
+            <div className="mb-6 bg-page/50 border border-border rounded-3xl p-5 space-y-4">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-muted uppercase ml-1">Disciplina</label>
+                <select
+                  value={precoDisciplinaId}
+                  onChange={(e) => { setPrecoDisciplinaId(e.target.value); setPrecoAno(''); }}
+                  className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none"
+                >
+                  <option value="">Disciplina...</option>
+                  {subjects.map((s: any) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-muted uppercase ml-1">Ano</label>
+                <select
+                  value={precoAno}
+                  onChange={(e) => setPrecoAno(e.target.value)}
+                  disabled={!precoDisciplinaId}
+                  className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none disabled:opacity-50"
+                >
+                  <option value="">Todos os anos</option>
+                  {anosParaDisciplina(precoDisciplinaId).map((ano) => (
+                    <option key={ano} value={ano}>{ano}º Ano</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1">
+                  <label className="text-[9px] font-black text-muted uppercase ml-1">Tipo</label>
+                  <select
+                    value={precoTipo}
+                    onChange={(e) => setPrecoTipo(e.target.value)}
+                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all appearance-none"
+                  >
+                    <option value="">Tipo...</option>
+                    {TIPOS_PRECO_FAMILIA.map((t) => (
+                      <option key={t.valor} value={t.valor}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1 space-y-1">
+                  <label className="text-[9px] font-black text-muted uppercase ml-1">Valor (€)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={precoValor}
+                    onChange={(e) => setPrecoValor(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full bg-surface border border-border p-3 rounded-2xl text-sm font-mono font-black text-accent focus:border-accent outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleSalvarPreco}
+                  disabled={savingPreco}
+                  className="flex-1 py-3 bg-accent hover:bg-accent-hover text-on-accent rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {savingPreco ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  Guardar Preço
+                </button>
+                <button
+                  type="button"
+                  onClick={fecharFormPreco}
+                  disabled={savingPreco}
+                  className="px-5 py-3 bg-raised hover:bg-border rounded-2xl font-black text-sm transition-all active:scale-95"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            {precosFamilia.length > 0 ? precosFamilia.map((p: any) => (
+              <div
+                key={p.id}
+                className="bg-page/40 border border-border/50 p-5 rounded-3xl flex items-center justify-between group hover:border-border transition-all"
+              >
+                <div className="flex flex-col min-w-0">
+                  <span className="font-black uppercase text-[11px] text-secondary tracking-tight truncate">{p.subjects?.name}</span>
+                  <span className="text-[10px] text-muted font-bold mt-0.5">
+                    {p.ano_escolar != null ? `${p.ano_escolar}º ano` : 'Todos os anos'} · {TIPO_PRECO_LABEL[p.tipo] ?? p.tipo}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 ml-3">
+                  <span className="font-mono font-black text-accent text-lg">{Number(p.valor).toFixed(2)} €</span>
+                  <button type="button" onClick={() => editarPreco(p)} className="p-1.5 text-muted hover:text-accent transition-colors">
+                    <Pencil size={14} />
+                  </button>
+                  <button type="button" onClick={() => handleApagarPreco(p.id)} className="p-1.5 text-muted hover:text-danger transition-colors">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            )) : (
+              <div className="text-center py-12 border-2 border-dashed border-border/50 rounded-[2rem]">
+                <p className="text-muted font-bold uppercase text-[10px] tracking-widest">Sem preços definidos</p>
+              </div>
+            )}
+          </div>
+          </div>
+          )}
+        </section>
+
       </div>
+      )}
+
+      {abaAtiva === 'regras' && (
+      <div role="tabpanel" id="painel-regras" aria-labelledby="tab-regras" className="grid grid-cols-1 max-w-3xl mx-auto gap-8">
+
+        {/* DADOS DO CENTRO */}
+        <section className="bg-surface border border-border/60 p-6 md:p-8 rounded-2xl shadow-sm backdrop-blur-sm">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-accent-soft rounded-2xl text-accent">
+              <Building2 size={24} />
+            </div>
+            <h3 className="text-primary font-bold text-base">Dados do centro</h3>
+          </div>
+
+          <form onSubmit={handleSaveCentro} className="space-y-2">
+            <label className="text-[10px] font-black text-muted uppercase ml-1">Nome da Instituição</label>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={nomeCentro}
+                onChange={e => setNomeCentro(e.target.value)}
+                className="flex-1 min-w-0 bg-page/50 border border-border p-3 rounded-2xl font-bold text-sm focus:border-accent outline-none transition-all"
+              />
+              <button
+                type="submit"
+                disabled={submitting}
+                className={`shrink-0 min-h-11 px-5 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all active:scale-95 ${success ? 'bg-success text-on-success' : 'bg-accent hover:bg-accent-hover text-on-accent'}`}
+              >
+                {submitting ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                {success ? 'Guardado' : 'Guardar'}
+              </button>
+            </div>
+            {saveError && (
+              <p className="text-danger text-[11px] font-bold px-1 pt-2">{saveError}</p>
+            )}
+          </form>
+        </section>
+
+        {/* PRESENÇAS NO DASHBOARD */}
+        <section className="bg-surface border border-border/60 p-6 md:p-8 rounded-2xl shadow-sm backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2.5 bg-page/50 rounded-xl text-muted shrink-0">
+                <Users size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-sm text-primary">Presenças no Dashboard</p>
+                <p className="text-[10px] text-muted mt-0.5">Como admin/professor/secretaria marcam presenças.</p>
+              </div>
+            </div>
+            <div className="shrink-0 flex items-center bg-page border border-border rounded-full overflow-hidden p-1">
+              <button
+                type="button"
+                onClick={() => handleAlterarModoPresencas('individual')}
+                disabled={salvandoModoPresencas}
+                className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
+                  modoPresencas === 'individual' ? 'bg-accent text-on-accent' : 'text-muted hover:text-secondary'
+                }`}
+              >
+                Individual
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAlterarModoPresencas('lista_dia')}
+                disabled={salvandoModoPresencas}
+                className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
+                  modoPresencas === 'lista_dia' ? 'bg-accent text-on-accent' : 'text-muted hover:text-secondary'
+                }`}
+              >
+                Lista do dia
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* AVISAR AS FAMÍLIAS */}
+        <section className="bg-surface border border-border/60 p-6 md:p-8 rounded-2xl shadow-sm backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2.5 bg-page/50 rounded-xl text-muted shrink-0">
+                <Bell size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-sm text-primary">Avisar as famílias das alterações às explicações</p>
+                <p className="text-[10px] text-muted mt-0.5">Cancelamentos, remarcações e trocas de professor.</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleAvisoAlteracoes}
+              disabled={salvandoAviso}
+              className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all disabled:opacity-50 ${
+                avisoAlteracoesAtivo ? 'bg-success-bg text-success border-success/30' : 'bg-raised text-muted border-border'
+              }`}
+            >
+              {salvandoAviso ? <Loader2 size={12} className="animate-spin" /> : avisoAlteracoesAtivo ? 'Ativo' : 'Inativo'}
+            </button>
+          </div>
+        </section>
+
+        {/* CANCELAMENTO DE EXPLICAÇÕES PELOS ALUNOS */}
+        <section className="bg-surface border border-border/60 p-6 md:p-8 rounded-2xl shadow-sm backdrop-blur-sm space-y-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2.5 bg-page/50 rounded-xl text-muted shrink-0">
+              <Ban size={18} />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-sm text-primary">Cancelamento de explicações pelos alunos</p>
+              <p className="text-[10px] text-muted mt-0.5">Permite ao aluno cancelar as suas próprias sessões antes de começarem.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xs font-bold text-secondary">Os alunos podem cancelar explicações</p>
+            <button
+              type="button"
+              onClick={handleToggleAlunoCancela}
+              disabled={salvandoAlunoCancela}
+              className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all disabled:opacity-50 ${
+                alunoCancelaAtivo ? 'bg-success-bg text-success border-success/30' : 'bg-raised text-muted border-border'
+              }`}
+            >
+              {salvandoAlunoCancela ? <Loader2 size={12} className="animate-spin" /> : alunoCancelaAtivo ? 'Ativo' : 'Inativo'}
+            </button>
+          </div>
+
+          {/* O campo das horas só existe enquanto o interruptor está ligado —
+              apresentação condicional, pedida no redesenho em separadores;
+              nenhuma gravação nem valor depende disto, só a visibilidade. */}
+          {alunoCancelaAtivo && (
+            <div>
+              <div className="flex items-center justify-between gap-4">
+                <label className="text-xs font-bold text-secondary">Cancelamento gratuito até (horas antes)</label>
+                <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    type="number"
+                    min={0}
+                    max={720}
+                    value={horasGratisTexto}
+                    onChange={(e) => setHorasGratisTexto(e.target.value)}
+                    className="w-20 bg-page border border-border text-primary text-sm p-2 rounded-xl outline-none focus:border-accent transition-all text-center"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleGuardarHorasGratis}
+                    disabled={salvandoHorasGratis}
+                    className="flex items-center gap-1 bg-accent hover:bg-accent-hover disabled:opacity-50 text-on-accent px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
+                  >
+                    {salvandoHorasGratis ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Guardar
+                  </button>
+                </div>
+              </div>
+              <p className="text-[10px] text-muted mt-1.5">Depois disto, o cancelamento é permitido mas a sessão é cobrada à família.</p>
+              {erroHorasGratis && <p className="text-[10px] text-danger font-bold mt-1">{erroHorasGratis}</p>}
+            </div>
+          )}
+        </section>
+
+      </div>
+      )}
 
       <StatusToast toast={toast} />
     </main>
+  );
+}
+
+export default function GestaoTotalPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-page flex items-center justify-center">
+        <Loader2 className="animate-spin text-accent" size={40} />
+      </div>
+    }>
+      <GestaoTotalPageContent />
+    </Suspense>
   );
 }

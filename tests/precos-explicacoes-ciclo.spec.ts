@@ -9,7 +9,8 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 // Editor de preços das explicações por ciclo (precos_explicacoes_ciclo),
-// Gestão → "Preços das Explicações". lib/precosCiclo.ts tem a lógica (ver
+// Gestão → aba "Preços" → "Explicações" (redesenho em separadores;
+// ?aba=precos abre direto nessa aba). lib/precosCiclo.ts tem a lógica (ver
 // tests/precos-ciclo-logica.spec.ts); aqui só o ecrã, a gravação (upsert +
 // delete) e o efeito real no gatilho calcular_valores_explicacao (nunca
 // tocado, só observado). Centro descartável ZZTESTE
@@ -109,7 +110,7 @@ async function loginUI(p: Page, email: string, password: string) {
 }
 
 async function abrirGestao(p: Page) {
-  await p.goto(`${BASE_URL}/admin/gestao`, { waitUntil: 'networkidle' });
+  await p.goto(`${BASE_URL}/admin/gestao?aba=precos`, { waitUntil: 'networkidle' });
   await p.waitForFunction(() => !document.querySelector('.animate-spin'), { timeout: 15_000 }).catch(() => {});
 }
 
@@ -407,10 +408,10 @@ test.describe('Preços das explicações por ciclo — centro descartável ZZTES
 
   // --- (g) acesso ---
   test('professor e secretaria não acedem à Gestão; o professor não lê nenhuma linha de precos_explicacoes_ciclo', async () => {
-    await pageProfessor.goto(`${BASE_URL}/admin/gestao`, { waitUntil: 'networkidle' });
+    await pageProfessor.goto(`${BASE_URL}/admin/gestao?aba=precos`, { waitUntil: 'networkidle' });
     await expect(pageProfessor).toHaveURL(`${BASE_URL}/admin`);
 
-    await pageSecretaria.goto(`${BASE_URL}/admin/gestao`, { waitUntil: 'networkidle' });
+    await pageSecretaria.goto(`${BASE_URL}/admin/gestao?aba=precos`, { waitUntil: 'networkidle' });
     await expect(pageSecretaria).toHaveURL(`${BASE_URL}/admin`);
 
     const sessaoProfessor = await sessaoComo(professor);

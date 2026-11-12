@@ -491,22 +491,35 @@ test.describe('Cancelamento de explicações pelo aluno — centro descartável 
   });
 
   // --- (i) interruptor da Gestão ---
-  test('Gestão: o interruptor grava os dois valores; professor e secretaria não veem a secção', async ({ browser }: { browser: Browser }) => {
+  test('Gestão: o interruptor grava os dois valores; o campo das horas esconde-se ao desligar; professor e secretaria não veem a secção', async ({ browser }: { browser: Browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
     await loginUI(page, admin.email, admin.password);
-    await page.goto(`${BASE_URL}/admin/gestao`, { waitUntil: 'networkidle' });
+    await page.goto(`${BASE_URL}/admin/gestao?aba=regras`, { waitUntil: 'networkidle' });
 
     const secao = page.getByText('Cancelamento de explicações pelos alunos').locator('..').locator('..');
     await expect(secao).toBeVisible({ timeout: 15_000 });
 
     const toggle = page.getByText('Os alunos podem cancelar explicações', { exact: true }).locator('..').getByRole('button');
-    await toggle.click();
-    await expect(page.getByText(/cancelamento pelos alunos|cancelar explicações/i)).toBeVisible({ timeout: 10_000 });
 
-    const inputHoras = page.getByText('Cancelamento gratuito até (horas antes)').locator('..').locator('input[type="number"]');
+    // Redesenho em separadores: o campo "Cancelamento gratuito até (horas
+    // antes)" passou a só existir no DOM enquanto o interruptor está ligado
+    // (antes era sempre visível). Por isso: desliga primeiro e confirma que
+    // o campo desaparece, religa, e só depois testa a gravação do valor.
+    await toggle.click();
+    await expect(page.getByText('Cancelamento pelos alunos desativado.')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Cancelamento gratuito até (horas antes)')).toHaveCount(0);
+
+    await toggle.click();
+    await expect(page.getByText('Os alunos já podem cancelar explicações.')).toBeVisible({ timeout: 10_000 });
+
+    const blocoHoras = page.getByText('Cancelamento gratuito até (horas antes)').locator('..').locator('..');
+    const inputHoras = blocoHoras.locator('input[type="number"]');
+    await expect(inputHoras).toBeVisible({ timeout: 10_000 });
     await inputHoras.fill('10');
-    await page.getByRole('button', { name: /^guardar$/i }).click();
+    // "Guardar" também existe no bloco "Dados do centro", na mesma aba —
+    // tem de ser o botão deste bloco (horas), não o primeiro da página.
+    await blocoHoras.getByRole('button', { name: /^guardar$/i }).click();
     await expect(page.getByText('Prazo de cancelamento gratuito atualizado.')).toBeVisible({ timeout: 10_000 });
     await context.close();
 
@@ -519,7 +532,7 @@ test.describe('Cancelamento de explicações pelo aluno — centro descartável 
       const context2 = await browser.newContext();
       const page2 = await context2.newPage();
       await loginUI(page2, conta.email, conta.password);
-      await page2.goto(`${BASE_URL}/admin/gestao`, { waitUntil: 'networkidle' });
+      await page2.goto(`${BASE_URL}/admin/gestao?aba=regras`, { waitUntil: 'networkidle' });
       await expect(page2.getByText('Cancelamento de explicações pelos alunos')).toHaveCount(0);
       await context2.close();
     }
