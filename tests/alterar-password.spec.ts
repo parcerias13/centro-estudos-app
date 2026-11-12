@@ -310,13 +310,26 @@ test.describe('Ciclo 1 — Alterar palavras-passe', () => {
         const hrefVoltar = await page.locator('main a').first().getAttribute('href');
         expect(hrefVoltar).toBe(role === 'admin' ? '/admin/equipa' : '/admin');
 
+        // No perfil do professor (redesenhado) o formulário de palavra-passe
+        // começa fechado — abre com "Alterar" — e o botão/mensagem de
+        // sucesso têm texto próprio; admin/secretaria mantêm o ecrã antigo.
+        if (role === 'professor') {
+          await page.getByRole('button', { name: 'Alterar', exact: true }).click();
+        }
+
         const nova = gerarPasswordSegura();
         const passwordInputs = page.locator('input[type="password"]');
         await passwordInputs.nth(0).fill(staff.password);
         await passwordInputs.nth(1).fill(nova);
         await passwordInputs.nth(2).fill(nova);
-        await page.getByRole('button', { name: /gravar nova palavra-passe/i }).click();
-        await expect(page.getByText(/alterada com sucesso/i)).toBeVisible({ timeout: 10_000 });
+
+        if (role === 'professor') {
+          await page.getByRole('button', { name: /guardar palavra-passe/i }).click();
+          await expect(page.getByText(/palavra-passe alterada\. a tua sessão continua aberta/i)).toBeVisible({ timeout: 10_000 });
+        } else {
+          await page.getByRole('button', { name: /gravar nova palavra-passe/i }).click();
+          await expect(page.getByText(/alterada com sucesso/i)).toBeVisible({ timeout: 10_000 });
+        }
         await context.close();
 
         const ctxNova = await browser.newContext();
