@@ -338,13 +338,17 @@ export default function StudentHome() {
           </Link>
         </div>
 
-        <Link href="/encarregados" className="flex items-center justify-between text-muted text-xs font-bold py-2">
-          <span className="flex items-center gap-1.5"><Lock size={12} /> Código</span>
-          <span className="flex items-center gap-1.5">
+        <Link href="/encarregados" className="flex items-center gap-3 min-h-11 py-2">
+          <Lock size={16} className="text-muted shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-secondary truncate">Área dos Encarregados</p>
+            <p className="text-[10px] font-normal text-muted truncate">Só para encarregados, com código</p>
+          </div>
+          <span className="flex items-center gap-1.5 shrink-0">
             {encarregadosNaoLidas > 0 && (
               <span className="bg-danger text-on-danger text-[9px] font-black min-w-4 h-4 px-1 rounded-full flex items-center justify-center">{encarregadosNaoLidas}</span>
             )}
-            ›
+            <span className="text-muted">›</span>
           </span>
         </Link>
       </div>
