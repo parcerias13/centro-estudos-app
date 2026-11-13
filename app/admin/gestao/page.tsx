@@ -15,7 +15,7 @@ import { pt } from 'date-fns/locale';
 import {
   Building2, Save, Loader2, DollarSign, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Plus, Trash2, RefreshCw, ShieldAlert, Receipt, GraduationCap, Pencil, Bell, Users,
-  Layers, Calculator, AlertTriangle, Ban,
+  Layers, Calculator, AlertTriangle, Ban, LogIn,
 } from 'lucide-react';
 import {
   CICLOS_INFO, LABEL_CICLO, cicloDoAno, escolherPrecoPorAlunos, valorCobrado,
@@ -57,6 +57,8 @@ function GestaoTotalPageContent() {
   const [salvandoAviso, setSalvandoAviso] = useState(false);
   const [modoPresencas, setModoPresencas] = useState<'individual' | 'lista_dia'>('individual');
   const [salvandoModoPresencas, setSalvandoModoPresencas] = useState(false);
+  const [checkinAluno, setCheckinAluno] = useState<'botao_unico' | 'disciplina'>('disciplina');
+  const [salvandoCheckinAluno, setSalvandoCheckinAluno] = useState(false);
   const [alunoCancelaAtivo, setAlunoCancelaAtivo] = useState(false);
   const [salvandoAlunoCancela, setSalvandoAlunoCancela] = useState(false);
   const [horasGratisTexto, setHorasGratisTexto] = useState('24');
@@ -227,6 +229,7 @@ function GestaoTotalPageContent() {
         setNomeCentro(config.nome_centro || '');
         setAvisoAlteracoesAtivo(!!config.aviso_alteracoes_explicacao_ativo);
         setModoPresencas(config.modo_presencas === 'lista_dia' ? 'lista_dia' : 'individual');
+        setCheckinAluno(config.checkin_aluno === 'botao_unico' ? 'botao_unico' : 'disciplina');
         setAlunoCancelaAtivo(!!config.aluno_cancela_explicacoes);
         setHorasGratisTexto(
           Number.isInteger(config.cancelamento_gratis_horas) ? String(config.cancelamento_gratis_horas) : '24'
@@ -293,6 +296,25 @@ function GestaoTotalPageContent() {
     if (res.ok) {
       setModoPresencas(novoValor);
       showSuccess(novoValor === 'lista_dia' ? 'Dashboard a mostrar a Lista do Dia.' : 'Dashboard a mostrar o check-in individual.');
+    } else {
+      const body = await res.json().catch(() => ({}));
+      showError(body?.error || `Erro ao guardar (${res.status}). Tenta novamente.`);
+    }
+  };
+
+  const handleAlterarCheckinAluno = async (novoValor: 'botao_unico' | 'disciplina') => {
+    if (novoValor === checkinAluno) return;
+    setSalvandoCheckinAluno(true);
+    const res = await fetch('/api/config-centro', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checkin_aluno: novoValor }),
+    });
+    setSalvandoCheckinAluno(false);
+
+    if (res.ok) {
+      setCheckinAluno(novoValor);
+      showSuccess('Guardado.');
     } else {
       const body = await res.json().catch(() => ({}));
       showError(body?.error || `Erro ao guardar (${res.status}). Tenta novamente.`);
@@ -1853,6 +1875,46 @@ function GestaoTotalPageContent() {
               </button>
             </div>
           </div>
+        </section>
+
+        {/* CHECK-IN DO ALUNO */}
+        <section className="bg-surface border border-border/60 p-6 md:p-8 rounded-2xl shadow-sm backdrop-blur-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2.5 bg-page/50 rounded-xl text-muted shrink-0">
+                <LogIn size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-sm text-primary">Check-in do aluno</p>
+                <p className="text-[10px] text-muted mt-0.5">Como o aluno dá entrada e saída no seu ecrã inicial.</p>
+              </div>
+            </div>
+            <div className="w-full sm:w-auto shrink-0 flex flex-col sm:flex-row items-stretch gap-1 sm:gap-0 bg-page border border-border rounded-2xl sm:rounded-full overflow-hidden p-1">
+              <button
+                type="button"
+                onClick={() => handleAlterarCheckinAluno('botao_unico')}
+                disabled={salvandoCheckinAluno}
+                className={`min-h-11 px-3 py-1.5 rounded-xl sm:rounded-full text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
+                  checkinAluno === 'botao_unico' ? 'bg-accent text-on-accent' : 'text-muted hover:text-secondary'
+                }`}
+              >
+                Botão único
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAlterarCheckinAluno('disciplina')}
+                disabled={salvandoCheckinAluno}
+                className={`min-h-11 px-3 py-1.5 rounded-xl sm:rounded-full text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
+                  checkinAluno === 'disciplina' ? 'bg-accent text-on-accent' : 'text-muted hover:text-secondary'
+                }`}
+              >
+                Com escolha de disciplina
+              </button>
+            </div>
+          </div>
+          <p className="text-[10px] text-muted mt-3">
+            Botão único: o aluno só dá entrada e saída, sem escolher disciplina nem sala. Com escolha de disciplina: como até agora.
+          </p>
         </section>
 
         {/* AVISAR AS FAMÍLIAS */}

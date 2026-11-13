@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { getHojeLisboa, diaSemanaLisboa, dataLisboaDe, instanteLisboaParaUTC } from '@/lib/dataLisboa';
 import { urlWhatsApp, marcarMensagemEnviada } from '@/lib/whatsapp';
+import { DISCIPLINA_ESTUDO_AUTONOMO } from '@/lib/diarioBordo';
 import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import {
@@ -12,9 +13,8 @@ import {
 
 // Chegadas marcadas pelo staff (toque ou "+ Aluno fora da lista") nunca
 // escolhem disciplina nem sala — ver decisão "SEM SELETOR DE DISCIPLINA".
-// Só o próprio aluno, no seu ecrã (app/page.tsx, intocado), continua a
-// escolher a disciplina do seu check-in.
-const DISCIPLINA_ESTUDO_AUTONOMO = 'Estudo autónomo';
+// O aluno, no seu ecrã (app/page.tsx), escolhe disciplina ou usa o mesmo
+// "Estudo autónomo" (botão único), segundo config_centro.checkin_aluno.
 
 type Props = {
   alunos: any[];

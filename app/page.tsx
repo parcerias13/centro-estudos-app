@@ -5,9 +5,13 @@ import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { disciplinasParaAno } from '@/lib/disciplinas';
-import { BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, ShieldAlert, GraduationCap, BrainCircuit, MapPin, RefreshCw, ClipboardList, Lock, FolderOpen, CalendarClock } from 'lucide-react';
-import { LAB_AI_ATIVO } from '@/lib/features';
+import { getHojeLisboa, diasEntre } from '@/lib/dataLisboa';
+import {
+  BookOpen, LogOut, Loader2, CheckCircle2, Calendar, User, Library, MapPin, RefreshCw,
+  ClipboardList, Lock, FolderOpen, CalendarClock, GraduationCap,
+} from 'lucide-react';
 import { contarMaterialNovoAluno } from '@/lib/materialAluno';
+import CheckInBotaoUnico from './CheckInBotaoUnico';
 
 export default function StudentHome() {
   const { toast, showError } = useStatusToast();
@@ -17,14 +21,11 @@ export default function StudentHome() {
   const [currentSession, setCurrentSession] = useState<any>(null);
   const [studentName, setStudentName] = useState('');
   const [proximoTeste, setProximoTeste] = useState<any>(null);
-  const [hasIaConsent, setHasIaConsent] = useState(false); 
-  
-  const [isLimitReached, setIsLimitReached] = useState(false);
-  const [limitData, setLimitData] = useState({ visits: 0, limit: 0 });
+
   const [showSwitchList, setShowSwitchList] = useState(false);
   const [encarregadosNaoLidas, setEncarregadosNaoLidas] = useState(0);
   const [materialNovoCount, setMaterialNovoCount] = useState(0);
-
+  const [checkinMode, setCheckinMode] = useState<'disciplina' | 'botao_unico'>('disciplina');
 
   const fetchData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -38,40 +39,24 @@ export default function StudentHome() {
       .eq('aluno_id', user.id)
       .is('saida', null)
       .maybeSingle();
-    
+
     setCurrentSession(session);
+
+    try {
+      const { data: modo } = await supabase.rpc('modo_checkin_aluno');
+      setCheckinMode(modo === 'botao_unico' ? 'botao_unico' : 'disciplina');
+    } catch {
+      setCheckinMode('disciplina');
+    }
 
     const { data: student } = await supabase
       .from('alunos')
-      .select('nome, limite_semanal, consentimento_ia, ano_escolar')
+      .select('nome, ano_escolar')
       .eq('id', user.id)
       .maybeSingle();
-    
+
     if (student) {
       setStudentName(student.nome?.split(' ')[0] || 'Aluno');
-      setHasIaConsent(student.consentimento_ia || false);
-
-      const hoje = new Date();
-      const diaDaSemana = hoje.getDay() === 0 ? 6 : hoje.getDay() - 1;
-      const inicioSemana = new Date(hoje);
-      inicioSemana.setDate(hoje.getDate() - diaDaSemana);
-      inicioSemana.setHours(0, 0, 0, 0);
-      const fimSemana = new Date(inicioSemana);
-      fimSemana.setDate(inicioSemana.getDate() + 6);
-      fimSemana.setHours(23, 59, 59, 999);
-
-      const { count } = await supabase
-        .from('diario_bordo')
-        .select('*', { count: 'exact', head: true })
-        .eq('aluno_id', user.id)
-        .gte('entrada', inicioSemana.toISOString())
-        .lte('entrada', fimSemana.toISOString());
-
-      const limite = student.limite_semanal || 0;
-      const visitasFeitas = count || 0;
-      setLimitData({ visits: visitasFeitas, limit: limite });
-      if (limite > 0 && visitasFeitas >= limite) setIsLimitReached(true);
-      else setIsLimitReached(false);
     }
 
     let subjectsQuery = supabase.from('subjects').select('*, salas(nome)').order('name');
@@ -80,7 +65,7 @@ export default function StudentHome() {
     const anoAluno = student?.ano_escolar ?? null;
     setSubjects(disciplinasParaAno(subjs || [], anoAluno));
 
-    const hojeStr = new Date().toISOString().split('T')[0];
+    const hojeStr = getHojeLisboa();
     const { data: teste } = await supabase
       .from('exams')
       .select('*')
@@ -118,7 +103,7 @@ export default function StudentHome() {
     setIsSubmitting(true);
     try {
       await actionFn();
-      await fetchData(); 
+      await fetchData();
     } catch (error) {
       console.error("Erro na operação:", error);
     } finally {
@@ -127,8 +112,6 @@ export default function StudentHome() {
   };
 
   const handleCheckIn = async (subjectId: number, subjectName: string, salaId: string | null) => {
-    // Bloqueio de limite semanal desativado até `limite_semanal` estar configurado corretamente:
-    // if (isLimitReached || currentSession) return;
     if (currentSession) return;
     await supabase.auth.refreshSession();
     const { data: { user } } = await supabase.auth.getUser();
@@ -145,7 +128,7 @@ export default function StudentHome() {
       centro_id,
     }).select().single();
 
-    if (error) return alert(`Erro: ${error.message}`);
+    if (error) return showError(`Erro: ${error.message}`);
 
     if (newSession) {
       await supabase.from('atividades_estudo').insert({
@@ -156,7 +139,6 @@ export default function StudentHome() {
     }
   };
 
-  // CORREÇÃO: Agora recebe o newSalaId para atualizar a sala no UI
   const handleSwitchSubject = async (newSubjectId: number, newSubjectName: string, newSalaId: string | null) => {
     if (!currentSession) return;
 
@@ -178,12 +160,11 @@ export default function StudentHome() {
       centro_id,
     });
 
-    // ATUALIZAÇÃO DA SALA NO DIARIO_BORDO
     const { error } = await supabase.from('diario_bordo')
-      .update({ 
-        subject_id: newSubjectId, 
+      .update({
+        subject_id: newSubjectId,
         subject_name: newSubjectName,
-        sala_id: newSalaId 
+        sala_id: newSalaId
       })
       .eq('id', currentSession.id);
 
@@ -215,231 +196,157 @@ export default function StudentHome() {
 
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
 
+  const diasAteTeste = proximoTeste ? diasEntre(proximoTeste.date) : null;
+  const rotuloTeste = diasAteTeste === null ? ''
+    : diasAteTeste <= 0 ? 'hoje'
+    : diasAteTeste === 1 ? 'amanhã'
+    : `daqui a ${diasAteTeste} dias`;
+
   return (
-    <main className={`min-h-screen bg-page text-primary p-6 font-sans transition-all duration-300 ${isSubmitting ? 'pointer-events-none opacity-60' : ''}`}>
+    <main className="min-h-screen bg-page text-primary p-6 font-sans">
       <div className="max-w-xl mx-auto">
-        
-        {currentSession ? (
-          <div className="flex flex-col items-center justify-center space-y-8 animate-in fade-in zoom-in duration-500 py-12">
-            <div className="bg-success-bg text-success p-6 rounded-full w-24 h-24 flex items-center justify-center mx-auto border-4 border-success/20">
-              <CheckCircle2 size={48} />
-            </div>
-            <div className="text-center w-full">
-              <h1 className="text-3xl font-black mb-2 italic">Bom Estudo, {studentName}!</h1>
-              
-              <div className="bg-surface border border-border p-6 rounded-3xl mt-4 inline-block w-full shadow-2xl relative overflow-hidden">
-                <span className="text-2xl font-black text-accent">{currentSession.subject_name || 'Sessão Livre'}</span>
-                
-                {/* O Join com a tabela salas agora atualizará corretamente */}
-                {currentSession.salas?.nome && (
-                  <div className="mt-4 bg-success-bg border border-success/30 rounded-2xl p-4 flex items-center justify-center gap-3">
-                    <MapPin size={24} className="text-success animate-bounce" />
-                    <div className="text-left">
-                      <p className="text-[10px] text-success uppercase font-black tracking-widest">A tua sala hoje:</p>
-                      <p className="text-lg font-black text-primary capitalize">{currentSession.salas.nome}</p>
-                    </div>
-                  </div>
-                )}
 
-                <button 
-                  onClick={() => setShowSwitchList(!showSwitchList)} 
-                  className="mt-6 w-full py-3 bg-raised hover:bg-border text-secondary rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
-                >
-                  <RefreshCw size={14} className={showSwitchList ? 'animate-spin' : ''} />
-                  {showSwitchList ? 'Cancelar Troca' : 'Trocar Disciplina'}
-                </button>
-
-                {showSwitchList && (
-                  <div className="mt-4 grid grid-cols-2 gap-2 animate-in slide-in-from-top-2 duration-300">
-                    {subjects.filter(s => s.id !== currentSession.subject_id).map((subject) => (
-                      <button 
-                        key={subject.id}
-                        // PASSAMOS TAMBÉM O SALA_ID PARA A FUNÇÃO
-                        onClick={() => safeAction(() => handleSwitchSubject(subject.id, subject.name, subject.sala_id))}
-                        className="bg-page border border-border p-3 rounded-xl text-[10px] font-bold hover:border-accent transition-colors"
-                      >
-                        {subject.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="w-full space-y-4">
-              <div className={`grid ${LAB_AI_ATIVO && hasIaConsent ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-6`}>
-                 <Link href="/biblioteca" className="bg-surface border border-border p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group">
-                   <Library size={24} className="text-orange-500" />
-                   <span className="text-[8px] font-black uppercase tracking-widest text-secondary">Biblioteca</span>
-                 </Link>
-                 {LAB_AI_ATIVO && hasIaConsent && (
-                   <Link href="/aluno/lab" className="bg-surface border border-orange-500/50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 shadow-lg shadow-orange-900/10">
-                     <BrainCircuit size={24} className="text-orange-400" />
-                     <span className="text-[8px] font-black uppercase tracking-widest text-orange-400">Lab AI</span>
-                   </Link>
-                 )}
-                 <Link href="/agenda" className="bg-surface border border-border p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group">
-                   <Calendar size={24} className="text-purple-500" />
-                   <span className="text-[8px] font-black uppercase tracking-widest text-secondary">Agenda</span>
-                 </Link>
-                 <Link href="/notas" className="relative bg-surface border border-accent/50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 shadow-lg shadow-accent/10">
-                   <span className="absolute top-2 right-2 bg-accent text-on-accent text-[7px] font-black px-1.5 py-0.5 rounded-full uppercase">Novo</span>
-                   <ClipboardList size={24} className="text-accent" />
-                   <span className="text-[8px] font-black uppercase tracking-widest text-accent">Notas</span>
-                 </Link>
-                 <Link href="/material" className="relative bg-surface border border-border p-4 rounded-2xl flex flex-col items-center justify-center gap-2 group">
-                   {materialNovoCount > 0 && (
-                     <span className="absolute top-2 right-2 bg-danger text-on-danger text-[9px] font-black min-w-5 h-5 px-1 rounded-full flex items-center justify-center">{materialNovoCount}</span>
-                   )}
-                   <FolderOpen size={24} className="text-teal-500" />
-                   <span className="text-[8px] font-black uppercase tracking-widest text-secondary">Material</span>
-                 </Link>
-              </div>
-
-              <Link href="/encarregados" className="bg-surface border border-border p-4 rounded-2xl flex items-center justify-between group">
-                <div className="flex items-center gap-3">
-                  <Lock size={18} className="text-muted" />
-                  <div>
-                    <p className="font-bold text-sm">Área dos Encarregados</p>
-                    <p className="text-[8px] font-black uppercase tracking-widest text-muted">Só para encarregados</p>
-                  </div>
-                </div>
-                {encarregadosNaoLidas > 0 && (
-                  <span className="bg-danger text-on-danger text-[10px] font-black min-w-5 h-5 px-1.5 rounded-full flex items-center justify-center shrink-0">{encarregadosNaoLidas}</span>
-                )}
-              </Link>
-
-              <button onClick={() => safeAction(handleCheckout)} disabled={isSubmitting} className="w-full bg-surface hover:bg-danger-bg text-secondary hover:text-danger border border-border py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all">
-                {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <LogOut size={20} />} TERMINAR SESSÃO
-              </button>
-            </div>
+        <header className="mb-6 flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-black italic tracking-tighter">Olá, {studentName}</h1>
+            <p className="text-secondary text-sm font-normal mt-1">O que vamos estudar hoje?</p>
           </div>
-        ) : (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <header className="mb-8 flex justify-between items-center">
+          <div className="flex gap-2">
+            <Link href="/perfil" className="bg-surface p-3 rounded-xl border border-border text-secondary"><User size={20} /></Link>
+            <button onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login'; }} className="bg-surface p-3 rounded-xl border border-border text-secondary"><LogOut size={20} /></button>
+          </div>
+        </header>
+
+        {proximoTeste && (
+          <Link
+            href="/agenda"
+            className="flex items-center gap-4 bg-warning-bg border border-warning/20 p-4 rounded-2xl mb-6 min-h-11"
+          >
+            <div className="bg-warning-bg p-3 rounded-xl text-warning shrink-0"><GraduationCap size={20} /></div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase text-warning/60 tracking-widest">Próximo teste</p>
+              <p className="text-sm font-bold text-warning truncate">{proximoTeste.subject_name} · {rotuloTeste}</p>
+            </div>
+          </Link>
+        )}
+
+        <section className={`mb-8 transition-all duration-300 ${isSubmitting ? 'pointer-events-none opacity-60' : ''}`}>
+          {checkinMode === 'botao_unico' ? (
+            <CheckInBotaoUnico showError={showError} />
+          ) : currentSession ? (
+            <div className="bg-surface border border-border p-6 rounded-3xl text-center space-y-4">
+              <div className="bg-success-bg text-success p-4 rounded-full w-16 h-16 flex items-center justify-center mx-auto border-4 border-success/20">
+                <CheckCircle2 size={28} />
+              </div>
               <div>
-                <h1 className="text-3xl font-black italic tracking-tighter">Olá, {studentName} 👋</h1>
-                <p className="text-secondary text-xs font-bold uppercase tracking-widest mt-1">O que vamos estudar hoje?</p>
+                <p className="text-lg font-black text-primary">Bom Estudo, {studentName}!</p>
+                <p className="text-sm font-black text-accent mt-1">{currentSession.subject_name || 'Sessão Livre'}</p>
+                {currentSession.salas?.nome && (
+                  <div className="mt-3 bg-success-bg border border-success/30 rounded-xl p-3 flex items-center justify-center gap-2">
+                    <MapPin size={16} className="text-success" />
+                    <p className="text-xs font-black text-primary capitalize">{currentSession.salas.nome}</p>
+                  </div>
+                )}
               </div>
-              <div className="flex gap-2">
-                <Link href="/perfil" className="bg-surface p-3 rounded-xl border border-border text-secondary"><User size={20} /></Link>
-                <button onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login'; }} className="bg-surface p-3 rounded-xl border border-border text-secondary"><LogOut size={20} /></button>
-              </div>
-            </header>
 
-            {proximoTeste && (
-              <div className="bg-warning-bg border border-warning/20 p-4 rounded-2xl mb-6 flex items-center gap-4">
-                <div className="bg-warning-bg p-3 rounded-xl text-warning"><GraduationCap size={20} /></div>
-                <div>
-                  <p className="text-[10px] font-black uppercase text-warning/60 tracking-widest">Alvo de Foco</p>
-                  <p className="text-sm font-bold text-warning">Teste de {proximoTeste.subject_name} dia {new Date(proximoTeste.date).getDate()}!</p>
-                </div>
-              </div>
-            )}
+              <button
+                onClick={() => setShowSwitchList(!showSwitchList)}
+                className="w-full min-h-11 py-3 bg-raised hover:bg-border text-secondary rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+              >
+                <RefreshCw size={14} className={showSwitchList ? 'animate-spin' : ''} />
+                {showSwitchList ? 'Cancelar Troca' : 'Trocar Disciplina'}
+              </button>
 
-            {/* Ecrã "Limite Semanal Atingido" desativado até `limite_semanal` estar configurado
-                corretamente. Reativar: trocar `false` de volta por `isLimitReached`. */}
-            {false ? (
-              <div className="bg-danger-bg border border-danger/50 p-8 rounded-4xl text-center space-y-6 py-20">
-                <div className="bg-danger-bg text-danger p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto"><ShieldAlert size={40} /></div>
-                <h2 className="text-2xl font-black text-primary italic uppercase">Limite Semanal Atingido</h2>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-3 mb-8">
-                    <Link href="/agenda" className="bg-linear-to-br from-purple-900/50 to-blue-900/50 border border-purple-500/30 p-5 rounded-3xl h-32 flex flex-col justify-between">
-                        <div className="bg-purple-500/20 p-2 rounded-lg text-purple-400 w-fit"><Calendar size={20} /></div>
-                        <p className="font-black text-primary text-lg">Agenda</p>
-                    </Link>
-                    <Link href="/biblioteca" className="bg-linear-to-br from-orange-900/50 to-red-900/50 border border-orange-500/30 p-5 rounded-3xl h-32 flex flex-col justify-between">
-                        <div className="bg-orange-500/20 p-2 rounded-lg text-orange-400 w-fit"><Library size={20} /></div>
-                        <p className="font-black text-primary text-lg">Biblioteca</p>
-                    </Link>
-                    <Link href="/notas" className="col-span-2 bg-linear-to-r from-accent to-accent-hover p-5 rounded-3xl flex items-center justify-between shadow-xl shadow-accent/20">
-                        <div className="flex items-center gap-4">
-                          <div className="bg-white/20 p-3 rounded-2xl text-on-accent"><ClipboardList size={28} /></div>
-                          <div>
-                            <p className="font-black text-on-accent text-xl italic uppercase tracking-tighter">As Minhas Notas</p>
-                            <p className="text-[10px] text-white/80 font-bold uppercase tracking-widest">Testes e Notas de Período</p>
-                          </div>
-                        </div>
-                    </Link>
-                    <Link href="/material" className="col-span-2 bg-surface border border-border p-5 rounded-3xl flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="bg-raised p-3 rounded-2xl text-teal-500"><FolderOpen size={22} /></div>
-                          <div>
-                            <p className="font-black text-primary text-base">O Meu Material</p>
-                            <p className="text-[10px] text-muted font-bold uppercase tracking-widest">Fichas, resumos e apontamentos</p>
-                          </div>
-                        </div>
-                        {materialNovoCount > 0 && (
-                          <span className="bg-danger text-on-danger text-[10px] font-black min-w-5 h-5 px-1.5 rounded-full flex items-center justify-center shrink-0">{materialNovoCount}</span>
-                        )}
-                    </Link>
-
-                    <Link href="/minhas-explicacoes" className="col-span-2 bg-surface border border-border p-5 rounded-3xl flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="bg-raised p-3 rounded-2xl text-blue-500"><CalendarClock size={22} /></div>
-                          <div>
-                            <p className="font-black text-primary text-base">As Minhas Explicações</p>
-                            <p className="text-[10px] text-muted font-bold uppercase tracking-widest">Sessões marcadas e cancelamentos</p>
-                          </div>
-                        </div>
-                    </Link>
-
-                    <Link href="/encarregados" className="col-span-2 bg-surface border border-border p-5 rounded-3xl flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="bg-raised p-3 rounded-2xl text-muted"><Lock size={22} /></div>
-                          <div>
-                            <p className="font-black text-primary text-base">Área dos Encarregados</p>
-                            <p className="text-[10px] text-muted font-bold uppercase tracking-widest">Só para encarregados</p>
-                          </div>
-                        </div>
-                        {encarregadosNaoLidas > 0 && (
-                          <span className="bg-danger text-on-danger text-[10px] font-black min-w-5 h-5 px-1.5 rounded-full flex items-center justify-center shrink-0">{encarregadosNaoLidas}</span>
-                        )}
-                    </Link>
-                    {LAB_AI_ATIVO && hasIaConsent && (
-                      <Link href="/aluno/lab" className="col-span-2 bg-linear-to-r from-orange-600 to-orange-400 p-5 rounded-3xl flex items-center justify-between shadow-xl shadow-orange-900/20">
-                          <div className="flex items-center gap-4">
-                            <div className="bg-white/20 p-3 rounded-2xl text-primary"><BrainCircuit size={28} /></div>
-                            <div>
-                              <p className="font-black text-primary text-xl italic uppercase tracking-tighter">My Personal Lab</p>
-                              <p className="text-[10px] text-white/80 font-bold uppercase tracking-widest">Estudo Inteligente com IA</p>
-                            </div>
-                          </div>
-                          <span className="bg-white/20 text-primary text-[10px] font-black px-3 py-1 rounded-full uppercase">Premium</span>
-                      </Link>
-                    )}
-                </div>
-
-                <div className="flex justify-between items-center mb-4 px-1">
-                    <h3 className="font-black text-secondary text-xs uppercase tracking-widest">Escolhe a tua Disciplina</h3>
-                </div>
-                <div className="grid grid-cols-2 gap-3 pb-10">
-                  {subjects.map((subject) => (
-                    <button 
-                      key={subject.id} 
-                      disabled={isSubmitting}
-                      onClick={() => safeAction(() => handleCheckIn(subject.id, subject.name, subject.sala_id))} 
-                      className="bg-surface hover:bg-raised border border-border p-5 rounded-3xl text-left transition-all relative overflow-hidden active:scale-95 disabled:opacity-50"
+              {showSwitchList && (
+                <div className="grid grid-cols-2 gap-2">
+                  {subjects.filter(s => s.id !== currentSession.subject_id).map((subject) => (
+                    <button
+                      key={subject.id}
+                      onClick={() => safeAction(() => handleSwitchSubject(subject.id, subject.name, subject.sala_id))}
+                      className="bg-page border border-border p-3 rounded-xl text-[10px] font-bold hover:border-accent transition-colors min-h-11"
                     >
-                      <div className="bg-accent-soft text-accent w-10 h-10 rounded-xl flex items-center justify-center mb-3">
-                        <BookOpen size={20} />
-                      </div>
-                      <span className="font-black text-md block text-primary">{subject.name}</span>
-                      {subject.salas?.nome && (
-                        <span className="absolute top-4 right-4 text-[8px] bg-raised text-secondary px-2 py-1 rounded font-black uppercase tracking-widest">
-                          {subject.salas.nome}
-                        </span>
-                      )}
+                      {subject.name}
                     </button>
                   ))}
                 </div>
-              </>
+              )}
+
+              <button onClick={() => safeAction(handleCheckout)} disabled={isSubmitting} className="w-full min-h-11 bg-surface hover:bg-danger-bg text-secondary hover:text-danger border border-border py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all">
+                {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : <LogOut size={20} />} TERMINAR SESSÃO
+              </button>
+            </div>
+          ) : (
+            <div>
+              <h3 className="font-black text-secondary text-xs uppercase tracking-widest mb-3 px-1">Cheguei: escolhe a disciplina</h3>
+              <div className="grid grid-cols-2 gap-3">
+                {subjects.map((subject) => (
+                  <button
+                    key={subject.id}
+                    disabled={isSubmitting}
+                    onClick={() => safeAction(() => handleCheckIn(subject.id, subject.name, subject.sala_id))}
+                    className="bg-surface hover:bg-raised border border-border p-4 rounded-2xl text-left transition-all relative active:scale-95 disabled:opacity-50 min-h-11"
+                  >
+                    <div className="bg-accent-soft text-accent w-8 h-8 rounded-lg flex items-center justify-center mb-2">
+                      <BookOpen size={16} />
+                    </div>
+                    <span className="font-black text-sm block text-primary">{subject.name}</span>
+                    {subject.salas?.nome && (
+                      <span className="absolute top-3 right-3 text-[8px] bg-raised text-secondary px-1.5 py-0.5 rounded font-black uppercase tracking-widest">
+                        {subject.salas.nome}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        <h3 className="font-black text-secondary text-xs uppercase tracking-widest mb-3 px-1">O teu espaço</h3>
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <Link href="/agenda" className="bg-surface border border-border p-4 rounded-2xl flex flex-col gap-2 min-h-11">
+            <Calendar size={18} className="text-purple-500" />
+            <span className="font-black text-sm text-primary">Agenda</span>
+            <p className="text-xs text-secondary font-normal">Calendário de testes</p>
+          </Link>
+
+          <Link href="/notas" className="bg-surface border border-border p-4 rounded-2xl flex flex-col gap-2 min-h-11">
+            <ClipboardList size={18} className="text-accent" />
+            <span className="font-black text-sm text-primary">Notas</span>
+            <p className="text-xs text-secondary font-normal">Testes e Notas de Período</p>
+          </Link>
+
+          <Link href="/biblioteca" className="bg-surface border border-border p-4 rounded-2xl flex flex-col gap-2 min-h-11">
+            <Library size={18} className="text-orange-500" />
+            <span className="font-black text-sm text-primary">Biblioteca</span>
+            <p className="text-xs text-secondary font-normal">Livros e recursos de estudo</p>
+          </Link>
+
+          <Link href="/material" className="relative bg-surface border border-border p-4 rounded-2xl flex flex-col gap-2 min-h-11">
+            {materialNovoCount > 0 && (
+              <span className="absolute top-3 right-3 bg-danger text-on-danger text-[9px] font-black min-w-5 h-5 px-1 rounded-full flex items-center justify-center">{materialNovoCount}</span>
             )}
-          </div>
-        )}
+            <FolderOpen size={18} className="text-teal-500" />
+            <span className="font-black text-sm text-primary">Material</span>
+            <p className="text-xs text-secondary font-normal">Fichas, resumos e apontamentos</p>
+          </Link>
+
+          <Link href="/minhas-explicacoes" className="bg-surface border border-border p-4 rounded-2xl flex flex-col gap-2 min-h-11">
+            <CalendarClock size={18} className="text-blue-500" />
+            <span className="font-black text-sm text-primary">As Minhas Explicações</span>
+            <p className="text-xs text-secondary font-normal">Sessões marcadas e cancelamentos</p>
+          </Link>
+        </div>
+
+        <Link href="/encarregados" className="flex items-center justify-between text-muted text-xs font-bold py-2">
+          <span className="flex items-center gap-1.5"><Lock size={12} /> Código</span>
+          <span className="flex items-center gap-1.5">
+            {encarregadosNaoLidas > 0 && (
+              <span className="bg-danger text-on-danger text-[9px] font-black min-w-4 h-4 px-1 rounded-full flex items-center justify-center">{encarregadosNaoLidas}</span>
+            )}
+            ›
+          </span>
+        </Link>
       </div>
 
       <StatusToast toast={toast} />

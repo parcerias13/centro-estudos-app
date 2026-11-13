@@ -51,6 +51,20 @@ export function horaLisboaDe(instante: Date | string): string {
 }
 
 /**
+ * Diferença em dias inteiros entre duas datas yyyy-MM-dd (positiva se
+ * `dataISO` for no futuro em relação a `hoje`) — para "daqui a N dias" (ex.
+ * Próximo Teste do aluno) sem depender do fuso do browser nem de `new Date()`
+ * para decidir o dia atual.
+ */
+export function diasEntre(dataISOyyyyMMdd: string, hoje: string = getHojeLisboa()): number {
+  const [anoA, mesA, diaA] = dataISOyyyyMMdd.split('-').map(Number);
+  const [anoB, mesB, diaB] = hoje.split('-').map(Number);
+  const a = Date.UTC(anoA, mesA - 1, diaA);
+  const b = Date.UTC(anoB, mesB - 1, diaB);
+  return Math.round((a - b) / 86400000);
+}
+
+/**
  * Dia da semana (0=Domingo..6=Sábado, igual a Date.getDay()) mas calculado em
  * Europe/Lisbon, não no fuso do browser — para a Lista do Dia (admin/page.tsx)
  * nunca discordar de aluno_horarios.dia_semana (1=Segunda..6=Sábado) por causa

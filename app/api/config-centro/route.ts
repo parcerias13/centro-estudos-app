@@ -46,7 +46,7 @@ export async function GET() {
   // por centro, para não a pôr nas mãos de cada admin.
   const { data: config, error } = await supabaseAdmin
     .from('config_centro')
-    .select('nome_centro, aviso_alteracoes_explicacao_ativo, modo_presencas, aluno_cancela_explicacoes, cancelamento_gratis_horas')
+    .select('nome_centro, aviso_alteracoes_explicacao_ativo, modo_presencas, aluno_cancela_explicacoes, cancelamento_gratis_horas, checkin_aluno')
     .eq('id', centroId)
     .maybeSingle()
 
@@ -60,7 +60,7 @@ export async function PATCH(req: Request) {
 
   const {
     nome_centro, aviso_alteracoes_explicacao_ativo, modo_presencas,
-    aluno_cancela_explicacoes, cancelamento_gratis_horas,
+    aluno_cancela_explicacoes, cancelamento_gratis_horas, checkin_aluno,
   } = await req.json()
 
   // email_remetente e resend_api_key deixaram de ser aceites aqui — a
@@ -74,6 +74,9 @@ export async function PATCH(req: Request) {
   }
   if (modo_presencas === 'individual' || modo_presencas === 'lista_dia') {
     payload.modo_presencas = modo_presencas
+  }
+  if (checkin_aluno === 'botao_unico' || checkin_aluno === 'disciplina') {
+    payload.checkin_aluno = checkin_aluno
   }
   if (typeof aluno_cancela_explicacoes === 'boolean') {
     payload.aluno_cancela_explicacoes = aluno_cancela_explicacoes

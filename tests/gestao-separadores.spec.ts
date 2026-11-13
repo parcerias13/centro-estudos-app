@@ -280,7 +280,7 @@ test.describe('Gestão — separadores (Custos / Preços / Regras do centro) —
     await context.close();
   });
 
-  test('"Regras do centro": os quatro blocos aparecem; o interruptor mostra/esconde as horas', async ({ browser }) => {
+  test('"Regras do centro": os cinco blocos aparecem; o interruptor mostra/esconde as horas', async ({ browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
     await loginUI(page, admin.email, admin.password);
@@ -290,6 +290,7 @@ test.describe('Gestão — separadores (Custos / Preços / Regras do centro) —
 
     await expect(page.getByRole('heading', { name: 'Dados do centro' })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('Presenças no Dashboard')).toBeVisible();
+    await expect(page.getByText('Check-in do aluno')).toBeVisible();
     await expect(page.getByText('Avisar as famílias das alterações às explicações')).toBeVisible();
     await expect(page.getByText('Cancelamento de explicações pelos alunos')).toBeVisible();
 
