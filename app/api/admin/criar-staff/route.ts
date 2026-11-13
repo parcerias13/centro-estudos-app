@@ -29,7 +29,13 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
 
-  if (user.app_metadata?.role?.toLowerCase() !== 'admin') {
+  const { data: staffData } = await supabaseAdmin
+    .from('staff')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (staffData?.role?.toLowerCase() !== 'admin') {
     return NextResponse.json({ error: 'Sem permissões de administrador.' }, { status: 403 })
   }
 

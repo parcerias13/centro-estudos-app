@@ -72,7 +72,7 @@ export async function POST(req: Request) {
   const { error } = await supabaseAdmin.auth.admin.updateUserById(targetId, { password: passwordFinal })
 
   if (error) {
-    console.error('reset-password: falha ao atualizar password', error)
+    console.error('reset-password: falha ao atualizar password', error.message)
     return NextResponse.json({ error: 'Não foi possível atualizar a password.' }, { status: 500 })
   }
   return NextResponse.json({ ok: true, password: passwordFinal }, { headers: { 'Cache-Control': 'no-store' } })

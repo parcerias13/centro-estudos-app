@@ -93,7 +93,7 @@ export async function POST(req: Request) {
 
   const { error: errUpdate } = await supabase.auth.updateUser({ password: nova })
   if (errUpdate) {
-    console.error('alterar-password: falha ao atualizar', errUpdate)
+    console.error('alterar-password: falha ao atualizar', errUpdate.message)
     registarFalha(user.id)
     return NextResponse.json({ error: 'Não foi possível atualizar a palavra-passe.' }, { status: 500 })
   }
