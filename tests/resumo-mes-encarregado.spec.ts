@@ -422,12 +422,17 @@ test.describe('Resumo do Mês (Área dos Encarregados) — centro descartável Z
     }
     await expect(pageAdmin.getByText(alunoPrincipal.nome!, { exact: false })).toBeVisible({ timeout: 15_000 });
 
+    // Localizadores por data-testid (não por posição nem por "não pago"/"pago"
+    // genérico): a linha também tem a coluna de Extras do mês, com o seu
+    // próprio botão de estado — nunca tocada por este teste.
     const linha = pageAdmin.locator('tr', { hasText: alunoPrincipal.nome! });
-    await linha.getByRole('button', { name: /não pago/i }).first().click(); // mensalidade -> Pago
-    await expect(linha.getByRole('button', { name: /^pago$/i }).first()).toBeVisible({ timeout: 10_000 });
-    const botaoExplicacoes = linha.getByRole('button', { name: /não pago/i }).first();
-    await botaoExplicacoes.click(); // explicações -> Pago
-    await expect(linha.getByRole('button', { name: /não pago/i })).toHaveCount(0, { timeout: 10_000 });
+    const botaoMensalidade = linha.getByTestId('mensalidade-estado');
+    const botaoExplicacoes = linha.getByTestId('explicacoes-estado');
+
+    await botaoMensalidade.click(); // -> Pago
+    await expect(botaoMensalidade).toHaveText(/^pago$/i, { timeout: 10_000 });
+    await botaoExplicacoes.click(); // -> Pago
+    await expect(botaoExplicacoes).toHaveText(/^pago$/i, { timeout: 10_000 });
 
     const contextFamilia = await browser.newContext();
     const pageFamilia = await contextFamilia.newPage();
@@ -440,11 +445,10 @@ test.describe('Resumo do Mês (Área dos Encarregados) — centro descartável Z
     await contextFamilia.close();
 
     // volta a marcar como não pago, nos dois sentidos
-    await linha.getByRole('button', { name: /^pago$/i }).first().click();
-    await expect(linha.getByRole('button', { name: /não pago/i }).first()).toBeVisible({ timeout: 10_000 });
-    const botaoExplicacoesPago = linha.getByRole('button', { name: /^pago$/i }).first();
-    await botaoExplicacoesPago.click();
-    await expect(linha.getByRole('button', { name: /^pago$/i })).toHaveCount(0, { timeout: 10_000 });
+    await botaoMensalidade.click();
+    await expect(botaoMensalidade).toHaveText(/não pago/i, { timeout: 10_000 });
+    await botaoExplicacoes.click();
+    await expect(botaoExplicacoes).toHaveText(/não pago/i, { timeout: 10_000 });
 
     const contextFamilia2 = await browser.newContext();
     const pageFamilia2 = await contextFamilia2.newPage();

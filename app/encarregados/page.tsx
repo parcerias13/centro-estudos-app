@@ -8,9 +8,11 @@ import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { isUnlocked, unlock, lock, touch, subscribe } from '@/lib/encarregadoUnlock';
 import { getHojeLisboa } from '@/lib/dataLisboa';
 import { getAnoLetivoAtual } from '@/lib/anoLetivo';
+import { mensalidadeEmAtraso } from '@/lib/mensalidadeEmAtraso';
+import { obterDadosPagamentoCentro, type DadosPagamentoCentro } from '@/lib/extrasCentro';
 import {
   ArrowLeft, Lock, Unlock, Loader2, AlertTriangle, DollarSign, ClipboardList,
-  MessageCircle, KeyRound, ChevronLeft, ChevronRight, CheckCircle2, Clock,
+  MessageCircle, KeyRound, ChevronLeft, ChevronRight, CheckCircle2, Clock, Copy, Check, Landmark,
 } from 'lucide-react';
 
 type LinhaExplicacaoResumo = {
@@ -33,6 +35,29 @@ type ResumoMes = {
   extras: { linhas: LinhaExtraResumo[]; total: number };
   total_mes: number;
 };
+
+type DiaForaHorarioResumo = { data: string; valor: number };
+
+type ExtrasMesEncarregado = {
+  consumos: number;
+  dias_fora: DiaForaHorarioResumo[];
+  dias_fora_total: number;
+  total: number;
+  pago: boolean;
+  valor_pago: number | null;
+  data_pagamento: string | null;
+  dia_limite: number;
+};
+
+/** "PT50 0002 0123 1234 5678 9015 4" — de 4 em 4 caracteres, só para apresentação; a cópia usa sempre o IBAN sem espaços. */
+function agruparIban(iban: string): string {
+  return iban.replace(/(.{4})/g, '$1 ').trim();
+}
+
+/** "novembro" — sem ano, para a referência sugerida "{aluno} · {mês} {ano}". */
+function nomeMes(mes: number): string {
+  return new Intl.DateTimeFormat('pt-PT', { month: 'long' }).format(new Date(2000, mes - 1, 1));
+}
 
 /** Mesmo formato de euros do resto do projeto: "12.34€" (sem espaço). */
 function euro(valor: number): string {
@@ -85,15 +110,20 @@ export default function EncarregadosPage() {
 
   // Visão geral
   const [nome, setNome] = useState('');
+  const [nomeCompleto, setNomeCompleto] = useState('');
   const [mesesDisponiveis, setMesesDisponiveis] = useState<Array<{ ano: number; mes: number }>>([]);
   const [indiceMes, setIndiceMes] = useState(0);
   const [resumoMes, setResumoMes] = useState<ResumoMes | null>(null);
+  const [extrasMes, setExtrasMes] = useState<ExtrasMesEncarregado | null>(null);
   const [carregandoResumoMes, setCarregandoResumoMes] = useState(false);
   const [diasAbertos, setDiasAbertos] = useState(false);
   const [extrasAbertos, setExtrasAbertos] = useState(false);
   const [notasResumo, setNotasResumo] = useState<{ confirmadas: number; porConfirmar: number } | null>(null);
   const [naoLidas, setNaoLidas] = useState<number | null>(0);
   const [carregandoVisaoGeral, setCarregandoVisaoGeral] = useState(false);
+  const [dadosPagamento, setDadosPagamento] = useState<DadosPagamentoCentro | null>(null);
+  const [ibanCopiado, setIbanCopiado] = useState(false);
+  const [referenciaCopiada, setReferenciaCopiada] = useState(false);
 
   // Pede resumo_mes_encarregado para um mês concreto — chamado tanto no
   // arranque (mês atual) como pelas setas de navegação.
@@ -102,13 +132,22 @@ export default function EncarregadosPage() {
     setDiasAbertos(false);
     setExtrasAbertos(false);
     try {
-      const { data, error } = await supabase.rpc('resumo_mes_encarregado', { p_ano: ano, p_mes: mes });
+      const [{ data, error }, { data: extrasData, error: extrasError }] = await Promise.all([
+        supabase.rpc('resumo_mes_encarregado', { p_ano: ano, p_mes: mes }),
+        supabase.rpc('extras_mes_encarregado', { p_ano: ano, p_mes: mes }),
+      ]);
       if (error) {
         showError('Não foi possível carregar o resumo do mês: ' + error.message);
         setResumoMes(null);
-        return;
+      } else {
+        setResumoMes(data as ResumoMes);
       }
-      setResumoMes(data as ResumoMes);
+      if (extrasError) {
+        showError('Não foi possível carregar os extras do mês: ' + extrasError.message);
+        setExtrasMes(null);
+      } else {
+        setExtrasMes(extrasData as ExtrasMesEncarregado);
+      }
     } finally {
       setCarregandoResumoMes(false);
     }
@@ -130,15 +169,19 @@ export default function EncarregadosPage() {
         { data: examsData, error: examsError },
         { data: notasPeriodoData, error: notasPeriodoError },
         { count: naoLidasCount, error: naoLidasError },
+        dadosPagamentoRes,
       ] = await Promise.all([
         supabase.from('alunos').select('nome').eq('id', uid).maybeSingle(),
         supabase.rpc('meses_resumo_encarregado'),
         supabase.from('exams').select('nota_valor, nota_confirmada').eq('aluno_id', uid),
         supabase.from('notas_periodo').select('nota_confirmada').eq('aluno_id', uid).eq('ano_letivo', getAnoLetivoAtual()),
         supabase.from('mensagens').select('id', { count: 'exact', head: true }).eq('aluno_id', uid).eq('autor', 'centro').is('lida_pela_familia_em', null),
+        obterDadosPagamentoCentro().catch(() => null),
       ]);
 
       setNome(aluno?.nome?.split(' ')[0] || '');
+      setNomeCompleto(aluno?.nome || '');
+      setDadosPagamento(dadosPagamentoRes);
 
       // Nunca zeros em silêncio: se alguma consulta falhar, avisa e mostra
       // "—" nesse número em vez de um valor inventado.
@@ -258,10 +301,12 @@ export default function EncarregadosPage() {
       setMesesDisponiveis([]);
       setIndiceMes(0);
       setResumoMes(null);
+      setExtrasMes(null);
       setDiasAbertos(false);
       setExtrasAbertos(false);
       setNotasResumo(null);
       setNaoLidas(0);
+      setDadosPagamento(null);
     });
     return cancelar;
   }, []);
@@ -496,33 +541,60 @@ export default function EncarregadosPage() {
                 <div>
                   <p className="text-[9px] text-muted font-black uppercase mb-1">Mensalidade</p>
                   <p data-testid="mensalidade-valor" className="font-mono font-bold text-lg text-primary">{euro(resumoMes.mensalidade.valor)}</p>
+                  {extrasMes && (
+                    <p className="text-[10px] text-muted mt-0.5">A pagar até dia {extrasMes.dia_limite}</p>
+                  )}
                 </div>
-                <span data-testid="mensalidade-selo"><SeloPago pago={resumoMes.mensalidade.pago} /></span>
+                <div className="flex flex-col items-end gap-1.5">
+                  <span data-testid="mensalidade-selo"><SeloPago pago={resumoMes.mensalidade.pago} /></span>
+                  {extrasMes && mensalidadeEmAtraso({
+                    pago: resumoMes.mensalidade.pago,
+                    valorEsperado: resumoMes.mensalidade.valor,
+                    ano: resumoMes.ano,
+                    mes: resumoMes.mes,
+                    diaLimite: extrasMes.dia_limite,
+                    hojeISO: getHojeLisboa(),
+                  }) && (
+                    <span data-testid="mensalidade-atraso" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-danger-bg text-danger shrink-0">
+                      <AlertTriangle size={11} /> Em atraso
+                    </span>
+                  )}
+                </div>
               </div>
             )}
 
-            {/* Extras */}
-            {resumoMes.extras.linhas.length > 0 && (
+            {/* Extras do mês — consumos + dias fora do horário, pagam-se no fim do mês */}
+            {extrasMes && (resumoMes.extras.linhas.length > 0 || extrasMes.dias_fora.length > 0) && (
               <div className="border-t border-border pt-4 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <p className="text-[9px] text-warning font-black uppercase mb-1">Extras</p>
-                    <p data-testid="extras-total" className="font-mono font-bold text-lg text-warning">{euro(resumoMes.extras.total)}</p>
+                    <p className="text-[9px] text-warning font-black uppercase mb-1">Extras do mês</p>
+                    <p data-testid="extras-total" className="font-mono font-bold text-lg text-warning">{euro(extrasMes.total)}</p>
+                    <p className="text-[10px] text-muted mt-0.5">A pagar no fim do mês</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setExtrasAbertos((a) => !a)}
-                    className="min-h-11 px-3 text-[10px] font-black uppercase tracking-widest text-accent flex items-center gap-1 shrink-0"
-                  >
-                    Ver detalhe
-                  </button>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <span data-testid="extras-selo"><SeloPago pago={extrasMes.pago} /></span>
+                    <button
+                      type="button"
+                      onClick={() => setExtrasAbertos((a) => !a)}
+                      className="min-h-11 px-3 text-[10px] font-black uppercase tracking-widest text-accent flex items-center gap-1 shrink-0"
+                    >
+                      Ver detalhe
+                    </button>
+                  </div>
                 </div>
                 {extrasAbertos && (
                   <ul data-testid="extras-lista" className="bg-page border border-border rounded-2xl p-3 space-y-1">
                     {resumoMes.extras.linhas.map((e, i) => (
-                      <li key={i} className="flex items-center justify-between gap-2 text-xs text-secondary">
+                      <li key={`servico-${i}`} className="flex items-center justify-between gap-2 text-xs text-secondary">
                         <span>{e.nome} × {e.quantidade}</span>
                         <span className="font-mono font-bold text-primary shrink-0">{euro(e.total)}</span>
+                      </li>
+                    ))}
+                    {extrasMes.dias_fora.map((d, i) => (
+                      <li key={`fora-${i}`} data-testid="extras-dia-fora-linha" className="flex items-center justify-between gap-2 text-xs text-secondary">
+                        <span>Dia fora do horário · {dataCurta(d.data)}</span>
+                        <span className="font-mono font-bold text-primary shrink-0">{euro(d.valor)}</span>
                       </li>
                     ))}
                   </ul>
@@ -530,16 +602,73 @@ export default function EncarregadosPage() {
               </div>
             )}
 
-            {/* Total do mês */}
+            {/* Total do mês — mensalidade + explicações + extras (consumos + dias fora do horário) */}
             <div className="border-t border-border pt-4 space-y-1">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-black uppercase text-muted tracking-widest">Total do Mês</p>
-                <p data-testid="total-mes" className="font-mono font-black text-xl text-primary">{euro(resumoMes.total_mes)}</p>
+                <p data-testid="total-mes" className="font-mono font-black text-xl text-primary">
+                  {euro(extrasMes ? resumoMes.total_mes - resumoMes.extras.total + extrasMes.total : resumoMes.total_mes)}
+                </p>
               </div>
               {resumoMes.ano === Number(getHojeLisboa().split('-')[0]) && resumoMes.mes === Number(getHojeLisboa().split('-')[1]) && (
                 <p data-testid="aviso-mes-atual" className="text-[10px] text-muted italic">O mês ainda não acabou: o total pode subir.</p>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Como pagar — independente do mês mostrado; só aparece com IBAN preenchido no centro */}
+        {dadosPagamento && mesesDisponiveis.length > 0 && (
+          <div data-testid="como-pagar" className="border-t border-border pt-4 space-y-3">
+            <p className="text-[9px] text-muted font-black uppercase tracking-widest flex items-center gap-1.5">
+              <Landmark size={12} className="text-accent" /> Como pagar
+            </p>
+            <div>
+              <p className="text-[10px] text-muted font-bold uppercase">Beneficiário</p>
+              <p className="text-sm font-bold text-primary">{dadosPagamento.beneficiario}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted font-bold uppercase">IBAN</p>
+              <div className="flex items-center justify-between gap-2">
+                <p data-testid="iban-valor" className="font-mono font-bold text-sm text-primary">{agruparIban(dadosPagamento.iban)}</p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(dadosPagamento.iban);
+                      setIbanCopiado(true);
+                      setTimeout(() => setIbanCopiado(false), 2000);
+                    } catch { /* clipboard indisponível — sem feedback */ }
+                  }}
+                  className="shrink-0 min-h-11 px-3 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-accent"
+                >
+                  {ibanCopiado ? <><Check size={13} /> Copiado</> : <><Copy size={13} /> Copiar IBAN</>}
+                </button>
+              </div>
+            </div>
+            {mesesDisponiveis[indiceMes] && (
+              <div>
+                <p className="text-[10px] text-muted font-bold uppercase">Referência sugerida</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold text-primary">
+                    {nomeCompleto || 'Aluno'} · {nomeMes(mesesDisponiveis[indiceMes].mes)} {mesesDisponiveis[indiceMes].ano}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(`${nomeCompleto || 'Aluno'} · ${nomeMes(mesesDisponiveis[indiceMes].mes)} ${mesesDisponiveis[indiceMes].ano}`);
+                        setReferenciaCopiada(true);
+                        setTimeout(() => setReferenciaCopiada(false), 2000);
+                      } catch { /* clipboard indisponível — sem feedback */ }
+                    }}
+                    className="shrink-0 min-h-11 px-3 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-accent"
+                  >
+                    {referenciaCopiada ? <><Check size={13} /> Copiado</> : <><Copy size={13} /> Copiar referência</>}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>

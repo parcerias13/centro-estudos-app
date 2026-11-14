@@ -9,6 +9,11 @@ import { getHojeLisboa } from '@/lib/dataLisboa';
 import { obterRemuneracaoDoMes, type RemuneracaoProfessorNoMes } from '@/lib/remuneracaoProfessores';
 import { formatarDuracao } from '@/lib/registosHoras';
 import { obterReceitaExplicacoesDoMes, aplicarPagamentoNaReceita, type ReceitaExplicacoesDoMes } from '@/lib/receitaExplicacoes';
+import { mensalidadeEmAtraso } from '@/lib/mensalidadeEmAtraso';
+import {
+  obterConfigExtrasCentro, obterExtrasDoMes, obterDiasForaHorarioDoMes, decidirDiaForaHorario,
+  type ConfigExtrasCentro, type ExtraAlunoDoMes, type DiaForaHorarioLinha,
+} from '@/lib/extrasCentro';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Search, Wallet, Loader2, CalendarClock,
   GraduationCap, AlertTriangle, Plus, Save,
@@ -17,6 +22,8 @@ import { startOfMonth, addMonths, format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 
 type Aba = 'mensalidades' | 'a_pagar';
+
+const MESES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 export default function PagamentosPage() {
   const { toast, showError, showSuccess } = useStatusToast();
@@ -114,6 +121,24 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
   const [receitaExplicacoes, setReceitaExplicacoes] = useState<ReceitaExplicacoesDoMes | null>(null);
   const [expandedAlunoIds, setExpandedAlunoIds] = useState<Set<string>>(new Set());
 
+  // Extras do mês (consumos + dias fora do horário) e configuração do
+  // centro (dia limite da mensalidade, valor por dia fora do horário) —
+  // sempre via lib/extrasCentro.ts, para nunca divergir da Área dos
+  // Encarregados nem da Lista do Dia.
+  const [centroId, setCentroId] = useState<string | null>(null);
+  const [configExtras, setConfigExtras] = useState<ConfigExtrasCentro | null>(null);
+  const [extrasPorAluno, setExtrasPorAluno] = useState<Record<string, ExtraAlunoDoMes>>({});
+  const [diasForaHorario, setDiasForaHorario] = useState<DiaForaHorarioLinha[]>([]);
+  const [expandedExtrasIds, setExpandedExtrasIds] = useState<Set<string>>(new Set());
+  const [decidindoChaveDia, setDecidindoChaveDia] = useState<string | null>(null);
+
+  useEffect(() => {
+    obterConfigExtrasCentro()
+      .then(setConfigExtras)
+      .catch((e: any) => showError('Erro ao carregar configuração de extras: ' + e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Definido antes de fetchMes (precisa dele para ordenar as linhas sintéticas
   // de alunos "só explicações" a par das linhas reais de mensalidade).
   const getNome = (row: any) => {
@@ -153,17 +178,25 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
         showError('Não foi possível identificar o centro. Recarrega a página e tenta novamente.');
         return;
       }
+      setCentroId(centro_id);
 
       // Uma query batched para a mensalidade do mês + a receita de
       // explicações do mês (lib/receitaExplicacoes.ts — mesma fonte que
-      // Performance, para os dois nunca divergirem).
-      const [{ linhas: linhasMensalidade, criadas }, receita] = await Promise.all([
+      // Performance, para os dois nunca divergirem) + os dias fora do
+      // horário do mês. obterExtrasDoMes precisa desses dias já carregados
+      // (nunca pede a RPC outra vez), por isso corre a seguir, não dentro
+      // do mesmo Promise.all.
+      const [{ linhas: linhasMensalidade, criadas }, receita, diasFora] = await Promise.all([
         garantirMesGeradoComContagem(centro_id, ano, mes),
         obterReceitaExplicacoesDoMes(centro_id, ano, mes),
+        obterDiasForaHorarioDoMes(ano, mes),
       ]);
+      const extras = await obterExtrasDoMes(centro_id, ano, mes, diasFora);
 
       setLinhasCriadasNestaAbertura(criadas);
       setReceitaExplicacoes(receita);
+      setExtrasPorAluno(extras);
+      setDiasForaHorario(diasFora);
 
       // Nome de quem só aparece via explicações — um aluno "só explicações"
       // nunca tem linha de mensalidade para dar o nome, por isso vem daqui.
@@ -265,6 +298,97 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
     showSuccess('Data de pagamento atualizada.');
   };
 
+  // --- Extras do mês (consumos + dias fora do horário) — próprio, não toca em mensalidades ---
+  const toggleExpandidoExtras = (alunoId: string) => {
+    setExpandedExtrasIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(alunoId)) next.delete(alunoId);
+      else next.add(alunoId);
+      return next;
+    });
+  };
+
+  const handleToggleExtrasPago = async (alunoId: string) => {
+    if (!centroId) {
+      showError('Não foi possível identificar o centro. Recarrega a página e tenta novamente.');
+      return;
+    }
+    const atual = extrasPorAluno[alunoId];
+    const novoPago = !atual?.pago;
+    const payload: Record<string, any> = { centro_id: centroId, aluno_id: alunoId, ano, mes, pago: novoPago };
+    payload.valor_pago = novoPago ? (atual?.total ?? 0) : null;
+    payload.data_pagamento = novoPago ? getHojeLisboa() : null;
+
+    const { data, error } = await supabase
+      .from('pagamentos_extras')
+      .upsert(payload, { onConflict: 'aluno_id,ano,mes' })
+      .select()
+      .single();
+
+    if (error) {
+      showError('Erro ao atualizar pagamento de extras: ' + error.message);
+      return;
+    }
+    setExtrasPorAluno((prev) => ({
+      ...prev,
+      [alunoId]: {
+        ...(prev[alunoId] ?? { alunoId, consumos: 0, diasFora: 0, total: 0, pago: false, valorPago: null, dataPagamento: null, pagamentoId: null }),
+        pago: data.pago,
+        valorPago: data.valor_pago != null ? Number(data.valor_pago) : null,
+        dataPagamento: data.data_pagamento,
+        pagamentoId: data.id,
+      },
+    }));
+    showSuccess(novoPago ? 'Extras marcados como pagos.' : 'Extras marcados como não pagos.');
+  };
+
+  const handleUpdateExtraValorPago = async (alunoId: string, valorStr: string) => {
+    const atual = extrasPorAluno[alunoId];
+    if (!atual?.pagamentoId) return;
+    const bruto = valorStr.trim();
+    const valor = bruto === '' ? null : parseFloat(bruto);
+    if (bruto !== '' && (valor === null || isNaN(valor))) return;
+
+    const { error } = await supabase.from('pagamentos_extras').update({ valor_pago: valor }).eq('id', atual.pagamentoId);
+    if (error) {
+      showError('Erro ao atualizar valor pago dos extras: ' + error.message);
+      return;
+    }
+    setExtrasPorAluno((prev) => ({ ...prev, [alunoId]: { ...prev[alunoId], valorPago: valor } }));
+    showSuccess('Valor pago atualizado.');
+  };
+
+  const handleUpdateExtraDataPagamento = async (alunoId: string, dataStr: string) => {
+    const atual = extrasPorAluno[alunoId];
+    if (!atual?.pagamentoId) return;
+    const valor = dataStr === '' ? null : dataStr;
+    const { error } = await supabase.from('pagamentos_extras').update({ data_pagamento: valor }).eq('id', atual.pagamentoId);
+    if (error) {
+      showError('Erro ao atualizar data de pagamento dos extras: ' + error.message);
+      return;
+    }
+    setExtrasPorAluno((prev) => ({ ...prev, [alunoId]: { ...prev[alunoId], dataPagamento: valor } }));
+    showSuccess('Data de pagamento atualizada.');
+  };
+
+  const handleDecidirDia = async (alunoId: string, dia: string, estado: 'aceite' | 'dispensado' | 'pendente') => {
+    if (!centroId) return;
+    const chave = `${alunoId}-${dia}`;
+    setDecidindoChaveDia(chave);
+    try {
+      await decidirDiaForaHorario(alunoId, dia, estado);
+      const diasFora = await obterDiasForaHorarioDoMes(ano, mes);
+      const extras = await obterExtrasDoMes(centroId, ano, mes, diasFora);
+      setExtrasPorAluno(extras);
+      setDiasForaHorario(diasFora);
+      showSuccess('Dia atualizado.');
+    } catch (e: any) {
+      showError('Erro ao atualizar dia fora do horário: ' + e.message);
+    } finally {
+      setDecidindoChaveDia(null);
+    }
+  };
+
   // --- Estado de pago das Explicações (família) — próprio, não toca em mensalidades ---
   const toggleExpandido = (alunoId: string) => {
     setExpandedAlunoIds((prev) => {
@@ -349,11 +473,20 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
   const emFaltaExplicacoes = receitaExplicacoes?.totalEmFalta ?? 0;
   const sessoesSemPrecoTotal = receitaExplicacoes?.sessoesSemPrecoTotal ?? 0;
 
-  // Total — soma das duas partes.
-  const totalEsperadoGeral = totalEsperadoMensalidade + totalEsperadoExplicacoes;
-  const totalPagoGeral = totalPagoMensalidade + totalPagoExplicacoes;
+  // Extras do mês (consumos + dias fora do horário) — nunca somados à
+  // mensalidade; pagam-se no fim do mês, à parte.
+  const extrasValores = Object.values(extrasPorAluno);
+  const totalEsperadoExtras = extrasValores.reduce((acc, e) => acc + e.total, 0);
+  const totalPagoExtras = extrasValores.reduce((acc, e) => acc + (e.pago ? (e.valorPago ?? e.total) : 0), 0);
+  const emFaltaExtras = totalEsperadoExtras - totalPagoExtras;
+
+  // Total — soma das três partes.
+  const totalEsperadoGeral = totalEsperadoMensalidade + totalEsperadoExplicacoes + totalEsperadoExtras;
+  const totalPagoGeral = totalPagoMensalidade + totalPagoExplicacoes + totalPagoExtras;
   const emFaltaGeral = totalEsperadoGeral - totalPagoGeral;
   const pctCobrancaGeral = totalEsperadoGeral > 0 ? (totalPagoGeral / totalEsperadoGeral) * 100 : 0;
+
+  const diaLimiteMensalidade = configExtras?.diaLimiteMensalidade ?? 8;
 
   if (isFuturo) {
     return (
@@ -395,6 +528,24 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
             <div>
               <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">% Cobrança</p>
               <p className="text-2xl font-black text-accent tracking-tighter">{pctCobrancaMensalidade.toFixed(0)}%</p>
+            </div>
+          </div>
+        </div>
+
+        <div data-testid="resumo-extras" className="border-t border-border pt-6">
+          <p className="text-[9px] font-black uppercase tracking-widest text-accent mb-3">Extras do Mês</p>
+          <div className="grid grid-cols-3 gap-3 md:gap-6">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Esperado</p>
+              <p className="text-xl font-black text-primary tracking-tighter">{totalEsperadoExtras.toFixed(2)}€</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Pago</p>
+              <p className="text-xl font-black text-success tracking-tighter">{totalPagoExtras.toFixed(2)}€</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted mb-2">Em Falta</p>
+              <p className={`text-xl font-black tracking-tighter ${emFaltaExtras > 0 ? 'text-danger' : 'text-muted'}`}>{emFaltaExtras.toFixed(2)}€</p>
             </div>
           </div>
         </div>
@@ -473,10 +624,15 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
               <tr className="bg-page/50 border-b border-border text-[10px] uppercase tracking-widest text-muted">
                 <th className="p-6 font-black" rowSpan={2}>Aluno</th>
                 <th className="p-3 font-black text-center border-l border-border" colSpan={4}>Mensalidade</th>
+                <th className="p-3 font-black text-center border-l border-border" colSpan={4}>Extras do Mês</th>
                 <th className="p-3 font-black text-center border-l border-border" colSpan={2}>Explicações</th>
               </tr>
               <tr className="bg-page/50 border-b border-border text-[10px] uppercase tracking-widest text-muted">
                 <th className="p-4 font-black text-right border-l border-border">Valor Esperado</th>
+                <th className="p-4 font-black text-center">Estado</th>
+                <th className="p-4 font-black text-right">Valor Pago</th>
+                <th className="p-4 font-black text-center">Data de Pagamento</th>
+                <th className="p-4 font-black text-right border-l border-border">Total</th>
                 <th className="p-4 font-black text-center">Estado</th>
                 <th className="p-4 font-black text-right">Valor Pago</th>
                 <th className="p-4 font-black text-center">Data de Pagamento</th>
@@ -487,7 +643,7 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
             <tbody className="divide-y divide-border">
               {!loading && rowsFiltradas.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-16 text-center text-muted font-medium italic">
+                  <td colSpan={11} className="p-16 text-center text-muted font-medium italic">
                     <Wallet size={48} className="mx-auto mb-4 opacity-20" />
                     {rowsVisiveis.length === 0 ? 'Sem alunos ativos para gerar mensalidades neste mês.' : 'Nenhum aluno encontrado para a pesquisa.'}
                   </td>
@@ -506,6 +662,17 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                       : null;
                   const expandido = expandedAlunoIds.has(row.aluno_id);
 
+                  const extra = extrasPorAluno[row.aluno_id];
+                  const diasDoAluno = diasForaHorario.filter((d) => d.alunoId === row.aluno_id).sort((a, b) => a.dia.localeCompare(b.dia));
+                  const diasPendentesCount = diasDoAluno.filter((d) => d.estado === 'pendente').length;
+                  const valorMudouExtras = !!extra?.pago && extra.valorPago != null && extra.total !== extra.valorPago;
+                  const expandidoExtras = expandedExtrasIds.has(row.aluno_id);
+                  // Aluno só com dias fora do horário por decidir (ou só
+                  // dispensados): tem entrada (para a etiqueta "N dias por
+                  // decidir" e o painel aparecerem), mas nada para pagar
+                  // ainda — estado/valor/data ficam "—", sem botão "Não Pago".
+                  const extrasSemNadaAPagar = !!extra && extra.total === 0 && !extra.pagamentoId;
+
                   return (
                     <Fragment key={row.id ?? `sintetica-${row.aluno_id}`}>
                       <tr className="hover:bg-raised/20 transition-colors">
@@ -520,13 +687,35 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                           </span>
                         </td>
                         <td className="p-6 text-right font-mono font-bold text-secondary whitespace-nowrap border-l border-border">
-                          {row.id === null ? '—' : `${Number(row.valor_esperado).toFixed(2)}€`}
+                          {row.id === null ? (
+                            '—'
+                          ) : (
+                            <>
+                              {Number(row.valor_esperado).toFixed(2)}€
+                              {mensalidadeEmAtraso({
+                                pago: row.pago,
+                                valorEsperado: row.valor_esperado,
+                                ano,
+                                mes,
+                                diaLimite: diaLimiteMensalidade,
+                                hojeISO: getHojeLisboa(),
+                              }) && (
+                                <div data-testid="mensalidade-atraso" className="mt-1 text-right">
+                                  <p className="text-[9px] text-danger font-bold flex items-center gap-1 justify-end">
+                                    <AlertTriangle size={11} /> Em atraso
+                                  </p>
+                                  <p className="text-[9px] text-danger font-normal">Venceu a {diaLimiteMensalidade} {MESES_ABREV[mes - 1]}.</p>
+                                </div>
+                              )}
+                            </>
+                          )}
                         </td>
                         <td className="p-6 text-center whitespace-nowrap">
                           {row.id === null ? (
                             <span className="text-muted font-mono">—</span>
                           ) : (
                             <button
+                              data-testid="mensalidade-estado"
                               onClick={() => handleTogglePago(row)}
                               className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
                                 row.pago
@@ -541,6 +730,7 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                         <td className="p-6 text-right whitespace-nowrap">
                           <input
                             key={`vp-${row.id}-${row.valor_pago}`}
+                            data-testid="mensalidade-valor-pago"
                             type="number"
                             step="0.01"
                             defaultValue={row.valor_pago ?? ''}
@@ -553,12 +743,98 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                         <td className="p-6 text-center whitespace-nowrap">
                           <input
                             key={`dp-${row.id}-${row.data_pagamento}`}
+                            data-testid="mensalidade-data-pagamento"
                             type="date"
                             defaultValue={row.data_pagamento ?? ''}
                             disabled={!row.pago || row.id === null}
                             onChange={(e) => handleUpdateData(row, e.target.value)}
                             className="bg-page border border-border p-2 rounded-lg text-primary outline-none focus:border-accent/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                           />
+                        </td>
+                        <td className="p-6 text-right whitespace-nowrap border-l border-border">
+                          {extra ? (
+                            <>
+                              <button
+                                type="button"
+                                data-testid="extras-total"
+                                onClick={() => toggleExpandidoExtras(row.aluno_id)}
+                                className="font-mono font-bold text-primary hover:text-accent underline decoration-dotted transition-colors"
+                              >
+                                {extra.total.toFixed(2)}€
+                              </button>
+                              <p className="text-[9px] text-muted mt-1">
+                                Consumos {extra.consumos.toFixed(2)} € · dias fora do horário {extra.diasFora.toFixed(2)} €
+                              </p>
+                              {diasPendentesCount > 0 && (
+                                <button
+                                  type="button"
+                                  data-testid="extras-dias-pendentes"
+                                  onClick={() => toggleExpandidoExtras(row.aluno_id)}
+                                  className="text-[9px] text-warning font-bold mt-1 flex items-center gap-1 justify-end"
+                                >
+                                  <AlertTriangle size={11} /> {diasPendentesCount} {diasPendentesCount === 1 ? 'dia por decidir' : 'dias por decidir'}
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-muted font-bold">—</span>
+                          )}
+                        </td>
+                        <td className="p-6 text-center whitespace-nowrap">
+                          {extra && !extrasSemNadaAPagar ? (
+                            <>
+                              <button
+                                data-testid="extras-estado"
+                                onClick={() => handleToggleExtrasPago(row.aluno_id)}
+                                className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+                                  extra.pago
+                                    ? 'bg-success-bg text-success border-success/30'
+                                    : 'bg-danger-bg text-danger border-danger/30'
+                                }`}
+                              >
+                                {extra.pago ? 'Pago' : 'Não Pago'}
+                              </button>
+                              {valorMudouExtras && (
+                                <p data-testid="extras-valor-mudou" className="text-[9px] text-warning font-bold mt-1">
+                                  Valor mudou desde o pagamento (pago {extra!.valorPago!.toFixed(2)} €)
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-muted font-mono">—</span>
+                          )}
+                        </td>
+                        <td className="p-6 text-right whitespace-nowrap">
+                          {extrasSemNadaAPagar ? (
+                            <span className="text-muted font-mono">—</span>
+                          ) : (
+                            <input
+                              key={`evp-${row.aluno_id}-${extra?.valorPago}`}
+                              data-testid="extras-valor-pago"
+                              type="number"
+                              step="0.01"
+                              defaultValue={extra?.valorPago ?? ''}
+                              disabled={!extra?.pago}
+                              placeholder="—"
+                              onBlur={(e) => handleUpdateExtraValorPago(row.aluno_id, e.target.value)}
+                              className="w-24 bg-page border border-border p-2 rounded-lg text-right font-mono font-bold text-primary outline-none focus:border-accent/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            />
+                          )}
+                        </td>
+                        <td className="p-6 text-center whitespace-nowrap">
+                          {extrasSemNadaAPagar ? (
+                            <span className="text-muted font-mono">—</span>
+                          ) : (
+                            <input
+                              key={`edp-${row.aluno_id}-${extra?.dataPagamento}`}
+                              data-testid="extras-data-pagamento"
+                              type="date"
+                              defaultValue={extra?.dataPagamento ?? ''}
+                              disabled={!extra?.pago}
+                              onChange={(e) => handleUpdateExtraDataPagamento(row.aluno_id, e.target.value)}
+                              className="bg-page border border-border p-2 rounded-lg text-primary outline-none focus:border-accent/50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            />
+                          )}
                         </td>
                         <td className="p-6 text-right whitespace-nowrap border-l border-border">
                           {temSessoes ? (
@@ -584,6 +860,7 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                         <td className="p-6 text-center whitespace-nowrap">
                           {temSessoes ? (
                             <button
+                              data-testid="explicacoes-estado"
                               onClick={() => handleToggleExplicacoesPago(row.aluno_id)}
                               className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
                                 !explicacoes!.pagoRegistrado
@@ -604,9 +881,69 @@ function MensalidadesTab({ ano, mes, showError, showSuccess }: any) {
                           )}
                         </td>
                       </tr>
+                      {expandidoExtras && extra && (
+                        <tr className="bg-page/30">
+                          <td colSpan={11} className="p-6">
+                            <p className="text-[9px] font-black uppercase text-muted tracking-widest mb-2">Dias fora do horário de {getNome(row)} este mês</p>
+                            {diasDoAluno.length === 0 ? (
+                              <p className="text-[11px] text-muted italic">Sem dias fora do horário este mês.</p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {diasDoAluno.map((d) => {
+                                  const chave = `${row.aluno_id}-${d.dia}`;
+                                  const aDecidir = decidindoChaveDia === chave;
+                                  return (
+                                    <div key={d.dia} className="flex items-center justify-between text-xs bg-surface border border-border/60 rounded-xl px-4 py-2 gap-3">
+                                      <span className="text-secondary font-bold">{new Date(d.dia + 'T00:00:00').toLocaleDateString('pt-PT')}</span>
+                                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border shrink-0 ${
+                                        d.estado === 'pendente'
+                                          ? 'bg-warning-bg text-warning border-warning/30'
+                                          : d.estado === 'aceite'
+                                            ? 'bg-success-bg text-success border-success/30'
+                                            : 'bg-raised text-muted border-border'
+                                      }`}>
+                                        {d.estado === 'pendente' ? 'Por decidir' : d.estado === 'aceite' ? 'Aceite' : 'Dispensado'}
+                                      </span>
+                                      <span className="font-mono font-bold text-primary shrink-0">{d.valor.toFixed(2)}€</span>
+                                      <div className="flex gap-1.5 shrink-0">
+                                        <button
+                                          type="button"
+                                          disabled={aDecidir}
+                                          onClick={() => handleDecidirDia(row.aluno_id, d.dia, 'aceite')}
+                                          className="px-2 py-1 rounded-lg bg-success-bg text-success text-[9px] font-black uppercase disabled:opacity-40"
+                                        >
+                                          Aceitar
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={aDecidir}
+                                          onClick={() => handleDecidirDia(row.aluno_id, d.dia, 'dispensado')}
+                                          className="px-2 py-1 rounded-lg bg-danger-bg text-danger text-[9px] font-black uppercase disabled:opacity-40"
+                                        >
+                                          Dispensar
+                                        </button>
+                                        {d.estado !== 'pendente' && (
+                                          <button
+                                            type="button"
+                                            disabled={aDecidir}
+                                            onClick={() => handleDecidirDia(row.aluno_id, d.dia, 'pendente')}
+                                            className="px-2 py-1 rounded-lg bg-raised text-secondary text-[9px] font-black uppercase disabled:opacity-40"
+                                          >
+                                            Repor
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
                       {expandido && temSessoes && (
                         <tr className="bg-page/30">
-                          <td colSpan={7} className="p-6">
+                          <td colSpan={11} className="p-6">
                             <div className="flex items-start justify-between gap-6">
                               <div className="space-y-1.5 flex-1">
                                 <p className="text-[9px] font-black uppercase text-muted tracking-widest mb-2">Sessões de {getNome(row)} este mês</p>

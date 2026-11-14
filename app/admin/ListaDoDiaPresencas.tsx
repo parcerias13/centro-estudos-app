@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { getHojeLisboa, diaSemanaLisboa, dataLisboaDe, instanteLisboaParaUTC } from '@/lib/dataLisboa';
 import { urlWhatsApp, marcarMensagemEnviada } from '@/lib/whatsapp';
 import { DISCIPLINA_ESTUDO_AUTONOMO } from '@/lib/diarioBordo';
+import { alunoForaDoHorarioHoje } from '@/lib/extrasCentro';
 import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import {
@@ -27,6 +28,8 @@ type Props = {
   handleWhatsApp: (presencaId: string, telefone: string, nome: string, tipo: 'entrada' | 'saida') => Promise<void>;
   handleDarSaida: (presencaId: string) => Promise<boolean>;
   handleRejeitarEntrada: (presencaId: string) => Promise<void>;
+  valorDiaForaHorario: number; // config_extras_centro() — 0 desliga toda a etiqueta
+  papel: string | null; // professor nunca vê o valor, só a etiqueta
 };
 
 type Estado = 'esperado' | 'por_validar' | 'chegou' | 'saiu';
@@ -36,7 +39,7 @@ type Linha = {
   linhaHoje: any | null;
   antiga: any | null; // sessão aberta de um dia anterior, se existir
   estado: Estado;
-  temHorarioHoje: boolean;
+  foraDoHorario: boolean; // ver lib/extrasCentro.ts — sala de estudo, ativo, com horário e fora dele hoje
 };
 
 const CHAVE_WHATSAPP_AO_TOCAR = 'listaDoDia.whatsappAoTocar';
@@ -52,6 +55,8 @@ export default function ListaDoDiaPresencas({
   handleWhatsApp,
   handleDarSaida,
   handleRejeitarEntrada,
+  valorDiaForaHorario,
+  papel,
 }: Props) {
   const [whatsappAoTocar, setWhatsappAoTocar] = useState(false);
   const [processando, setProcessando] = useState<Set<string>>(new Set());
@@ -126,19 +131,19 @@ export default function ListaDoDiaPresencas({
       if (!aluno) continue; // aluno apagado entretanto — não há ficha para mostrar
       const linhaHoje = diarioHojePorAluno.get(id) || null;
       const antiga = sessoesAntigasPorAluno.get(id) || null;
-      const temHorarioHoje = !!aluno.aluno_horarios?.some((h: any) => h.dia_semana === diaSemanaHoje);
+      const foraDoHorario = valorDiaForaHorario > 0 && alunoForaDoHorarioHoje(aluno, diaSemanaHoje);
       let estado: Estado;
       if (!linhaHoje) estado = 'esperado';
       else if (linhaHoje.saida) estado = 'saiu';
       else if (linhaHoje.status === 'validado') estado = 'chegou';
       else estado = 'por_validar';
-      resultado.push({ aluno, linhaHoje, antiga, estado, temHorarioHoje });
+      resultado.push({ aluno, linhaHoje, antiga, estado, foraDoHorario });
     }
 
     const prioridade: Record<Estado, number> = { por_validar: 0, chegou: 1, esperado: 2, saiu: 3 };
     resultado.sort((a, b) => prioridade[a.estado] - prioridade[b.estado] || a.aluno.nome.localeCompare(b.aluno.nome));
     return resultado;
-  }, [alunos, diarioHojePorAluno, sessoesAntigasPorAluno, diaSemanaHoje]);
+  }, [alunos, diarioHojePorAluno, sessoesAntigasPorAluno, diaSemanaHoje, valorDiaForaHorario]);
 
   const contagens = useMemo(() => {
     let esperados = 0, naSala = 0, saiu = 0;
@@ -469,8 +474,10 @@ export default function ListaDoDiaPresencas({
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-black text-sm truncate">{item.aluno.nome}</p>
-                      {temLinhaHoje && !item.temHorarioHoje && (
-                        <span className="bg-danger text-on-danger text-[8px] px-2 py-0.5 rounded-full font-black uppercase shrink-0">Fora de Horário</span>
+                      {temLinhaHoje && item.foraDoHorario && (
+                        <span className="bg-danger text-on-danger text-[8px] px-2 py-0.5 rounded-full font-black uppercase shrink-0">
+                          Fora do horário{papel !== 'professor' ? ` · +${valorDiaForaHorario.toFixed(2)}€` : ''}
+                        </span>
                       )}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">

@@ -229,10 +229,10 @@ test.describe('Pagamentos — alunos "só explicações" ficam visíveis e pagá
     // Só um botão (não) pago na linha — o das Explicações. Nenhum controlo
     // de mensalidade (botão/inputs) pode disparar handlers de mensalidades.ts.
     await expect(linha.getByRole('button', { name: /pago|não pago/i })).toHaveCount(1);
-    await expect(linha.locator('input[type="number"]')).toBeDisabled();
-    await expect(linha.locator('input[type="date"]').first()).toBeDisabled();
+    await expect(linha.getByTestId('mensalidade-valor-pago')).toBeDisabled();
+    await expect(linha.getByTestId('mensalidade-data-pagamento')).toBeDisabled();
 
-    const valorEsperadoExplicacoes = Number(await celulas.nth(5).innerText().then((t) => t.replace('€', '').replace(',', '.').trim()));
+    const valorEsperadoExplicacoes = Number(await celulas.nth(9).innerText().then((t) => t.replace('€', '').replace(',', '.').trim()));
     const { data: explicacaoRow } = await supabaseAdmin
       .from('explicacoes_alunos')
       .select('valor_cobrado_familia')
@@ -294,7 +294,7 @@ test.describe('Pagamentos — alunos "só explicações" ficam visíveis e pagá
     const linha = linhaDoAluno(page, alunoAmbos.nome);
     await expect(linha).toBeVisible();
     await expect(linha.getByText('Só explicações', { exact: true })).toHaveCount(0);
-    await expect(linha.locator('td').nth(1)).toHaveText('50.00€');
+    await expect(linha.locator('td').nth(1)).toContainText('50.00€'); // pode também mostrar "Em atraso", não é o que este teste cobre
     await expect(linha.getByRole('button', { name: /pago|não pago/i })).toHaveCount(2);
   });
 

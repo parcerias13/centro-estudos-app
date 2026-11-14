@@ -265,7 +265,7 @@ test.describe('Pagamentos — dinheiro das explicações nos totais (Mensalidade
     const linha = linhaDoAluno(page, alunoDuasSessoes.nome);
     await expect(linha).toBeVisible();
     const celulas = linha.locator('td');
-    await expect(celulas.nth(5)).toHaveText('30.00€');
+    await expect(celulas.nth(9)).toHaveText('30.00€');
   });
 
   test('marcar pago grava valor_pago (= esperado); desmarcar limpa-o', async () => {
@@ -322,7 +322,7 @@ test.describe('Pagamentos — dinheiro das explicações nos totais (Mensalidade
     const linha = linhaDoAluno(page, alunoLegado.nome);
     await expect(linha.getByRole('button', { name: /^pago$/i })).toBeVisible();
     const celulas = linha.locator('td');
-    await expect(celulas.nth(5)).toHaveText('15.00€');
+    await expect(celulas.nth(9)).toHaveText('15.00€');
   });
 
   test('aluno "Ambos": mensalidade e explicações entram nos totais certos, sem contar duas vezes', async () => {
@@ -338,8 +338,8 @@ test.describe('Pagamentos — dinheiro das explicações nos totais (Mensalidade
     await page.locator('input[placeholder="Pesquisar aluno..."]').fill(alunoAmbos.nome);
     const linha = linhaDoAluno(page, alunoAmbos.nome);
     await expect(linha.getByText('Só explicações', { exact: true })).toHaveCount(0);
-    await expect(linha.locator('td').nth(1)).toHaveText('50.00€'); // mensalidade
-    await expect(linha.locator('td').nth(5)).toHaveText('15.00€'); // explicações
+    await expect(linha.locator('td').nth(1)).toContainText('50.00€'); // mensalidade (pode também mostrar "Em atraso", não é o que este teste cobre)
+    await expect(linha.locator('td').nth(9)).toHaveText('15.00€'); // explicações
   });
 
   test('sessão dada sem preço às famílias: aviso no topo e a sessão não entra no esperado', async () => {
@@ -349,7 +349,7 @@ test.describe('Pagamentos — dinheiro das explicações nos totais (Mensalidade
 
     await page.locator('input[placeholder="Pesquisar aluno..."]').fill(alunoSemPreco.nome);
     const linha = linhaDoAluno(page, alunoSemPreco.nome);
-    await expect(linha.locator('td').nth(5)).toContainText('0.00€');
+    await expect(linha.locator('td').nth(9)).toContainText('0.00€');
     await expect(linha.getByText(/preço não definido/i)).toBeVisible();
   });
 

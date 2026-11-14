@@ -9,6 +9,7 @@ import { getHojeLisboa, dataLisboaDe, janelaLarga } from '@/lib/dataLisboa';
 import { urlWhatsApp, marcarMensagemEnviada } from '@/lib/whatsapp';
 import ListaDoDiaPresencas from './ListaDoDiaPresencas';
 import TurnoHojeCard from './TurnoHojeCard';
+import { obterConfigExtrasCentro } from '@/lib/extrasCentro';
 import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, MapPin, CheckCircle2, XCircle, UserPlus, Search, X, Plus, Calendar, ChevronDown, ChevronUp, Undo2 } from 'lucide-react';
 
 
@@ -24,6 +25,9 @@ export default function DashboardAdmin() {
   // (ver app/api/modo-presencas/route.ts).
   const [modoPresencas, setModoPresencas] = useState<'individual' | 'lista_dia'>('individual');
   const [diarioHoje, setDiarioHoje] = useState<any[]>([]);
+  const [papel, setPapel] = useState<string | null>(null);
+  // config_extras_centro() — qualquer staff do centro; 0 desliga a etiqueta "Fora do horário" na Lista do Dia.
+  const [valorDiaForaHorario, setValorDiaForaHorario] = useState(0);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -94,6 +98,8 @@ export default function DashboardAdmin() {
 
       const { data: { user } } = await supabase.auth.getUser();
       const centro_id = user?.app_metadata?.centro_id;
+      setPapel(user?.app_metadata?.role?.toLowerCase() ?? null);
+      obterConfigExtrasCentro().then((c) => setValorDiaForaHorario(c.valorDiaForaHorario)).catch(() => setValorDiaForaHorario(0));
 
       const hojeStr = new Date().toISOString().split('T')[0];
       const { data: exames } = await supabase
@@ -545,6 +551,8 @@ export default function DashboardAdmin() {
               handleWhatsApp={handleWhatsApp}
               handleDarSaida={handleDarSaida}
               handleRejeitarEntrada={handleRejeitarEntrada}
+              valorDiaForaHorario={valorDiaForaHorario}
+              papel={papel}
             />
           ) : presencas.length === 0 ? (
             <div className="bg-surface/70 border-2 border-dashed border-border p-20 rounded-[2.5rem] text-center italic opacity-50">

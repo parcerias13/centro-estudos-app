@@ -15,7 +15,7 @@ import { pt } from 'date-fns/locale';
 import {
   Building2, Save, Loader2, DollarSign, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Plus, Trash2, RefreshCw, ShieldAlert, Receipt, GraduationCap, Pencil, Bell, Users,
-  Layers, Calculator, AlertTriangle, Ban, LogIn,
+  Layers, Calculator, AlertTriangle, Ban, LogIn, CalendarClock, Landmark,
 } from 'lucide-react';
 import {
   CICLOS_INFO, LABEL_CICLO, cicloDoAno, escolherPrecoPorAlunos, valorCobrado,
@@ -64,6 +64,23 @@ function GestaoTotalPageContent() {
   const [horasGratisTexto, setHorasGratisTexto] = useState('24');
   const [salvandoHorasGratis, setSalvandoHorasGratis] = useState(false);
   const [erroHorasGratis, setErroHorasGratis] = useState<string | null>(null);
+
+  // Mensalidade e dia fora do horário (config_centro.dia_limite_mensalidade
+  // e valor_dia_fora_horario) — um só PATCH para os dois, mesmo padrão do
+  // "Nome da Instituição" acima.
+  const [diaLimiteTexto, setDiaLimiteTexto] = useState('8');
+  const [valorDiaForaTexto, setValorDiaForaTexto] = useState('0');
+  const [salvandoRegrasExtras, setSalvandoRegrasExtras] = useState(false);
+  const [sucessoRegrasExtras, setSucessoRegrasExtras] = useState(false);
+  const [erroRegrasExtras, setErroRegrasExtras] = useState<string | null>(null);
+
+  // Dados bancários do centro (config_centro.iban e iban_beneficiario) —
+  // mostrados na Área dos Encarregados via dados_pagamento_centro().
+  const [ibanTexto, setIbanTexto] = useState('');
+  const [beneficiarioTexto, setBeneficiarioTexto] = useState('');
+  const [salvandoDadosBancarios, setSalvandoDadosBancarios] = useState(false);
+  const [sucessoDadosBancarios, setSucessoDadosBancarios] = useState(false);
+  const [erroDadosBancarios, setErroDadosBancarios] = useState<string | null>(null);
 
   const [servicos, setServicos] = useState<any[]>([]);
 
@@ -234,6 +251,10 @@ function GestaoTotalPageContent() {
         setHorasGratisTexto(
           Number.isInteger(config.cancelamento_gratis_horas) ? String(config.cancelamento_gratis_horas) : '24'
         );
+        setDiaLimiteTexto(Number.isInteger(config.dia_limite_mensalidade) ? String(config.dia_limite_mensalidade) : '8');
+        setValorDiaForaTexto(config.valor_dia_fora_horario != null ? String(config.valor_dia_fora_horario) : '0');
+        setIbanTexto(config.iban || '');
+        setBeneficiarioTexto(config.iban_beneficiario || '');
       }
     } catch (error) {
       console.error("Erro no load:", error);
@@ -361,6 +382,61 @@ function GestaoTotalPageContent() {
     } else {
       const body = await res.json().catch(() => ({}));
       showError(body?.error || `Erro ao guardar (${res.status}). Tenta novamente.`);
+    }
+  };
+
+  const handleGuardarRegrasExtras = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErroRegrasExtras(null);
+
+    const dia = parseInt(diaLimiteTexto.trim(), 10);
+    if (!Number.isInteger(dia) || dia < 1 || dia > 28) {
+      setErroRegrasExtras('Indica um dia entre 1 e 28.');
+      return;
+    }
+    const valor = parseFloat(valorDiaForaTexto.trim().replace(',', '.'));
+    if (isNaN(valor) || valor < 0 || valor >= 1000) {
+      setErroRegrasExtras('Indica um valor entre 0 e 999,99 €.');
+      return;
+    }
+
+    setSalvandoRegrasExtras(true);
+    const res = await fetch('/api/config-centro', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dia_limite_mensalidade: dia, valor_dia_fora_horario: valor }),
+    });
+    setSalvandoRegrasExtras(false);
+
+    if (res.ok) {
+      setSucessoRegrasExtras(true);
+      setTimeout(() => setSucessoRegrasExtras(false), 3000);
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setErroRegrasExtras(
+        body?.fieldErrors?.dia_limite_mensalidade || body?.fieldErrors?.valor_dia_fora_horario || body?.error || `Erro ao guardar (${res.status}).`
+      );
+    }
+  };
+
+  const handleGuardarDadosBancarios = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErroDadosBancarios(null);
+
+    setSalvandoDadosBancarios(true);
+    const res = await fetch('/api/config-centro', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ iban: ibanTexto, iban_beneficiario: beneficiarioTexto }),
+    });
+    setSalvandoDadosBancarios(false);
+
+    if (res.ok) {
+      setSucessoDadosBancarios(true);
+      setTimeout(() => setSucessoDadosBancarios(false), 3000);
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setErroDadosBancarios(body?.fieldErrors?.iban || body?.fieldErrors?.iban_beneficiario || body?.error || `Erro ao guardar (${res.status}).`);
     }
   };
 
@@ -1837,6 +1913,99 @@ function GestaoTotalPageContent() {
             {saveError && (
               <p className="text-danger text-[11px] font-bold px-1 pt-2">{saveError}</p>
             )}
+          </form>
+        </section>
+
+        {/* MENSALIDADE E DIA FORA DO HORÁRIO */}
+        <section className="bg-surface border border-border/60 p-6 md:p-8 rounded-2xl shadow-sm backdrop-blur-sm">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-accent-soft rounded-2xl text-accent">
+              <CalendarClock size={24} />
+            </div>
+            <h3 className="text-primary font-bold text-base">Mensalidade e dia fora do horário</h3>
+          </div>
+
+          <form onSubmit={handleGuardarRegrasExtras} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-muted uppercase ml-1">Dia limite da mensalidade</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={28}
+                  value={diaLimiteTexto}
+                  onChange={(e) => setDiaLimiteTexto(e.target.value)}
+                  className="w-full bg-page/50 border border-border p-3 rounded-2xl font-bold text-sm focus:border-accent outline-none transition-all"
+                />
+                <p className="text-[10px] text-muted">Depois deste dia fica em atraso</p>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-muted uppercase ml-1">Valor por dia fora do horário (€)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={valorDiaForaTexto}
+                  onChange={(e) => setValorDiaForaTexto(e.target.value)}
+                  className="w-full bg-page/50 border border-border p-3 rounded-2xl font-bold text-sm focus:border-accent outline-none transition-all"
+                />
+                <p className="text-[10px] text-muted">Deixa a 0 para desligar</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={salvandoRegrasExtras}
+                className={`shrink-0 min-h-11 px-5 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all active:scale-95 ${sucessoRegrasExtras ? 'bg-success text-on-success' : 'bg-accent hover:bg-accent-hover text-on-accent'}`}
+              >
+                {salvandoRegrasExtras ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                {sucessoRegrasExtras ? 'Guardado' : 'Guardar'}
+              </button>
+              {erroRegrasExtras && <p className="text-danger text-[11px] font-bold">{erroRegrasExtras}</p>}
+            </div>
+          </form>
+        </section>
+
+        {/* DADOS BANCÁRIOS */}
+        <section className="bg-surface border border-border/60 p-6 md:p-8 rounded-2xl shadow-sm backdrop-blur-sm">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-accent-soft rounded-2xl text-accent">
+              <Landmark size={24} />
+            </div>
+            <h3 className="text-primary font-bold text-base">Dados bancários</h3>
+          </div>
+
+          <form onSubmit={handleGuardarDadosBancarios} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-muted uppercase ml-1">IBAN do centro</label>
+              <input
+                type="text"
+                value={ibanTexto}
+                onChange={(e) => setIbanTexto(e.target.value)}
+                placeholder="PT50000000000000000000000"
+                className="w-full bg-page/50 border border-border p-3 rounded-2xl font-mono font-bold text-sm focus:border-accent outline-none transition-all"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-muted uppercase ml-1">Nome do beneficiário</label>
+              <input
+                type="text"
+                value={beneficiarioTexto}
+                onChange={(e) => setBeneficiarioTexto(e.target.value)}
+                className="w-full bg-page/50 border border-border p-3 rounded-2xl font-bold text-sm focus:border-accent outline-none transition-all"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={salvandoDadosBancarios}
+                className={`shrink-0 min-h-11 px-5 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all active:scale-95 ${sucessoDadosBancarios ? 'bg-success text-on-success' : 'bg-accent hover:bg-accent-hover text-on-accent'}`}
+              >
+                {salvandoDadosBancarios ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                {sucessoDadosBancarios ? 'Guardado' : 'Guardar'}
+              </button>
+              {erroDadosBancarios && <p className="text-danger text-[11px] font-bold">{erroDadosBancarios}</p>}
+            </div>
           </form>
         </section>
 

@@ -200,6 +200,17 @@ test.describe('Lista do Dia — centro descartável ZZTESTE', () => {
     if (discError) throw new Error(`subjects: ${discError.message}`);
     disciplina = disc as any;
 
+    // Etiqueta "Fora do horário" (app/admin/ListaDoDiaPresencas.tsx) só
+    // aparece com valor_dia_fora_horario > 0 (config_centro) — ver
+    // tests/extras-centro.spec.ts para a cobertura completa da
+    // funcionalidade; aqui só se liga o valor para o cenário já existente
+    // abaixo ("aluno fora do horário mostra o selo") continuar a passar.
+    const { error: configExtrasError } = await supabaseAdmin
+      .from('config_centro')
+      .update({ valor_dia_fora_horario: 10 })
+      .eq('id', centroId);
+    if (configExtrasError) throw new Error(`valor_dia_fora_horario: ${configExtrasError.message}`);
+
     alunos.esperado = await criarAluno('Esperado', { horarios: [diaSemanaHoje] });
     alunos.foraHorario = await criarAluno('ForaHorario', { horarios: [outroDia] });
     alunos.foraDaLista = await criarAluno('ForaDaLista', { horarios: [] });
@@ -542,7 +553,8 @@ test.describe('Lista do Dia — centro descartável ZZTESTE', () => {
     await page.goto(`${BASE_URL}/admin`, { waitUntil: 'networkidle' });
 
     const linhaForaHorario = await linhaDoAluno(page, alunos.foraHorario.nome);
-    await expect(linhaForaHorario).toContainText(/fora de horário/i, { timeout: 15_000 });
+    await expect(linhaForaHorario).toContainText(/fora do horário/i, { timeout: 15_000 });
+    await expect(linhaForaHorario).toContainText('10.00€'); // config_centro.valor_dia_fora_horario, admin vê o valor
 
     await page.getByRole('button', { name: /aluno fora da lista/i }).click();
     await page.getByPlaceholder(/procurar aluno/i).fill(alunos.foraDaLista.nome);
