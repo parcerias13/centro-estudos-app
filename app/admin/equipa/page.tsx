@@ -219,11 +219,37 @@ export default function AdminTeam() {
   const mesAtual = getHojeLisboa().slice(0, 7);
 
   const fetchTeam = async () => {
-    const { data } = await supabase.from('staff').select('*').order('name');
-    if (data) setTeam(data);
-    setLoading(false);
+    const { data } = await supabase.from('staff').select('id, name, email, role').order('name');
+    const membros = data || [];
 
-    const professorIds = (data || []).filter((m) => m.role?.toLowerCase() === 'professor').map((m) => m.id);
+    const professorIds = membros.filter((m) => m.role?.toLowerCase() === 'professor').map((m) => m.id);
+
+    // Tarifa variável vive em staff_remuneracao (só admin lê/escreve) — um
+    // professor sem linha ali fica com tarifa vazia, como antes em staff.
+    let tarifaPorProfessor: Record<string, { tarifa_tipo: string | null; tarifa_valor: number | null; tarifa_escala_aluno: boolean }> = {};
+    if (professorIds.length > 0) {
+      const { data: remuneracaoData } = await supabase
+        .from('staff_remuneracao')
+        .select('staff_id, tarifa_tipo, tarifa_valor, tarifa_escala_aluno')
+        .in('staff_id', professorIds);
+      (remuneracaoData || []).forEach((r: any) => {
+        tarifaPorProfessor[r.staff_id] = {
+          tarifa_tipo: r.tarifa_tipo,
+          tarifa_valor: r.tarifa_valor,
+          tarifa_escala_aluno: r.tarifa_escala_aluno,
+        };
+      });
+    }
+
+    const membrosComTarifa = membros.map((m) => ({
+      ...m,
+      tarifa_tipo: tarifaPorProfessor[m.id]?.tarifa_tipo ?? null,
+      tarifa_valor: tarifaPorProfessor[m.id]?.tarifa_valor ?? null,
+      tarifa_escala_aluno: tarifaPorProfessor[m.id]?.tarifa_escala_aluno ?? false,
+    }));
+
+    setTeam(membrosComTarifa);
+    setLoading(false);
 
     let tiposPorProfessor: Record<string, TipoRemuneracaoMes> = {};
     if (professorIds.length > 0) {
@@ -244,7 +270,7 @@ export default function AdminTeam() {
     }
     setTipoAtualPorProfessor(tiposPorProfessor);
 
-    const semTarifaIds = (data || [])
+    const semTarifaIds = membrosComTarifa
       .filter((m) => m.role?.toLowerCase() === 'professor' && !m.tarifa_tipo && tiposPorProfessor[m.id] !== 'salario')
       .map((m) => m.id);
 
@@ -548,14 +574,23 @@ export default function AdminTeam() {
 
   const handleSaveTarifa = async () => {
     if (!tarifaModalMember) return;
-    if (!tarifaTipo) {
-      showError('Escolhe o tipo de tarifa.');
-      return;
-    }
-    const valor = parseFloat(tarifaValor);
-    if (isNaN(valor)) {
-      showError('Indica um valor de tarifa válido.');
-      return;
+
+    // Tipo e valor vazios ao mesmo tempo = limpar a tarifa (sem tarifa_tipo
+    // escolhido, sem o professor a ter escrito um valor).
+    const valorBruto = tarifaValor.trim();
+    const semTarifa = !tarifaTipo && valorBruto === '';
+
+    let valor: number | null = null;
+    if (!semTarifa) {
+      if (!tarifaTipo) {
+        showError('Escolhe o tipo de tarifa.');
+        return;
+      }
+      valor = parseFloat(valorBruto);
+      if (isNaN(valor) || valor < 0) {
+        showError('Indica um valor de tarifa válido (não negativo).');
+        return;
+      }
     }
 
     const ctx = await getAdminContext();
@@ -563,9 +598,18 @@ export default function AdminTeam() {
 
     setSavingTarifa(true);
     const { error } = await supabase
-      .from('staff')
-      .update({ tarifa_tipo: tarifaTipo, tarifa_valor: valor, tarifa_escala_aluno: tarifaEscalaAluno })
-      .eq('id', tarifaModalMember.id);
+      .from('staff_remuneracao')
+      .upsert(
+        {
+          staff_id: tarifaModalMember.id,
+          centro_id: ctx.centro_id,
+          tarifa_tipo: semTarifa ? null : tarifaTipo,
+          tarifa_valor: semTarifa ? null : valor,
+          tarifa_escala_aluno: semTarifa ? false : tarifaEscalaAluno,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'staff_id' }
+      );
     setSavingTarifa(false);
 
     if (error) {

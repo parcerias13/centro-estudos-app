@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import dotenv from 'dotenv';
 import { getHojeLisboa, dataLisboaDe, instanteLisboaParaUTC } from '@/lib/dataLisboa';
+import { definirTarifaStaff } from './helpers/staffRemuneracao';
 
 dotenv.config({ path: '.env.local' });
 
@@ -73,12 +74,12 @@ async function criarUtilizadorAuth(email: string, password: string, appMetadata:
   return id;
 }
 
-async function criarStaff(papel: string, nome: string, centro: string, extra: Record<string, unknown> = {}): Promise<Conta> {
+async function criarStaff(papel: string, nome: string, centro: string): Promise<Conta> {
   const email = `${nome.toLowerCase().replace(/\s+/g, '-')}-${SUFIXO}@zzteste.invalid`;
   const password = gerarPasswordSegura();
   const id = await criarUtilizadorAuth(email, password, { role: papel, centro_id: centro });
   limpeza.push(() => supabaseAdmin.auth.admin.deleteUser(id));
-  const { error } = await supabaseAdmin.from('staff').insert({ id, email, name: nome, role: papel, centro_id: centro, ...extra });
+  const { error } = await supabaseAdmin.from('staff').insert({ id, email, name: nome, role: papel, centro_id: centro });
   if (error) throw new Error(`criar staff ${nome}: ${error.message}`);
   limpeza.push(() => supabaseAdmin.from('staff').delete().eq('id', id));
   return { email, password, id };
@@ -152,9 +153,11 @@ test.describe('Registo de horas de trabalho dos professores — centro descartá
     if (resetError) throw new Error(`rodar password do admin: ${resetError.message}`);
     admin = { email: ADMIN_EMAIL, password: passwordAdmin, id: staffAdmin.id };
 
-    profVariavel = await criarStaff('professor', 'Prof Variavel Horas', centroId, { tarifa_tipo: 'fixo', tarifa_valor: 20 });
+    profVariavel = await criarStaff('professor', 'Prof Variavel Horas', centroId);
+    await definirTarifaStaff(supabaseAdmin, profVariavel.id, centroId, { tipo: 'fixo', valor: 20 });
     profSalario = await criarStaff('professor', 'Prof Salario Horas', centroId);
-    profSemValor = await criarStaff('professor', 'Prof Sem Valor Horas', centroId, { tarifa_tipo: 'fixo', tarifa_valor: 20 });
+    profSemValor = await criarStaff('professor', 'Prof Sem Valor Horas', centroId);
+    await definirTarifaStaff(supabaseAdmin, profSemValor.id, centroId, { tipo: 'fixo', valor: 20 });
     profParaEditor = await criarStaff('professor', 'Prof Editor Horas', centroId);
 
     const sessaoAdminSetup = await sessaoComo(admin);

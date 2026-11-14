@@ -2,6 +2,7 @@ import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { randomInt } from 'node:crypto';
 import dotenv from 'dotenv';
+import { definirTarifaStaff } from './helpers/staffRemuneracao';
 
 dotenv.config({ path: '.env.local' });
 
@@ -154,10 +155,10 @@ test.describe('Pagamentos — alunos "só explicações" ficam visíveis e pagá
     professorId = await criarUtilizadorAuth(emailProfessor, gerarPasswordSegura(), { role: 'professor', centro_id: centroId });
     const { error: profError } = await supabaseAdmin.from('staff').insert({
       id: professorId, email: emailProfessor, name: 'ZZTESTE Professor Pagamentos SoExplicacoes', role: 'professor', centro_id: centroId,
-      tarifa_tipo: 'fixo', tarifa_valor: 10,
     });
     if (profError) throw new Error(`criar staff professor: ${profError.message}`);
     limpeza.push(() => supabaseAdmin.from('staff').delete().eq('id', professorId));
+    await definirTarifaStaff(supabaseAdmin, professorId, centroId, { tipo: 'fixo', valor: 10 });
 
     const nomeDisciplina = `Disciplina PagExp ${SUFIXO}`;
     const { data: disciplina, error: disciplinaError } = await supabaseAdmin.from('subjects').insert({ name: nomeDisciplina, centro_id: centroId }).select('id').single();

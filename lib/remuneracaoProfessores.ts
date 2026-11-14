@@ -34,7 +34,7 @@ export interface RemuneracaoProfessorNoMes {
   professorId: string;
   nome: string;
   tipo: TipoRemuneracaoMes;
-  tarifaDefinida: boolean; // staff.tarifa_tipo — só importa para variável
+  tarifaDefinida: boolean; // staff_remuneracao.tarifa_tipo — só importa para variável
   salarioMes: number; // > 0 só quando tipo === 'salario'
   valorHoraAtivo: number | null; // valor do período 'valor_hora' ativo no mês (null = sem período)
   minutosFechados: number; // soma de registos_horas_professor.minutos do mês — sempre calculada (informação para o de salário), só entra no total se variável
@@ -105,12 +105,14 @@ export async function obterRemuneracaoDoMes(centroId: string, ano: number, mes: 
 
   const [
     { data: professoresData, error: errProf },
+    { data: remuneracaoData, error: errRem },
     { data: periodosData, error: errPer },
     { data: horasData, error: errHoras },
     { data: sessoesData, error: errSess },
     { data: pagamentosData, error: errPag },
   ] = await Promise.all([
-    supabase.from('staff').select('id, name, tarifa_tipo').eq('centro_id', centroId).eq('role', 'professor').order('name'),
+    supabase.from('staff').select('id, name').eq('centro_id', centroId).eq('role', 'professor').order('name'),
+    supabase.from('staff_remuneracao').select('staff_id, tarifa_tipo').eq('centro_id', centroId),
     supabase.from('periodos_valor_professor').select('professor_id, tipo, de, ate, valor').eq('centro_id', centroId),
     supabase
       .from('registos_horas_professor')
@@ -128,8 +130,13 @@ export async function obterRemuneracaoDoMes(centroId: string, ano: number, mes: 
     supabase.from('pagamentos_professores').select('professor_id, pago, data_pagamento, ajuste_valor, ajuste_nota').eq('centro_id', centroId).eq('ano', ano).eq('mes', mes),
   ]);
 
-  const erro = errProf || errPer || errHoras || errSess || errPag;
+  const erro = errProf || errRem || errPer || errHoras || errSess || errPag;
   if (erro) throw erro;
+
+  const tarifaTipoPorProf: Record<string, string | null> = {};
+  for (const r of remuneracaoData || []) {
+    tarifaTipoPorProf[r.staff_id] = r.tarifa_tipo;
+  }
 
   // Períodos por professor e por tipo — mesma forma { de, ate, valor } que valorNoMes já espera.
   // Períodos antigos 'valor_dia' nunca entram em nenhum dos dois mapas — ignorados de propósito.
@@ -200,7 +207,7 @@ export async function obterRemuneracaoDoMes(centroId: string, ano: number, mes: 
       professorId: p.id,
       nome: p.name,
       tipo,
-      tarifaDefinida: !!p.tarifa_tipo,
+      tarifaDefinida: !!tarifaTipoPorProf[p.id],
       salarioMes,
       valorHoraAtivo,
       minutosFechados,
@@ -215,7 +222,7 @@ export async function obterRemuneracaoDoMes(centroId: string, ano: number, mes: 
       pago: pagamento?.pago ?? false,
       dataPagamento: pagamento?.data_pagamento ?? null,
       total,
-      semTarifaAviso: tipo === 'variavel' && !p.tarifa_tipo && sessoes.length > 0,
+      semTarifaAviso: tipo === 'variavel' && !tarifaTipoPorProf[p.id] && sessoes.length > 0,
       semValorHoraAviso: tipo === 'variavel' && valorHoraAtivo == null && minutosFechados > 0,
     };
   });

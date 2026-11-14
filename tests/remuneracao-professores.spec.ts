@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import dotenv from 'dotenv';
 import { getHojeLisboa } from '@/lib/dataLisboa';
+import { definirTarifaStaff } from './helpers/staffRemuneracao';
 
 dotenv.config({ path: '.env.local' });
 
@@ -73,12 +74,12 @@ async function criarUtilizadorAuth(email: string, password: string, appMetadata:
   return id;
 }
 
-async function criarStaff(papel: string, nome: string, centro: string, extra: Record<string, unknown> = {}): Promise<Conta> {
+async function criarStaff(papel: string, nome: string, centro: string): Promise<Conta> {
   const email = `${nome.toLowerCase().replace(/\s+/g, '-')}-${SUFIXO}@zzteste.invalid`;
   const password = gerarPasswordSegura();
   const id = await criarUtilizadorAuth(email, password, { role: papel, centro_id: centro });
   limpeza.push(() => supabaseAdmin.auth.admin.deleteUser(id));
-  const { error } = await supabaseAdmin.from('staff').insert({ id, email, name: nome, role: papel, centro_id: centro, ...extra });
+  const { error } = await supabaseAdmin.from('staff').insert({ id, email, name: nome, role: papel, centro_id: centro });
   if (error) throw new Error(`criar staff ${nome}: ${error.message}`);
   limpeza.push(() => supabaseAdmin.from('staff').delete().eq('id', id));
   return { email, password, id };
@@ -181,7 +182,8 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
     admin = { email: ADMIN_EMAIL, password: passwordAdmin, id: staffAdmin.id };
 
     profSalario = await criarStaff('professor', 'Prof Salario', centroId);
-    profVariavel = await criarStaff('professor', 'Prof Variavel', centroId, { tarifa_tipo: 'fixo', tarifa_valor: 20 });
+    profVariavel = await criarStaff('professor', 'Prof Variavel', centroId);
+    await definirTarifaStaff(supabaseAdmin, profVariavel.id, centroId, { tipo: 'fixo', valor: 20 });
 
     const { data: disciplina, error: errDisciplina } = await supabaseAdmin
       .from('subjects')
@@ -476,11 +478,7 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
   });
 
   test('UI — sou_salario_no_mes: Prof Salario (variável desde Set/2026) continua a ver o "Último valor calculado"', async () => {
-    const { error: errTarifa } = await supabaseAdmin
-      .from('staff')
-      .update({ tarifa_tipo: 'fixo', tarifa_valor: 15 })
-      .eq('id', profSalario.id);
-    expect(errTarifa).toBeNull();
+    await definirTarifaStaff(supabaseAdmin, profSalario.id, centroId, { tipo: 'fixo', valor: 15 });
 
     const hojeISO = getHojeLisboa();
     await criarExplicacaoDada(profSalario.id, hojeISO, '12:00');
