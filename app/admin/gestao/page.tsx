@@ -215,9 +215,16 @@ function GestaoTotalPageContent() {
       setIsAdmin(adminStatus);
 
       if (adminStatus) {
-        // Busca apenas os serviços extra
-        const { data: servicosRes } = await supabase.from('servicos').select('*').order('nome');
-        setServicos(servicosRes || []);
+        // Busca os serviços extra; o custo vive em servicos_custos (só
+        // admin do centro lê/escreve essa tabela) — serviço sem linha ali
+        // fica com custo vazio.
+        const { data: servicosRes } = await supabase.from('servicos').select('id, nome, preco, centro_id').order('nome');
+        const idsServicos = (servicosRes || []).map((s) => s.id);
+        const { data: custosRes } = idsServicos.length
+          ? await supabase.from('servicos_custos').select('servico_id, custo').in('servico_id', idsServicos)
+          : { data: [] as { servico_id: string; custo: number | null }[] };
+        const custoPorServico = new Map((custosRes || []).map((c) => [c.servico_id, c.custo]));
+        setServicos((servicosRes || []).map((s) => ({ ...s, custo: custoPorServico.get(s.id) ?? null })));
 
         // Disciplinas do centro + preços à família — mesma fonte (subjects)
         // e a mesma lógica de anos_aplicaveis já usada em Equipa (Fase 2).
@@ -447,6 +454,9 @@ function GestaoTotalPageContent() {
     const precoNum = parseFloat(novoPreco);
     if (!novoNome.trim()) return setCriarError('O nome é obrigatório.');
     if (isNaN(precoNum) || precoNum < 0) return setCriarError('Preço inválido.');
+    const custoTexto = novoCusto.trim();
+    const custoNum = custoTexto === '' ? null : parseFloat(custoTexto);
+    if (custoTexto !== '' && (custoNum === null || isNaN(custoNum) || custoNum < 0)) return setCriarError('Custo inválido.');
 
     setCriando(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -457,17 +467,32 @@ function GestaoTotalPageContent() {
       return;
     }
 
-    const custoNum = novoCusto.trim() !== '' && !isNaN(parseFloat(novoCusto)) ? parseFloat(novoCusto) : null;
-    const { error } = await supabase.from('servicos').insert({ nome: novoNome.trim(), preco: precoNum, custo: custoNum, centro_id });
-    if (error) {
-      setCriarError(error.message);
-    } else {
-      setNovoNome('');
-      setNovoPreco('');
-      setNovoCusto('');
-      setShowNovoServico(false);
-      loadTudo();
+    const { data: novoServico, error } = await supabase
+      .from('servicos')
+      .insert({ nome: novoNome.trim(), preco: precoNum, centro_id })
+      .select('id')
+      .single();
+    if (error || !novoServico) {
+      setCriarError(error?.message || 'Erro ao criar serviço.');
+      setCriando(false);
+      return;
     }
+
+    setNovoNome('');
+    setNovoPreco('');
+    setNovoCusto('');
+    setShowNovoServico(false);
+
+    if (custoNum !== null) {
+      const { error: erroCusto } = await supabase
+        .from('servicos_custos')
+        .upsert({ servico_id: novoServico.id, centro_id, custo: custoNum }, { onConflict: 'servico_id' });
+      if (erroCusto) {
+        showError('O serviço foi criado, mas o custo não ficou guardado: ' + erroCusto.message);
+      }
+    }
+
+    loadTudo();
     setCriando(false);
   };
 
@@ -486,7 +511,17 @@ function GestaoTotalPageContent() {
     const bruto = custo.trim();
     const valor = bruto === '' ? null : parseFloat(bruto);
     if (bruto !== '' && (valor === null || isNaN(valor))) return;
-    const { error } = await supabase.from('servicos').update({ custo: valor }).eq('id', id);
+    if (valor !== null && valor < 0) {
+      showError('O custo não pode ser negativo.');
+      return;
+    }
+    if (!centroId) {
+      showError('Não foi possível obter o centro. Recarrega a página.');
+      return;
+    }
+    const { error } = await supabase
+      .from('servicos_custos')
+      .upsert({ servico_id: id, centro_id: centroId, custo: valor, updated_at: new Date().toISOString() }, { onConflict: 'servico_id' });
     if (error) {
       showError('Erro ao atualizar custo: ' + error.message);
       return;
