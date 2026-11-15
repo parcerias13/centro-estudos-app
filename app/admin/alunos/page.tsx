@@ -25,6 +25,7 @@ export default function ListaAlunos() {
   const [mostrarExportarFaturacao, setMostrarExportarFaturacao] = useState(false);
   const [mostrarGerarCodigos, setMostrarGerarCodigos] = useState(false);
   const [role, setRole] = useState<string | null>(null);
+  const [avisoFaturacao, setAvisoFaturacao] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAlunos();
@@ -61,13 +62,18 @@ export default function ListaAlunos() {
 
       // Mensalidade, NIF e morada do encarregado vivem em alunos_faturacao
       // (só admin/secretaria, por RLS) — nunca pedidos para o professor, que
-      // nem vê estes campos na UI desta lista.
+      // nem vê estes campos na UI desta lista. Sem .in(aluno_id) — a RLS já
+      // limita à mesma centro_id da sessão, e com muitos alunos o URL do
+      // pedido ficava demasiado longo.
       const faturacaoPorAluno: Record<string, { mensalidade_base: number; nif_encarregado: string | null; morada_encarregado: string | null }> = {};
-      if (currentRole !== 'professor' && dataAlunos && dataAlunos.length > 0) {
-        const { data: dataFaturacao } = await supabase
+      setAvisoFaturacao(null);
+      if (currentRole !== 'professor') {
+        const { data: dataFaturacao, error: errFaturacao } = await supabase
           .from('alunos_faturacao')
-          .select('aluno_id, mensalidade_base, nif_encarregado, morada_encarregado')
-          .in('aluno_id', dataAlunos.map((a) => a.id));
+          .select('aluno_id, mensalidade_base, nif_encarregado, morada_encarregado');
+        if (errFaturacao) {
+          setAvisoFaturacao('Não foi possível carregar a mensalidade, o NIF e a morada dos encarregados. Os valores podem estar incompletos — tenta recarregar a página.');
+        }
         (dataFaturacao || []).forEach((f) => {
           faturacaoPorAluno[f.aluno_id] = {
             mensalidade_base: Number(f.mensalidade_base) || 0,
@@ -253,6 +259,13 @@ export default function ListaAlunos() {
           )}
         </div>
       </header>
+
+      {avisoFaturacao && (
+        <div className="bg-danger-bg border border-danger/30 p-4 rounded-xl flex items-start gap-3 text-danger mb-8">
+          <ShieldAlert size={20} className="shrink-0" />
+          <p className="text-sm font-bold">{avisoFaturacao}</p>
+        </div>
+      )}
 
       {ficheiroImportacao && (
         <ImportarAlunosModal

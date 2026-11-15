@@ -15,9 +15,8 @@ dotenv.config({ path: '.env.local' });
 // updated_at), com RLS a restringir todas as operações ao admin do próprio
 // centro — nem o próprio professor lê a sua linha. calcular_valores_explicacao
 // passou a ler o fallback a partir daqui (depois das exceções em
-// tarifas_professor_disciplina, nunca antes). As colunas antigas em staff
-// continuam a existir até à remoção planeada, mas o código novo nunca as lê
-// nem escreve — por isso aqui confirma-se também que continuam a null.
+// tarifas_professor_disciplina, nunca antes). As colunas antigas em staff já
+// foram removidas da base de dados.
 // Datas fixas no passado (nunca "hoje") para as sessões de explicações, para
 // o resultado nunca depender de quando a suite corre. Centro descartável
 // ZZTESTE (~/Desktop/gestao-centros/novo-centro.mjs), nunca o Trupe Lias nem
@@ -296,12 +295,6 @@ test.describe('Tarifas de professores em staff_remuneracao — centro descartáv
     expect(remun!.tarifa_tipo).toBe('fixo');
     expect(Number(remun!.tarifa_valor)).toBe(25);
     expect(remun!.tarifa_escala_aluno).toBe(false);
-
-    const { data: staffRow } = await supabaseAdmin
-      .from('staff').select('tarifa_tipo, tarifa_valor, tarifa_escala_aluno').eq('id', professor1.id).single();
-    expect(staffRow?.tarifa_tipo).toBeNull();
-    expect(staffRow?.tarifa_valor).toBeNull();
-    expect(staffRow?.tarifa_escala_aluno).toBeFalsy();
 
     await context.close();
   });

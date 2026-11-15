@@ -174,11 +174,11 @@ export async function POST(req: Request) {
   }
 
   // Mensalidade, NIF e morada vivem em alunos_faturacao (só admin/
-  // secretaria, por RLS) — nunca nas colunas antigas de alunos. Upsert, não
-  // insert: o gatilho TEMPORÁRIO de sincronização já cria uma linha default
-  // (mensalidade 0) na mesma operação que insere o aluno, antes deste passo
-  // correr. Falhar aqui é tratado como falha da criação: o aluno nunca pode
-  // ficar sem linha de faturação nem a conta de Auth ficar órfã.
+  // secretaria, por RLS) — a tabela `alunos` já não tem estas colunas.
+  // Upsert, não insert: nunca falha por a linha já existir (ex.: um pedido
+  // repetido), e grava sempre com o centro_id da sessão do admin. Falhar
+  // aqui é tratado como falha da criação: o aluno nunca pode ficar sem linha
+  // de faturação nem a conta de Auth ficar órfã.
   const mensalidadeBaseNum = Number(mensalidade_base)
   const { error: faturacaoError } = await supabaseAdmin.from('alunos_faturacao').upsert({
     aluno_id: novoId,

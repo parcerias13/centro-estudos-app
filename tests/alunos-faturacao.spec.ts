@@ -13,10 +13,8 @@ dotenv.config({ path: '.env.local' });
 // centro_id, mensalidade_base numeric >= 0 default 0, nif_encarregado,
 // morada_encarregado, updated_at), com RLS a restringir leitura/escrita ao
 // admin/secretaria do próprio centro e leitura só da própria linha ao
-// aluno/encarregado. As colunas antigas em `alunos` continuam a existir até
-// à remoção planeada, mas o código novo nunca as lê nem escreve — por isso
-// aqui confirma-se também que continuam a null depois de criar/editar pelo
-// código novo. Um aluno sem linha em alunos_faturacao é tratado como
+// aluno/encarregado. As colunas antigas em `alunos` já foram removidas da
+// base de dados. Um aluno sem linha em alunos_faturacao é tratado como
 // mensalidade 0 e NIF/morada vazios, nunca um erro. Isolado num centro
 // ZZTESTE próprio (e um segundo centro ZZTESTE só para os testes de
 // isolamento), ambos apagados no fim. Cada teste de UI abre o seu próprio
@@ -186,7 +184,7 @@ test.describe('NIF, morada e mensalidade base em alunos_faturacao — centro des
   });
 
   // --- 1/2. Admin e secretaria editam pela UI ---
-  test('admin edita mensalidade, NIF e morada pela UI: ficam em alunos_faturacao com o centro certo; as colunas antigas de alunos não são tocadas', async ({ browser }) => {
+  test('admin edita mensalidade, NIF e morada pela UI: ficam em alunos_faturacao com o centro certo', async ({ browser }) => {
     const alunoAdmin = await criarAlunoDireto(`Aluno Editado Admin ${SUFIXO}`, 'edit-admin', centroId);
 
     await comSessaoUI(browser, admin, async (p) => {
@@ -204,19 +202,6 @@ test.describe('NIF, morada e mensalidade base em alunos_faturacao — centro des
     expect(Number(faturacao!.mensalidade_base)).toBe(75);
     expect(faturacao!.nif_encarregado).toBe('123456789');
     expect(faturacao!.morada_encarregado).toBe('Rua do Admin, 1, Lisboa');
-
-    // alunos.mensalidade_base tem default 0 na própria coluna (herdado de
-    // antes desta migração) — o que importa aqui é que o UPDATE da edição
-    // nunca lhe toca, por isso fica exatamente como nasceu na criação
-    // direta (0), nunca com o 75 gravado em alunos_faturacao.
-    const { data: alunoRow } = await supabaseAdmin
-      .from('alunos')
-      .select('mensalidade_base, nif_encarregado, morada_encarregado')
-      .eq('id', alunoAdmin.id)
-      .single();
-    expect(Number(alunoRow?.mensalidade_base)).toBe(0);
-    expect(alunoRow?.nif_encarregado).toBeNull();
-    expect(alunoRow?.morada_encarregado).toBeNull();
   });
 
   test('secretaria edita mensalidade, NIF e morada pela UI e consegue', async ({ browser }) => {
@@ -286,11 +271,6 @@ test.describe('NIF, morada e mensalidade base em alunos_faturacao — centro des
     }
 
     const alunoSemLinha = await criarAlunoDireto(`Aluno Professor SemLinha ${SUFIXO}`, 'prof-semlinha', centroId);
-    // O gatilho TEMPORÁRIO de sincronização cria uma linha default
-    // (mensalidade 0) na mesma operação que insere o aluno — apaga-se aqui
-    // para testar o INSERT do professor contra uma linha a sério inexistente,
-    // nunca contra um conflito de chave primária que mascararia o resultado.
-    await supabaseAdmin.from('alunos_faturacao').delete().eq('aluno_id', alunoSemLinha.id);
 
     const sessaoProfessor = await sessaoComo(professor);
     const { data: lido, error: errLeitura } = await sessaoProfessor.from('alunos_faturacao').select('aluno_id').eq('centro_id', centroId);
@@ -356,10 +336,6 @@ test.describe('NIF, morada e mensalidade base em alunos_faturacao — centro des
 
   test('aluno sem linha em alunos_faturacao: extrato mostra mensalidade 0,00€ e não parte nada', async ({ browser }) => {
     const alunoSemLinha = await criarAlunoDireto(`Aluno Sem Linha Faturacao ${SUFIXO}`, 'sem-linha', centroId);
-    // O gatilho TEMPORÁRIO de sincronização cria uma linha default ao criar
-    // o aluno — apaga-se para garantir o estado "sem linha nenhuma" a
-    // sério, não só "linha com mensalidade 0".
-    await supabaseAdmin.from('alunos_faturacao').delete().eq('aluno_id', alunoSemLinha.id);
 
     await comSessaoUI(browser, admin, async (p) => {
       await p.goto(`${BASE_URL}/admin/alunos/extrato?id=${alunoSemLinha.id}`, { waitUntil: 'networkidle' });
@@ -484,9 +460,9 @@ test.describe('NIF, morada e mensalidade base em alunos_faturacao — centro des
       await expect(p).toHaveURL(/\/admin\/alunos\/editar/);
     });
 
-    // O gatilho TEMPORÁRIO já deixou aqui uma linha default (mensalidade 0)
-    // ao criar o aluno — o que importa é que a tentativa rejeitada no
-    // formulário nunca a mude para -10.
+    // O aluno nasce sem linha em alunos_faturacao (criado direto, sem passar
+    // pela edição) — o que importa é que a tentativa rejeitada no
+    // formulário nunca chega a criar uma com -10.
     const { data: faturacao } = await supabaseAdmin.from('alunos_faturacao').select('mensalidade_base').eq('aluno_id', aluno.id).maybeSingle();
     expect(Number(faturacao?.mensalidade_base ?? 0)).toBe(0);
 
