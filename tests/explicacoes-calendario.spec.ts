@@ -69,8 +69,9 @@ const DIA_VAZIO = addDiasISO(DIA_CHEIO, 2); // sem nenhuma
 
 const NOME_LONGO = 'Maria Fernanda de Albuquerque e Castro';
 const DISCIPLINA_LONGA = 'Educação Física e Desportiva';
-// subjects.name tem uma constraint única GLOBAL (não por centro_id) — nunca
-// um nome genérico ("Matemática") aqui, para nunca colidir com outro centro.
+// subjects.name é único por centro_id (sem distinguir maiúsculas) — já não
+// precisa de sufixo nem de evitar nomes genéricos, porque este teste cria
+// sempre o seu próprio centro ZZTESTE, nunca colide com outro centro.
 const DISCIPLINA_NORMAL = `Química Teste ${SUFIXO}`;
 
 let centroId: string;

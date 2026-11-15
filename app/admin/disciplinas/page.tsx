@@ -233,7 +233,11 @@ export default function DisciplinasEMateriais() {
     const anos_aplicaveis = newSubjectYears.length ? [...newSubjectYears].sort((a, b) => a - b) : null;
     const { error } = await supabase.from('subjects').insert({ name, centro_id, anos_aplicaveis });
     if (error) {
-      setSubjectError(error.message);
+      if (error.code === '23505') {
+        setSubjectError('Já existe uma disciplina com este nome neste centro.');
+      } else {
+        setSubjectError(error.message);
+      }
     } else {
       setNewSubjectName('');
       setNewSubjectYears([]);
