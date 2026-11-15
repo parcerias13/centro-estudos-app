@@ -29,14 +29,21 @@ function ExtratoDetalhadoContent() {
 
     const { primeiroDiaISO: primeiroDia, ultimoDiaISO: ultimoDia, primeiroDiaData, ultimoDiaData } = intervaloDoMesExtrato(ano, mes);
 
-    // 1. Buscar Aluno (Agora com mensalidade_base)
+    // 1. Buscar Aluno (dados pessoais — a mensalidade vive em alunos_faturacao)
     const { data: aluno } = await supabase
       .from('alunos')
-      .select('*')
+      .select('id, nome')
       .eq('id', studentId)
       .single();
-    
+
     setStudent(aluno);
+
+    const { data: faturacao } = await supabase
+      .from('alunos_faturacao')
+      .select('mensalidade_base')
+      .eq('aluno_id', studentId)
+      .maybeSingle();
+    const mensalidadeBase = faturacao?.mensalidade_base ?? 0;
 
     // 2. Buscar Presenças (apenas para assiduidade), Extras e Explicações dadas do Mês
     const [{ data: presencas }, { data: extras }, { data: explicacoesData }] = await Promise.all([
@@ -60,7 +67,7 @@ function ExtratoDetalhadoContent() {
 
     // 3. MOTOR DE CÁLCULO (lib/extrato.ts — partilhado com a exportação de faturação)
     const { mensalidadeFixa, totalExtras, totalExplicacoes, explicacoesSemPreco, totalGeral } =
-      calcularResumoExtrato(aluno?.mensalidade_base, extras || [], explicacoesData || []);
+      calcularResumoExtrato(mensalidadeBase, extras || [], explicacoesData || []);
     const datasUnicas = new Set(presencas?.map(p => p.entrada.split('T')[0]));
     const totalSessoes = datasUnicas.size;
 

@@ -82,7 +82,7 @@ async function criarAlunoEmailReal(nome: string, email: string) {
   limpeza.push(() => supabaseAdmin.auth.admin.deleteUser(id));
   await supabaseAdmin.auth.admin.updateUserById(id, { app_metadata: { centro_id: centroId } });
   const { error: dbError } = await supabaseAdmin.from('alunos').insert({
-    id, nome, email, data_nascimento: '2010-01-01', ano_escolar: 9, mensalidade_base: 60, centro_id: centroId,
+    id, nome, email, data_nascimento: '2010-01-01', ano_escolar: 9, centro_id: centroId,
   });
   if (dbError) throw new Error(`criar aluno: ${dbError.message}`);
   limpeza.push(() => supabaseAdmin.from('alunos').delete().eq('id', id));

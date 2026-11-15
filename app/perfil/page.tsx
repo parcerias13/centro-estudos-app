@@ -32,7 +32,7 @@ export default function StudentProfile() {
     // 2. CORREÇÃO: Buscar dados da tabela 'alunos' (unificada)
     const { data: student } = await supabase
       .from('alunos')
-      .select('*')
+      .select('id, nome, ano_escolar')
       .eq('id', user.id)
       .single();
     

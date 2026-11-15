@@ -156,11 +156,8 @@ export async function POST(req: Request) {
     data_nascimento: data_nascimento || null,
     telefone_encarregado,
     email_encarregado,
-    nif_encarregado,
-    morada_encarregado,
     telemovel_aluno,
     ano_escolar: anoEscolarNum,
-    mensalidade_base,
     saida_autorizada,
     consentimento_ia,
     usa_app,
@@ -174,6 +171,27 @@ export async function POST(req: Request) {
     // Reverter a criação do utilizador se o insert falhar
     await supabaseAdmin.auth.admin.deleteUser(novoId)
     return NextResponse.json({ error: `Erro DB: ${dbError.message}` }, { status: 500 })
+  }
+
+  // Mensalidade, NIF e morada vivem em alunos_faturacao (só admin/
+  // secretaria, por RLS) — nunca nas colunas antigas de alunos. Upsert, não
+  // insert: o gatilho TEMPORÁRIO de sincronização já cria uma linha default
+  // (mensalidade 0) na mesma operação que insere o aluno, antes deste passo
+  // correr. Falhar aqui é tratado como falha da criação: o aluno nunca pode
+  // ficar sem linha de faturação nem a conta de Auth ficar órfã.
+  const mensalidadeBaseNum = Number(mensalidade_base)
+  const { error: faturacaoError } = await supabaseAdmin.from('alunos_faturacao').upsert({
+    aluno_id: novoId,
+    centro_id,
+    mensalidade_base: Number.isFinite(mensalidadeBaseNum) ? mensalidadeBaseNum : 0,
+    nif_encarregado: nif_encarregado || null,
+    morada_encarregado: morada_encarregado || null,
+  }, { onConflict: 'aluno_id' })
+
+  if (faturacaoError) {
+    await supabaseAdmin.from('alunos').delete().eq('id', novoId)
+    await supabaseAdmin.auth.admin.deleteUser(novoId)
+    return NextResponse.json({ error: `Erro ao gravar faturação: ${faturacaoError.message}` }, { status: 500 })
   }
 
   // O aluno (e a password gerada no servidor) já existem nesta altura — uma

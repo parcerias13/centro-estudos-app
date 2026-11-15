@@ -93,7 +93,7 @@ async function criarAluno(nome: string, salaEstudo: boolean, fazExplicacoes: boo
   const { error } = await supabaseAdmin.from('alunos').insert({
     id, nome, email, email_encarregado: `enc-filtromodal-${sufixo}@zzteste.invalid`,
     data_nascimento: '2012-01-01', ano_escolar: 8, centro_id: centroId, ativo: true,
-    sala_estudo: salaEstudo, faz_explicacoes: fazExplicacoes, mensalidade_base: 0,
+    sala_estudo: salaEstudo, faz_explicacoes: fazExplicacoes,
   });
   if (error) throw new Error(`criar aluno ${nome}: ${error.message}`);
   limpeza.push(() => supabaseAdmin.from('alunos').delete().eq('id', id));

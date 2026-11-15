@@ -145,7 +145,7 @@ test.describe('Avisos e alterações de explicações — centro descartável ZZ
     limpeza.push(() => supabaseAdmin.auth.admin.deleteUser(alunoId));
     const { error: errAluno } = await supabaseAdmin.from('alunos').insert({
       id: alunoId, nome: 'Aluno Alt ZZTESTE', email: alunoEmail, email_encarregado: `enc-alt-${SUFIXO}@zzteste.invalid`,
-      data_nascimento: '2012-01-01', ano_escolar: 8, centro_id: centroId, ativo: true, sala_estudo: false, faz_explicacoes: true, mensalidade_base: 0,
+      data_nascimento: '2012-01-01', ano_escolar: 8, centro_id: centroId, ativo: true, sala_estudo: false, faz_explicacoes: true,
     });
     if (errAluno) throw new Error(`criar aluno: ${errAluno.message}`);
     aluno = { email: alunoEmail, password: alunoPassword, id: alunoId };

@@ -57,7 +57,7 @@ function FichaAlunoContent() {
       { data: subjectsData },
       { data: notasPeriodoData },
     ] = await Promise.all([
-      supabase.from('alunos').select('*').eq('id', studentId).eq('centro_id', currentCentroId).single(),
+      supabase.from('alunos').select('id, nome, avatar_url, escola, turma, ano_escolar').eq('id', studentId).eq('centro_id', currentCentroId).single(),
       supabase.from('exams').select('*').eq('aluno_id', studentId).eq('centro_id', currentCentroId).order('date', { ascending: false }),
       supabase.from('subjects').select('id, name, anos_aplicaveis').order('name'),
       supabase.from('notas_periodo').select('*').eq('aluno_id', studentId).eq('centro_id', currentCentroId).eq('ano_letivo', anoLetivoAtual),

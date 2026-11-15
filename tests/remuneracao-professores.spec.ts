@@ -199,7 +199,7 @@ test.describe('Remuneração dos professores — centro descartável ZZTESTE', (
     limpeza.push(() => supabaseAdmin.auth.admin.deleteUser(alunoAuthId));
     const { error: errAluno } = await supabaseAdmin.from('alunos').insert({
       id: alunoAuthId, nome: 'Aluno ZZTESTE Remuneracao', email: alunoEmail, email_encarregado: `enc-remun-${SUFIXO}@zzteste.invalid`,
-      data_nascimento: '2012-01-01', ano_escolar: 8, centro_id: centroId, ativo: true, sala_estudo: false, faz_explicacoes: true, mensalidade_base: 0,
+      data_nascimento: '2012-01-01', ano_escolar: 8, centro_id: centroId, ativo: true, sala_estudo: false, faz_explicacoes: true,
     });
     if (errAluno) throw new Error(`criar aluno: ${errAluno.message}`);
     alunoId = alunoAuthId;

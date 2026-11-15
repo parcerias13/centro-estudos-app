@@ -23,7 +23,7 @@ function RelatorioContent() {
     // 1. Dados do Aluno
     const { data: alunoData } = await supabase
       .from('alunos')
-      .select('*')
+      .select('id, nome, saida_autorizada')
       .eq('id', studentId)
       .single();
     setStudent(alunoData);

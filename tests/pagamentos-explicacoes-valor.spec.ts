@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { randomInt } from 'node:crypto';
 import dotenv from 'dotenv';
 import { definirTarifaStaff } from './helpers/staffRemuneracao';
+import { definirFaturacaoAluno } from './helpers/alunosFaturacao';
 
 dotenv.config({ path: '.env.local' });
 
@@ -60,14 +61,16 @@ async function criarAlunoDireto(nome: string, sufixo: string, anoEscolar: number
   const email = `teste-pagexpv-${sufixo}@example.invalid`;
   const password = gerarPasswordSegura();
   const id = await criarUtilizadorAuth(email, password, { centro_id: centroId });
+  const { mensalidade_base, ...resto } = extra;
   const { error } = await supabaseAdmin.from('alunos').insert({
     id, nome, email, email_encarregado: `enc-pagexpv-${sufixo}@example.invalid`,
     data_nascimento: '2012-01-01', ano_escolar: anoEscolar, centro_id: centroId, ativo: true,
-    sala_estudo: false, faz_explicacoes: true, mensalidade_base: 0,
-    ...extra,
+    sala_estudo: false, faz_explicacoes: true,
+    ...resto,
   });
   if (error) throw new Error(`criar aluno ${nome}: ${error.message}`);
   limpeza.push(() => supabaseAdmin.from('alunos').delete().eq('id', id));
+  await definirFaturacaoAluno(supabaseAdmin, id, centroId, { mensalidadeBase: (mensalidade_base as number | undefined) ?? 0 });
   return { id, nome };
 }
 

@@ -71,24 +71,26 @@ async function garantirMesGeradoNucleo(
   if (errExistentes) throw errExistentes;
   const idsComLinha = new Set((existentes || []).map((l: any) => l.aluno_id));
 
-  // gt('mensalidade_base', 0) já exclui null e 0 ao mesmo tempo (comparação
-  // com null é sempre desconhecida em SQL) — alunos "só explicações"
-  // (mensalidade_base <= 0 ou nula) nunca ganham linha.
+  // Mensalidade base vive em alunos_faturacao — gt('mensalidade_base', 0) já
+  // exclui null e 0 ao mesmo tempo (comparação com null é sempre
+  // desconhecida em SQL) — alunos "só explicações" (mensalidade_base <= 0,
+  // ou sem linha nenhuma em alunos_faturacao) nunca ganham linha. O filtro
+  // de "ativo" continua a viver em alunos, por isso o embed com !inner.
   const { data: alunosAtivos, error: errAlunos } = await supabase
-    .from('alunos')
-    .select('id, mensalidade_base')
+    .from('alunos_faturacao')
+    .select('aluno_id, mensalidade_base, alunos!inner(ativo)')
     .eq('centro_id', centro_id)
-    .eq('ativo', true)
+    .eq('alunos.ativo', true)
     .gt('mensalidade_base', 0);
   if (errAlunos) throw errAlunos;
 
-  const emFalta = (alunosAtivos || []).filter((a) => !idsComLinha.has(a.id));
+  const emFalta = (alunosAtivos || []).filter((a) => !idsComLinha.has(a.aluno_id));
 
   let criadas = 0;
   if (emFalta.length > 0) {
     const novasLinhas = emFalta.map((a) => ({
       centro_id,
-      aluno_id: a.id,
+      aluno_id: a.aluno_id,
       ano,
       mes,
       valor_esperado: Number(a.mensalidade_base) || 0,

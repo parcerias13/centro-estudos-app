@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
 import dotenv from 'dotenv';
+import { definirFaturacaoAluno } from './helpers/alunosFaturacao';
 
 dotenv.config({ path: '.env.local' });
 
@@ -110,9 +111,10 @@ async function criarAluno(nome: string, mensalidadeBase: number): Promise<Conta>
   const { error } = await supabaseAdmin.from('alunos').insert({
     id, nome, email, email_encarregado: `enc-${email}`,
     data_nascimento: '2012-01-01', ano_escolar: 8, centro_id: centroId,
-    ativo: true, sala_estudo: false, faz_explicacoes: true, mensalidade_base: mensalidadeBase,
+    ativo: true, sala_estudo: false, faz_explicacoes: true,
   });
   if (error) throw new Error(`criar aluno ${nome}: ${error.message}`);
+  await definirFaturacaoAluno(supabaseAdmin, id, centroId, { mensalidadeBase });
   return { email, password, id, nome };
 }
 

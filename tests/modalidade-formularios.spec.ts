@@ -171,7 +171,7 @@ test.describe('Modalidade — formulários e proteção server-side', () => {
     expect(criado.body.error).toMatch(/pelo menos uma modalidade/i);
   });
 
-  test('um aluno autenticado não consegue mudar a própria modalidade (nem ano_escolar, nem mensalidade_base) diretamente (RLS + trg_alunos_proteger)', async () => {
+  test('um aluno autenticado não consegue mudar a própria modalidade (nem ano_escolar) diretamente (RLS + trg_alunos_proteger), nem escrever na sua linha de alunos_faturacao', async () => {
     const nome = `Aluno Protege Modalidade ${SUFIXO}`;
     const criado = await criarAlunoViaApi({ nome, sala_estudo: true, faz_explicacoes: false, ano_escolar: 6, mensalidade_base: 35 });
     expect(criado.status).toBe(200);
@@ -193,10 +193,21 @@ test.describe('Modalidade — formulários e proteção server-side', () => {
     // role, mostra o valor original intacto.
     const { data: original } = await supabaseAdmin
       .from('alunos')
-      .select('sala_estudo, faz_explicacoes, ano_escolar, mensalidade_base')
+      .select('sala_estudo, faz_explicacoes, ano_escolar')
       .eq('id', alunoId)
       .single();
     expect(original).toBeTruthy();
+
+    // mensalidade_base já não vive em `alunos` — a API de criação já deixou
+    // a linha em alunos_faturacao (centro_id guardado pelo servidor); a
+    // proteção a confirmar agora é a dessa tabela: o aluno só lê a própria
+    // linha, nunca escreve.
+    const { data: faturacaoOriginal } = await supabaseAdmin
+      .from('alunos_faturacao')
+      .select('mensalidade_base')
+      .eq('aluno_id', alunoId)
+      .single();
+    expect(faturacaoOriginal).toBeTruthy();
 
     async function tentarEscritaBloqueada(campo: string, valorNovo: unknown) {
       const { data, error } = await clienteAluno.from('alunos').update({ [campo]: valorNovo }).eq('id', alunoId).select();
@@ -213,20 +224,32 @@ test.describe('Modalidade — formulários e proteção server-side', () => {
     const tentativaAno = await tentarEscritaBloqueada('ano_escolar', original!.ano_escolar + 1);
     expect(tentativaAno.bloqueado).toBe(true);
 
-    const tentativaMensalidade = await tentarEscritaBloqueada('mensalidade_base', Number(original!.mensalidade_base) + 1);
-    expect(tentativaMensalidade.bloqueado).toBe(true);
+    const { data: tentativaFaturacaoData, error: tentativaFaturacaoError } = await clienteAluno
+      .from('alunos_faturacao')
+      .update({ mensalidade_base: Number(faturacaoOriginal!.mensalidade_base) + 1 })
+      .eq('aluno_id', alunoId)
+      .select();
+    const tentativaFaturacaoBloqueada = tentativaFaturacaoError !== null || (tentativaFaturacaoData?.length ?? 0) === 0;
+    expect(tentativaFaturacaoBloqueada).toBe(true);
 
-    // Nada mudou, em nenhuma das quatro colunas — lido com a service role,
-    // nunca com o cliente do aluno (que, se algo tivesse passado, poderia
-    // estar a ler um cache/otimismo do próprio SDK em vez da BD real).
+    // Nada mudou, nem em `alunos` nem em alunos_faturacao — lido com a
+    // service role, nunca com o cliente do aluno (que, se algo tivesse
+    // passado, poderia estar a ler um cache/otimismo do próprio SDK em vez
+    // da BD real).
     const { data: depois } = await supabaseAdmin
       .from('alunos')
-      .select('sala_estudo, faz_explicacoes, ano_escolar, mensalidade_base')
+      .select('sala_estudo, faz_explicacoes, ano_escolar')
       .eq('id', alunoId)
       .single();
     expect(depois?.sala_estudo).toBe(original!.sala_estudo);
     expect(depois?.faz_explicacoes).toBe(original!.faz_explicacoes);
     expect(depois?.ano_escolar).toBe(original!.ano_escolar);
-    expect(Number(depois?.mensalidade_base)).toBe(Number(original!.mensalidade_base));
+
+    const { data: faturacaoDepois } = await supabaseAdmin
+      .from('alunos_faturacao')
+      .select('mensalidade_base')
+      .eq('aluno_id', alunoId)
+      .single();
+    expect(Number(faturacaoDepois?.mensalidade_base)).toBe(Number(faturacaoOriginal!.mensalidade_base));
   });
 });

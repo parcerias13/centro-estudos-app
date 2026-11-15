@@ -94,9 +94,18 @@ function EditarAlunoContent() {
   const carregarDados = async () => {
     const { data: aluno, error: errAluno } = await supabase
       .from('alunos')
-      .select('*')
+      .select('nome, email, telefone_encarregado, email_encarregado, telemovel_aluno, data_nascimento, ano_escolar, escola, turma, sala_estudo, faz_explicacoes, saida_autorizada, ativo, consentimento_ia, usa_app, avatar_url')
       .eq('id', studentId)
       .single();
+
+    // Mensalidade, NIF e morada vivem em alunos_faturacao — um aluno sem
+    // linha ali (nunca editado ainda) entra no formulário como mensalidade 0
+    // e NIF/morada vazios, nunca um erro.
+    const { data: faturacao } = await supabase
+      .from('alunos_faturacao')
+      .select('mensalidade_base, nif_encarregado, morada_encarregado')
+      .eq('aluno_id', studentId)
+      .maybeSingle();
 
     if (errAluno) {
       setErro('Não foi possível carregar os dados.');
@@ -105,8 +114,8 @@ function EditarAlunoContent() {
       setEmail(aluno.email || '');
       setTelefone(aluno.telefone_encarregado || '');
       setEmailEncarregado(aluno.email_encarregado || '');
-      setNifEncarregado(aluno.nif_encarregado || '');
-      setMoradaEncarregado(aluno.morada_encarregado || '');
+      setNifEncarregado(faturacao?.nif_encarregado || '');
+      setMoradaEncarregado(faturacao?.morada_encarregado || '');
       setTelemovelAluno(aluno.telemovel_aluno || '');
       setDataNascimento(aluno.data_nascimento || '');
       // Sem fallback para um ano por defeito: se por algum motivo vier nulo,
@@ -114,7 +123,7 @@ function EditarAlunoContent() {
       setAnoEscolar(aluno.ano_escolar != null ? aluno.ano_escolar.toString() : '');
       setEscola(aluno.escola || '');
       setTurma(aluno.turma || '');
-      setMensalidadeBase(aluno.mensalidade_base?.toString() || ''); // CARREGAMENTO DO VALOR FIXO
+      setMensalidadeBase(faturacao?.mensalidade_base != null ? faturacao.mensalidade_base.toString() : '0');
       const salaEstudoCarregada = aluno.sala_estudo ?? true;
       const explicacoesCarregadas = aluno.faz_explicacoes ?? false;
       setModalidade(salaEstudoCarregada && explicacoesCarregadas ? 'ambos' : explicacoesCarregadas ? 'so_explicacoes' : 'sala_estudo');
@@ -273,6 +282,14 @@ function EditarAlunoContent() {
       showError('Escolhe o ano escolar.');
       return;
     }
+
+    const mensalidadeBruta = mensalidadeBase.trim();
+    const mensalidadeNum = mensalidadeBruta === '' ? 0 : parseFloat(mensalidadeBruta);
+    if (isNaN(mensalidadeNum) || mensalidadeNum < 0) {
+      showError('A mensalidade base não pode ser negativa.');
+      return;
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     const centro_id = user?.app_metadata?.centro_id;
     if (!centro_id) {
@@ -287,14 +304,11 @@ function EditarAlunoContent() {
           email,
           telefone_encarregado: telefone,
           email_encarregado: emailEncarregado,
-          nif_encarregado: nifEncarregado,
-          morada_encarregado: moradaEncarregado,
           telemovel_aluno: telemovelAluno,
           data_nascimento: dataNascimento || null,
           ano_escolar: parseInt(anoEscolar),
           escola: escola.trim() || null,
           turma: turma.trim() || null,
-          mensalidade_base: parseFloat(mensalidadeBase), // ATUALIZAÇÃO DO VALOR FIXO
           saida_autorizada: saidaAutorizada,
           ativo,
           consentimento_ia: eMaiorDe13() ? consentimentoIa : false,
@@ -306,6 +320,25 @@ function EditarAlunoContent() {
         .eq('id', studentId);
 
       if (errUpdate) throw errUpdate;
+
+      const { error: errFaturacao } = await supabase
+        .from('alunos_faturacao')
+        .upsert(
+          {
+            aluno_id: studentId,
+            centro_id,
+            mensalidade_base: mensalidadeNum,
+            nif_encarregado: nifEncarregado.trim() || null,
+            morada_encarregado: moradaEncarregado.trim() || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'aluno_id' }
+        );
+
+      if (errFaturacao) {
+        showError('Dados pessoais e escolares gravados, mas a faturação (mensalidade, NIF, morada) falhou: ' + errFaturacao.message);
+        return;
+      }
 
       const { error: erroDeleteHorarios } = await supabase.from('aluno_horarios').delete().eq('aluno_id', studentId);
       if (erroDeleteHorarios) {

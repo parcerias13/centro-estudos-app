@@ -34,6 +34,9 @@ export default function ListaAlunos() {
   const fetchAlunos = async () => {
     setLoading(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const currentRole = user?.app_metadata?.role?.toLowerCase() ?? null;
+
       const hoje = new Date();
       const diaDaSemana = hoje.getDay() === 0 ? 6 : hoje.getDay() - 1;
       const inicioSemana = new Date(hoje);
@@ -46,7 +49,7 @@ export default function ListaAlunos() {
 
       const { data: dataAlunos, error: errAlunos } = await supabase
         .from('alunos')
-        .select('*')
+        .select('id, nome, avatar_url, ano_escolar, saida_autorizada, sala_estudo, faz_explicacoes, limite_semanal, email_encarregado, telefone_encarregado')
         .order('nome', { ascending: true });
 
       const { data: dataPresencas, error: errPresencas } = await supabase
@@ -56,11 +59,34 @@ export default function ListaAlunos() {
         .lte('created_at', fimSemana.toISOString())
         .neq('status', 'falta');
 
+      // Mensalidade, NIF e morada do encarregado vivem em alunos_faturacao
+      // (só admin/secretaria, por RLS) — nunca pedidos para o professor, que
+      // nem vê estes campos na UI desta lista.
+      const faturacaoPorAluno: Record<string, { mensalidade_base: number; nif_encarregado: string | null; morada_encarregado: string | null }> = {};
+      if (currentRole !== 'professor' && dataAlunos && dataAlunos.length > 0) {
+        const { data: dataFaturacao } = await supabase
+          .from('alunos_faturacao')
+          .select('aluno_id, mensalidade_base, nif_encarregado, morada_encarregado')
+          .in('aluno_id', dataAlunos.map((a) => a.id));
+        (dataFaturacao || []).forEach((f) => {
+          faturacaoPorAluno[f.aluno_id] = {
+            mensalidade_base: Number(f.mensalidade_base) || 0,
+            nif_encarregado: f.nif_encarregado,
+            morada_encarregado: f.morada_encarregado,
+          };
+        });
+      }
+
       if (dataAlunos && dataPresencas) {
         const alunosProcessados = dataAlunos.map(aluno => {
           const contagem = dataPresencas.filter(p => p.aluno_id === aluno.id).length;
           return {
             ...aluno,
+            ...(currentRole !== 'professor' ? {
+              mensalidade_base: faturacaoPorAluno[aluno.id]?.mensalidade_base ?? 0,
+              nif_encarregado: faturacaoPorAluno[aluno.id]?.nif_encarregado ?? null,
+              morada_encarregado: faturacaoPorAluno[aluno.id]?.morada_encarregado ?? null,
+            } : {}),
             consumo_semanal: contagem
           };
         });
@@ -75,7 +101,14 @@ export default function ListaAlunos() {
 
         setAlunos(alunosOrdenados);
       } else if (dataAlunos) {
-        setAlunos(dataAlunos);
+        setAlunos(dataAlunos.map((aluno) => ({
+          ...aluno,
+          ...(currentRole !== 'professor' ? {
+            mensalidade_base: faturacaoPorAluno[aluno.id]?.mensalidade_base ?? 0,
+            nif_encarregado: faturacaoPorAluno[aluno.id]?.nif_encarregado ?? null,
+            morada_encarregado: faturacaoPorAluno[aluno.id]?.morada_encarregado ?? null,
+          } : {}),
+        })));
       }
     } catch (error) {
       console.error('Erro ao processar prioridades:', error);

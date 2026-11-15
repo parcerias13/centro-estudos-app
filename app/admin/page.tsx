@@ -114,7 +114,7 @@ export default function DashboardAdmin() {
       // ADICIONADO FILTRO PARA NÃO MOSTRAR ALUNOS APAGADOS NO CHECK-IN MANUAL
       const { data: aData } = await supabase
         .from('alunos')
-        .select('*, pacotes(nome), aluno_horarios(dia_semana)')
+        .select('id, nome, ano_escolar, ativo, avatar_url, pacotes(nome), aluno_horarios(dia_semana)')
         .order('nome');
         
       const { data: subData } = await supabase.from('subjects').select('*').eq('centro_id', centro_id).order('name');
