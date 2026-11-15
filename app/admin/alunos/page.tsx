@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic';
 import { UserPlus, Search, FileBarChart, Edit, ClipboardList, ShieldCheck, ShieldAlert, Loader2, ArrowLeft, Users, Filter, FileText, FileSpreadsheet, UploadCloud, Receipt, KeyRound } from 'lucide-react';
 import { CABECALHOS, LINHA_EXEMPLO } from './importAlunosConfig';
 import GerarCodigosModal from './GerarCodigosModal';
+import { AvatarAluno, useAvataresAssinados } from '@/lib/useAvataresAssinados';
 
 // Carregadas só quando o modal respetivo abre — cada uma arrasta consigo
 // xlsx ou exceljs, que só fazem sentido no momento de importar/exportar.
@@ -192,6 +193,8 @@ export default function ListaAlunos() {
     return matchesNome && matchesAno && matchesModalidade;
   });
 
+  const avatares = useAvataresAssinados(alunos.map((a) => a.avatar_url));
+
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
 
   return (
@@ -340,11 +343,7 @@ export default function ListaAlunos() {
             <div key={aluno.id} className="bg-surface border border-border/60 hover:border-border p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center sm:justify-between group transition-all shadow-sm">
               <div className="flex items-center gap-5 flex-1 min-w-0">
                 <div className="w-14 h-14 shrink-0 bg-raised rounded-2xl flex items-center justify-center text-xl font-black text-muted group-hover:bg-accent group-hover:text-on-accent transition-all overflow-hidden border border-border/50 shadow-inner">
-                  {aluno.avatar_url ? (
-                    <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover" />
-                  ) : (
-                    <span>{aluno.nome?.charAt(0)}</span>
-                  )}
+                  <AvatarAluno valor={aluno.avatar_url} nome={aluno.nome} urls={avatares.urls} className="w-full h-full object-cover" />
                 </div>
 
                 <div className="flex-1 min-w-0">

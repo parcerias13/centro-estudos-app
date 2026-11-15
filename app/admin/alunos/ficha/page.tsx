@@ -16,6 +16,7 @@ import {
   CheckCircle2, Clock, BookOpen, AlertTriangle,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { AvatarAluno, useAvataresAssinados } from '@/lib/useAvataresAssinados';
 
 function FichaAlunoContent() {
   const searchParams = useSearchParams();
@@ -203,6 +204,8 @@ function FichaAlunoContent() {
     showSuccess('Nota confirmada.');
   };
 
+  const avatares = useAvataresAssinados(aluno ? [aluno.avatar_url] : []);
+
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" size={32} /></div>;
   if (!aluno) return <div className="p-8 text-primary">Aluno não encontrado.</div>;
 
@@ -220,7 +223,7 @@ function FichaAlunoContent() {
         </Link>
         <div className="flex items-center gap-4 flex-1 min-w-0">
           <div className="w-14 h-14 shrink-0 rounded-2xl bg-raised flex items-center justify-center text-xl font-black text-muted overflow-hidden border border-border/50">
-            {aluno.avatar_url ? <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover" /> : <span>{aluno.nome?.charAt(0)}</span>}
+            <AvatarAluno valor={aluno.avatar_url} nome={aluno.nome} urls={avatares.urls} className="w-full h-full object-cover" />
           </div>
           <div className="min-w-0">
             <h1 className="text-2xl font-black flex items-center gap-2 truncate">

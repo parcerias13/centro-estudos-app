@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { randomInt } from 'node:crypto'
 import { gerarUsernameBase, normalizarUsernameManual, candidatoUsername, emailFachada, MAX_TENTATIVAS_USERNAME } from '@/lib/username'
+import { caminhoDoAvatar } from '@/lib/avataresAlunos'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -85,6 +86,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Define pelo menos uma modalidade (Sala de Estudo ou Explicações).' }, { status: 400 })
   }
 
+  // avatar_url grava sempre só o CAMINHO no bucket "avatares", nunca um URL.
+  // Por transição, aceita-se também um URL público antigo (normalizado para
+  // caminho); um caminho ".." ou vindo de outro bucket/origem, ou que não
+  // pertença à pasta deste centro, é recusado já aqui — nunca entra na BD.
+  let avatarCaminho: string | null = null
+  if (avatar_url) {
+    const caminho = caminhoDoAvatar(avatar_url)
+    if (!caminho) {
+      return NextResponse.json({ error: 'Foto de perfil em formato inválido.' }, { status: 400 })
+    }
+    if (!caminho.startsWith(`${centro_id}/`)) {
+      return NextResponse.json({ error: 'Foto de perfil não pertence a este centro.' }, { status: 400 })
+    }
+    avatarCaminho = caminho
+  }
+
   const password = gerarPasswordSegura()
 
   // ano_escolar é NOT NULL + CHECK (1-12) na base de dados — valida aqui para
@@ -161,7 +178,7 @@ export async function POST(req: Request) {
     saida_autorizada,
     consentimento_ia,
     usa_app,
-    avatar_url,
+    avatar_url: avatarCaminho,
     centro_id,
     sala_estudo: salaEstudoFinal,
     faz_explicacoes: explicacoesFinal,

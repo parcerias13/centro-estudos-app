@@ -11,6 +11,7 @@ import ListaDoDiaPresencas from './ListaDoDiaPresencas';
 import TurnoHojeCard from './TurnoHojeCard';
 import { obterConfigExtrasCentro } from '@/lib/extrasCentro';
 import { Users, AlertTriangle, ShieldAlert, Clock, Loader2, RefreshCw, MessageCircle, LogOut, MapPin, CheckCircle2, XCircle, UserPlus, Search, X, Plus, Calendar, ChevronDown, ChevronUp, Undo2 } from 'lucide-react';
+import { AvatarAluno, useAvataresAssinados } from '@/lib/useAvataresAssinados';
 
 
 export default function DashboardAdmin() {
@@ -463,13 +464,12 @@ export default function DashboardAdmin() {
   }, [selectedExamStudents]);
 
   const renderAlunoCheckinRow = (aluno: any) => {
-    const isValidUrl = aluno.avatar_url && (aluno.avatar_url.startsWith('http://') || aluno.avatar_url.startsWith('https://'));
     const jaPresente = checkinsAtivosIds.has(aluno.id);
     const aProcessar = alunosEmCheckin.has(aluno.id);
     return (
       <div key={aluno.id} className="w-full p-3 bg-page/50 border border-border rounded-2xl flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-raised flex items-center justify-center font-black text-success shrink-0">
-          {isValidUrl ? <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover rounded-xl" /> : aluno.nome.charAt(0)}
+          <AvatarAluno valor={aluno.avatar_url} nome={aluno.nome} urls={avatares.urls} className="w-full h-full object-cover rounded-xl" />
         </div>
         <p className="font-bold text-sm flex-1 truncate">{aluno.nome}</p>
         <button
@@ -488,6 +488,8 @@ export default function DashboardAdmin() {
     const percentage = sala.capacidade > 0 ? (count / sala.capacidade) * 100 : 0;
     return { ...sala, count, percentage };
   });
+
+  const avatares = useAvataresAssinados(alunos.map((a) => a.avatar_url));
 
   if (loading) return <div className="min-h-screen bg-page flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>;
 
@@ -571,7 +573,7 @@ export default function DashboardAdmin() {
                 <div key={p.id} className={`bg-surface border ${!diaContratado ? 'border-danger' : (estaValidado ? 'border-success/40' : 'border-border')} p-5 rounded-3xl flex flex-col md:flex-row items-center justify-between transition-all gap-4`}>
                   <div className="flex items-center gap-4 w-full md:w-auto">
                   <div className={`w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-xl font-black border border-border/50 ${corBase} ${!diaContratado ? 'text-on-danger' : (estaValidado ? 'text-on-success' : 'text-on-accent')}`}>
-                    {aluno?.avatar_url && (aluno.avatar_url.startsWith('http://') || aluno.avatar_url.startsWith('https://')) ? <img src={aluno.avatar_url} alt={aluno?.nome} className="w-full h-full object-cover rounded-2xl" /> : aluno?.nome?.charAt(0)}
+                    <AvatarAluno valor={aluno?.avatar_url} nome={aluno?.nome} urls={avatares.urls} className="w-full h-full object-cover rounded-2xl" />
                   </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -751,7 +753,7 @@ export default function DashboardAdmin() {
                         className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all ${selecionado ? 'bg-warning-bg border border-warning/40' : 'bg-page/50 border border-transparent hover:border-warning/30'}`}
                       >
                         <div className="w-9 h-9 rounded-xl bg-raised flex items-center justify-center font-black text-warning text-sm shrink-0">
-                          {(aluno.avatar_url && (aluno.avatar_url.startsWith('http://') || aluno.avatar_url.startsWith('https://'))) ? <img src={aluno.avatar_url} alt={aluno.nome} className="w-full h-full object-cover rounded-xl" /> : aluno.nome.charAt(0)}
+                          <AvatarAluno valor={aluno.avatar_url} nome={aluno.nome} urls={avatares.urls} className="w-full h-full object-cover rounded-xl" />
                         </div>
                         <p className="font-bold text-sm text-left flex-1">{aluno.nome}</p>
                         <span className="text-[10px] font-black text-muted shrink-0">{aluno.ano_escolar}º</span>

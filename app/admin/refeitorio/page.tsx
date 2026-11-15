@@ -6,6 +6,7 @@ import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
   Search, UserPlus, RefreshCw, X, Loader2, CheckCircle2, Clock, Utensils, Apple
 } from 'lucide-react';
+import { AvatarAluno, useAvataresAssinados } from '@/lib/useAvataresAssinados';
 
 // Interfaces robustas
 interface AlunoRefeitorio {
@@ -37,11 +38,10 @@ export default function RefeitorioPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const { toast, showError } = useStatusToast();
 
-  // Validador de URL (Preservado do teu código)
-  const getSafeAvatar = (url: string | null | undefined) => {
-    if (!url || typeof url !== 'string' || !url.startsWith('http')) return null;
-    try { return new URL(url).href; } catch { return null; }
-  };
+  const avatares = useAvataresAssinados([
+    ...alunosPresentes.map((a) => a.avatar_url),
+    ...todosAlunos.map((a) => a.avatar_url),
+  ]);
 
   const fetchDados = useCallback(async () => {
     try {
@@ -176,13 +176,11 @@ export default function RefeitorioPage() {
           </div>
         ) : (
           alunosPresentes.map((aluno) => {
-            const safeUrl = getSafeAvatar(aluno.avatar_url);
             return (
               <div key={aluno.aluno_id} className="bg-surface border border-border p-5 rounded-4xl flex flex-col lg:flex-row items-center justify-between transition-all gap-6 group hover:border-border">
                 <div className="flex items-center gap-4 w-full lg:w-1/3">
                   <div className="w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center text-xl font-black border border-border/50 bg-raised overflow-hidden">
-                    {/* snyk:ignore:javascript/DOMXSS */}
-                    {safeUrl ? <img src={safeUrl} alt="" className="w-full h-full object-cover" /> : <span className="text-muted">{aluno.aluno_nome.charAt(0)}</span>}
+                    <AvatarAluno valor={aluno.avatar_url} nome={aluno.aluno_nome} urls={avatares.urls} className="w-full h-full object-cover" />
                   </div>
                   <div>
                     <h3 className="text-lg font-black group-hover:text-accent transition-colors">{aluno.aluno_nome}</h3>
@@ -243,8 +241,7 @@ export default function RefeitorioPage() {
                 <div key={aluno.id} className="w-full p-4 bg-page border border-border rounded-2xl flex flex-col gap-4">
                   <div className="flex items-center gap-3 border-b border-border pb-3">
                     <div className="w-10 h-10 rounded-xl bg-raised flex items-center justify-center font-black text-muted overflow-hidden">
-                      {/* snyk:ignore:javascript/DOMXSS */}
-                      {aluno.avatar_url ? <img src={aluno.avatar_url} className="w-full h-full object-cover" /> : aluno.nome.charAt(0)}
+                      <AvatarAluno valor={aluno.avatar_url} nome={aluno.nome} urls={avatares.urls} className="w-full h-full object-cover" />
                     </div>
                     <p className="font-bold text-primary">{aluno.nome}</p>
                   </div>

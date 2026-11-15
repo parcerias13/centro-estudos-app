@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { useBloqueioProfessor } from '@/lib/bloqueioProfessor';
+import { BUCKET_AVATARES, TIPOS_IMAGEM_PERMITIDOS, ACCEPT_AVATAR, construirCaminhoAvatar } from '@/lib/avataresAlunos';
+import { useAvataresAssinados } from '@/lib/useAvataresAssinados';
 import { ArrowLeft, Save, Loader2, UserPlus, ShieldAlert, Calendar, Camera, BrainCircuit, Baby, ToggleLeft, ToggleRight, Smartphone, Phone, GraduationCap, Mail, DollarSign, Copy, CheckCircle2, KeyRound, FileText, MapPin } from 'lucide-react';
 
 export default function NovoAluno() {
@@ -30,8 +32,11 @@ export default function NovoAluno() {
   const [anoEscolar, setAnoEscolar] = useState('');
   const [saidaAutorizada, setSaidaAutorizada] = useState(false);
   const [consentimentoIa, setConsentimentoIa] = useState(false);
-  const [usaApp, setUsaApp] = useState(true); 
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [usaApp, setUsaApp] = useState(true);
+  // Guarda só o CAMINHO no bucket "avatares" — o aluno ainda não existe
+  // nesta fase, por isso o upload corre sem aluno_id no nome do ficheiro.
+  const [avatarCaminho, setAvatarCaminho] = useState<string | null>(null);
+  const [avatarComErro, setAvatarComErro] = useState(false);
 
   // 2. LÓGICA DE NEGÓCIO (CONTRATO FIXO)
   const [mensalidadeBase, setMensalidadeBase] = useState('');
@@ -44,6 +49,9 @@ export default function NovoAluno() {
     { id: 1, label: 'Segunda' }, { id: 2, label: 'Terça' }, { id: 3, label: 'Quarta' },
     { id: 4, label: 'Quinta' }, { id: 5, label: 'Sexta' }, { id: 6, label: 'Sábado' }
   ];
+
+  const avataresPreview = useAvataresAssinados(avatarCaminho ? [avatarCaminho] : []);
+  const avatarPreviewUrl = avatarCaminho ? avataresPreview.urls.get(avatarCaminho) : undefined;
 
   const safeAction = async (actionFn: () => Promise<void>) => {
     if (isSubmitting) return;
@@ -73,15 +81,21 @@ export default function NovoAluno() {
       setErro('');
       if (!e.target.files || e.target.files.length === 0) return;
       const file = e.target.files[0];
+      const extensao = TIPOS_IMAGEM_PERMITIDOS[file.type];
+      if (!extensao) {
+        setErro('Tipo de imagem não permitido. Usa JPEG, PNG, WEBP ou AVIF.');
+        return;
+      }
       const { data: { user } } = await supabase.auth.getUser();
       const centro_id = user?.app_metadata?.centro_id;
       if (!centro_id) throw new Error('Não foi possível identificar o centro.');
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${centro_id}/${Math.random()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('avatares').upload(fileName, file);
+      const caminho = construirCaminhoAvatar(centro_id, null, extensao);
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET_AVATARES)
+        .upload(caminho, file, { contentType: file.type });
       if (uploadError) throw uploadError;
-      const { data } = supabase.storage.from('avatares').getPublicUrl(fileName);
-      setAvatarUrl(data.publicUrl);
+      setAvatarComErro(false);
+      setAvatarCaminho(caminho);
     } catch (error: any) {
       setErro('Erro no upload: ' + error.message);
     } finally { setUploading(false); }
@@ -140,7 +154,7 @@ export default function NovoAluno() {
           saida_autorizada: saidaAutorizada,
           consentimento_ia: eMaiorDe13() ? consentimentoIa : false,
           usa_app: usaApp,
-          avatar_url: avatarUrl,
+          avatar_url: avatarCaminho,
           centro_id,
           dias_selecionados: diasSelecionados,
           sala_estudo: modalidade !== 'so_explicacoes',
@@ -256,13 +270,23 @@ export default function NovoAluno() {
           <h2 className="text-[10px] font-black uppercase text-accent tracking-[0.2em]">1. Identificação e Perfil</h2>
           <div className="flex flex-col items-center gap-4 py-4">
             <div className="relative group">
-              <div className={`w-24 h-24 rounded-3xl border border-border overflow-hidden shadow-2xl flex items-center justify-center transition-all ${!avatarUrl ? 'bg-page' : ''}`}>
-                {avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover" /> : <Camera size={30} className="text-slate-800" />}
+              <div className={`w-24 h-24 rounded-3xl border border-border overflow-hidden shadow-2xl flex items-center justify-center transition-all ${!avatarPreviewUrl ? 'bg-page' : ''}`}>
+                {avatarPreviewUrl && !avatarComErro ? (
+                  <img
+                    src={avatarPreviewUrl}
+                    className="w-full h-full object-cover"
+                    onError={() => setAvatarComErro(true)}
+                  />
+                ) : avatarComErro ? (
+                  <span className="text-2xl font-black text-muted">{nome?.charAt(0) || <Camera size={30} className="text-slate-800" />}</span>
+                ) : (
+                  <Camera size={30} className="text-slate-800" />
+                )}
                 {uploading && <div className="absolute inset-0 bg-page/80 flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>}
               </div>
               <label className="absolute -bottom-2 -right-2 bg-accent hover:bg-accent-hover text-on-accent p-2.5 rounded-xl cursor-pointer shadow-xl transition-all">
                 <Camera size={16} />
-                <input type="file" accept="image/*" onChange={handleUpload} className="hidden" disabled={uploading} />
+                <input type="file" accept={ACCEPT_AVATAR} onChange={handleUpload} className="hidden" disabled={uploading} />
               </label>
             </div>
           </div>

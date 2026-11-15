@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import { useBloqueioProfessor } from '@/lib/bloqueioProfessor';
 import { ehEmailFachada, usernameSemSufixo } from '@/lib/username';
+import { BUCKET_AVATARES, TIPOS_IMAGEM_PERMITIDOS, ACCEPT_AVATAR, construirCaminhoAvatar, caminhoDoAvatar } from '@/lib/avataresAlunos';
+import { useAvataresAssinados } from '@/lib/useAvataresAssinados';
 import { ArrowLeft, Save, Loader2, UserCheck, ShieldAlert, ToggleLeft, ToggleRight, Calendar, Camera, BrainCircuit, Baby, Smartphone, Phone, GraduationCap, Mail, DollarSign, KeyRound, Eye, EyeOff, RefreshCw, FileText, MapPin, School, Users2, Trash2, Copy } from 'lucide-react';
 
 function EditarAlunoContent() {
@@ -55,10 +57,18 @@ function EditarAlunoContent() {
   const [saidaAutorizada, setSaidaAutorizada] = useState(false);
   const [ativo, setAtivo] = useState(true);
   const [consentimentoIa, setConsentimentoIa] = useState(false);
-  const [usaApp, setUsaApp] = useState(true); 
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  
+  const [usaApp, setUsaApp] = useState(true);
+  // Guarda só o CAMINHO no bucket "avatares" (nunca um URL). Um valor antigo
+  // (URL público completo) que não se consiga normalizar fica tal e qual,
+  // em vez de se perder — não há preview nem assinatura possível, mas o
+  // "Guardar" não apaga o que já lá estava sem o utilizador tocar na foto.
+  const [avatarCaminho, setAvatarCaminho] = useState<string | null>(null);
+  const [avatarComErro, setAvatarComErro] = useState(false);
+
   const [diasSelecionados, setDiasSelecionados] = useState<number[]>([]);
+
+  const avataresPreview = useAvataresAssinados(avatarCaminho ? [avatarCaminho] : []);
+  const avatarPreviewUrl = avatarCaminho ? avataresPreview.urls.get(avatarCaminho) : undefined;
 
   const diasSemana = [
     { id: 1, label: 'Segunda' }, { id: 2, label: 'Terça' }, { id: 3, label: 'Quarta' },
@@ -131,7 +141,7 @@ function EditarAlunoContent() {
       setAtivo(aluno.ativo ?? true);
       setConsentimentoIa(aluno.consentimento_ia || false);
       setUsaApp(aluno.usa_app ?? true);
-      setAvatarUrl(aluno.avatar_url || null);
+      setAvatarCaminho(caminhoDoAvatar(aluno.avatar_url) ?? aluno.avatar_url ?? null);
     }
 
     const { data: horarios } = await supabase
@@ -148,15 +158,21 @@ function EditarAlunoContent() {
       setUploading(true);
       if (!e.target.files || e.target.files.length === 0) return;
       const file = e.target.files[0];
+      const extensao = TIPOS_IMAGEM_PERMITIDOS[file.type];
+      if (!extensao) {
+        setErro('Tipo de imagem não permitido. Usa JPEG, PNG, WEBP ou AVIF.');
+        return;
+      }
       const { data: { user } } = await supabase.auth.getUser();
       const centro_id = user?.app_metadata?.centro_id;
       if (!centro_id) throw new Error('Não foi possível identificar o centro.');
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${centro_id}/${studentId}-${Math.random()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('avatares').upload(fileName, file, { upsert: true });
+      const caminho = construirCaminhoAvatar(centro_id, studentId, extensao);
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET_AVATARES)
+        .upload(caminho, file, { upsert: true, contentType: file.type });
       if (uploadError) throw uploadError;
-      const { data } = supabase.storage.from('avatares').getPublicUrl(fileName);
-      setAvatarUrl(data.publicUrl);
+      setAvatarComErro(false);
+      setAvatarCaminho(caminho);
     } catch (error: any) {
       setErro('Erro no upload: ' + error.message);
     } finally { setUploading(false); }
@@ -313,7 +329,7 @@ function EditarAlunoContent() {
           ativo,
           consentimento_ia: eMaiorDe13() ? consentimentoIa : false,
           usa_app: usaApp,
-          avatar_url: avatarUrl,
+          avatar_url: avatarCaminho,
           sala_estudo: modalidade !== 'so_explicacoes',
           faz_explicacoes: modalidade !== 'sala_estudo',
         })
@@ -392,12 +408,22 @@ function EditarAlunoContent() {
           <section className="flex flex-col items-center gap-4 py-4">
             <div className="relative">
               <div className="w-24 h-24 rounded-3xl border border-border overflow-hidden bg-page flex items-center justify-center">
-                {avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover" /> : <Camera size={30} className="text-slate-800" />}
+                {avatarPreviewUrl && !avatarComErro ? (
+                  <img
+                    src={avatarPreviewUrl}
+                    className="w-full h-full object-cover"
+                    onError={() => setAvatarComErro(true)}
+                  />
+                ) : avatarComErro ? (
+                  <span className="text-2xl font-black text-muted">{nome?.charAt(0) || <Camera size={30} className="text-slate-800" />}</span>
+                ) : (
+                  <Camera size={30} className="text-slate-800" />
+                )}
                 {uploading && <div className="absolute inset-0 bg-page/80 flex items-center justify-center"><Loader2 className="animate-spin text-accent" /></div>}
               </div>
               <label className="absolute -bottom-2 -right-2 bg-accent hover:bg-accent-hover text-on-accent p-2.5 rounded-xl cursor-pointer shadow-xl transition-all">
                 <Camera size={16} />
-                <input type="file" accept="image/*" onChange={handleUpload} className="hidden" disabled={uploading} />
+                <input type="file" accept={ACCEPT_AVATAR} onChange={handleUpload} className="hidden" disabled={uploading} />
               </label>
             </div>
           </section>
