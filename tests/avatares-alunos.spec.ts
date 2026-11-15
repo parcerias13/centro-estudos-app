@@ -9,12 +9,13 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 // Fotos de alunos passam a URL assinado (lib/avataresAlunos.ts +
-// lib/useAvataresAssinados.tsx) em vez de getPublicUrl — o bucket "avatares"
-// continua PÚBLICO nesta fase (a troca para privado é um passo posterior,
-// do Luís no Supabase), mas a app já só grava e lê pelo CAMINHO relativo e
-// mostra sempre por URL assinado, para essa troca não exigir tocar no
-// código outra vez. Centro descartável ZZTESTE (~/Desktop/gestao-centros/
-// novo-centro.mjs), nunca o centro real nem o demo.
+// lib/useAvataresAssinados.tsx) em vez de getPublicUrl. O bucket "avatares"
+// já está PRIVADO em produção (o Luís tratou disto no Supabase) — a app só
+// grava e lê pelo CAMINHO relativo e mostra sempre por URL assinado, e as
+// RLS de storage.objects é que fazem a aplicação real do isolamento entre
+// centros. Centros descartáveis ZZTESTE (~/Desktop/gestao-centros/
+// {novo-centro,apagar-centro}.mjs — este spec usa DOIS, A e B, para os
+// testes de isolamento), nunca o centro real nem o demo.
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -40,16 +41,21 @@ const supabaseAdmin = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_RO
 
 const SUFIXO = String(Date.now());
 const NOME_ZZTESTE = `ZZTESTE AvataresAlunos ${SUFIXO}`;
+const NOME_ZZTESTE_B = `ZZTESTE AvataresAlunosB ${SUFIXO}`;
 const ADMIN_EMAIL = `admin-av-${SUFIXO}@zzteste.invalid`;
+const ADMIN_EMAIL_B = `admin-avb-${SUFIXO}@zzteste.invalid`;
 const MARCADOR = `AV_${SUFIXO}`;
 
 type Conta = { email: string; password: string; id: string };
 
-let centroId: string;
+let centroId: string; // Centro A — onde corre a maioria dos testes
+let centroIdB: string; // Centro B — só para os testes de isolamento (e)-(g)
 let admin: Conta;
 let professor: Conta;
 let alunoA: Conta; // upload novo, feito pela UI (teste a)
 let alunoB: Conta; // avatar_url em formato antigo (URL público completo) (teste b)
+let caminhoLegadoA = ''; // caminho real do ficheiro de alunoB, no centro A — reusado no teste (g)
+let caminhoFicheiroB = ''; // ficheiro real só no centro B — nunca lido por ninguém do centro A
 
 const limpeza: Array<() => unknown> = [];
 
@@ -109,7 +115,7 @@ async function loginUI(p: Page, email: string, password: string) {
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('Avatares de alunos — URL assinado, bucket ainda público (centro descartável ZZTESTE)', () => {
+test.describe('Avatares de alunos — URL assinado, bucket privado (dois centros descartáveis ZZTESTE)', () => {
   test.beforeAll(async () => {
     const saida = execFileSync(
       'node',
@@ -134,12 +140,12 @@ test.describe('Avatares de alunos — URL assinado, bucket ainda público (centr
 
     // alunoB simula uma linha antiga: ficheiro real no bucket + avatar_url
     // guardado como URL PÚBLICO COMPLETO (formato de antes desta mudança).
-    const caminhoLegado = `${centroId}/${alunoB.id}-legado.png`;
+    caminhoLegadoA = `${centroId}/${alunoB.id}-legado.png`;
     const { error: erroUploadLegado } = await supabaseAdmin.storage
       .from(BUCKET_AVATARES)
-      .upload(caminhoLegado, PNG_VALIDO, { contentType: 'image/png' });
+      .upload(caminhoLegadoA, PNG_VALIDO, { contentType: 'image/png' });
     if (erroUploadLegado) throw new Error(`upload legado: ${erroUploadLegado.message}`);
-    const urlPublicoLegado = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET_AVATARES}/${caminhoLegado}`;
+    const urlPublicoLegado = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET_AVATARES}/${caminhoLegadoA}`;
     const { error: erroUpdateLegado } = await supabaseAdmin
       .from('alunos').update({ avatar_url: urlPublicoLegado }).eq('id', alunoB.id);
     if (erroUpdateLegado) throw new Error(`gravar avatar_url legado: ${erroUpdateLegado.message}`);
@@ -152,10 +158,28 @@ test.describe('Avatares de alunos — URL assinado, bucket ainda público (centr
       subject_name: `Teste ${MARCADOR}`, centro_id: centroId,
     });
     if (erroDiario) throw new Error(`criar diario_bordo: ${erroDiario.message}`);
+
+    // --- Centro B — só para os testes de isolamento ao nível do storage ---
+    const saidaB = execFileSync(
+      'node',
+      ['novo-centro.mjs', '--nome', NOME_ZZTESTE_B, '--admin-email', ADMIN_EMAIL_B, '--admin-nome', 'Admin ZZTESTE AvataresAlunos B'],
+      { cwd: GESTAO_DIR, encoding: 'utf8' }
+    );
+    const mB = saidaB.match(/centro_id = ([0-9a-f-]+)/);
+    if (!mB) throw new Error('novo-centro.mjs (centro B) não devolveu centro_id: ' + saidaB);
+    centroIdB = mB[1];
+
+    // Ficheiro real só no centro B — nenhum utilizador do centro A deve
+    // conseguir assiná-lo, descarregá-lo ou sequer listá-lo.
+    caminhoFicheiroB = `${centroIdB}/isolamento-teste.png`;
+    const { error: erroUploadB } = await supabaseAdmin.storage
+      .from(BUCKET_AVATARES)
+      .upload(caminhoFicheiroB, PNG_VALIDO, { contentType: 'image/png' });
+    if (erroUploadB) throw new Error(`upload ficheiro centro B: ${erroUploadB.message}`);
   });
 
   test.afterAll(async () => {
-    test.setTimeout(90_000);
+    test.setTimeout(120_000);
     await Promise.all([...limpeza].map((passo) => Promise.resolve(passo()).catch(() => {})));
     if (centroId) {
       // apagar-centro.mjs já apaga diario_bordo (tabela com centro_id,
@@ -163,8 +187,15 @@ test.describe('Avatares de alunos — URL assinado, bucket ainda público (centr
       // {centro_id}/... — nada a limpar à mão aqui.
       execFileSync('node', ['apagar-centro.mjs', centroId, '--confirmo-apagar', NOME_ZZTESTE], { cwd: GESTAO_DIR, encoding: 'utf8' });
     }
+    if (centroIdB) {
+      // Mesma garantia para o centro B: apagar-centro.mjs limpa também o
+      // ficheiro de isolamento em {centroIdB}/... do bucket "avatares".
+      execFileSync('node', ['apagar-centro.mjs', centroIdB, '--confirmo-apagar', NOME_ZZTESTE_B], { cwd: GESTAO_DIR, encoding: 'utf8' });
+    }
     const { data: restoConfig } = await supabaseAdmin.from('config_centro').select('id').eq('id', centroId);
     expect(restoConfig ?? []).toHaveLength(0);
+    const { data: restoConfigB } = await supabaseAdmin.from('config_centro').select('id').eq('id', centroIdB);
+    expect(restoConfigB ?? []).toHaveLength(0);
   });
 
   test('(a) admin carrega foto em "Editar Aluno": fica só o CAMINHO na BD (nunca um URL) e o preview usa um URL assinado', async ({ browser }: { browser: Browser }) => {
@@ -261,6 +292,105 @@ test.describe('Avatares de alunos — URL assinado, bucket ainda público (centr
     // conta de Auth e da linha em alunos serem criadas.
     const { data: criados } = await supabaseAdmin.from('alunos').select('id').in('nome', [nomeOutroCentro, nomeEscape]);
     expect(criados ?? []).toHaveLength(0);
+
+    await context.close();
+  });
+
+  // --- Isolamento ao nível do storage (bucket "avatares" privado) ---------
+
+  test('(e) isolamento entre centros: professor do centro A não consegue assinar, descarregar nem listar um ficheiro do centro B', async () => {
+    const clientProfessorA = await sessaoComo(professor);
+
+    const { data: assinado, error: erroAssinar } = await clientProfessorA.storage
+      .from(BUCKET_AVATARES).createSignedUrl(caminhoFicheiroB, 60);
+    expect(assinado?.signedUrl ?? null, 'professor A não devia conseguir assinar um ficheiro do centro B').toBeNull();
+    expect(erroAssinar).not.toBeNull();
+
+    const { data: assinadosLote } = await clientProfessorA.storage
+      .from(BUCKET_AVATARES).createSignedUrls([caminhoFicheiroB], 60);
+    const itemB = (assinadosLote || [])[0];
+    expect(itemB?.signedUrl ?? null, 'createSignedUrls em lote também não devia devolver um URL válido para o ficheiro do centro B').toBeNull();
+
+    const { data: descarregado, error: erroDescarregar } = await clientProfessorA.storage
+      .from(BUCKET_AVATARES).download(caminhoFicheiroB);
+    expect(descarregado).toBeNull();
+    expect(erroDescarregar).not.toBeNull();
+
+    const { data: listagemB } = await clientProfessorA.storage.from(BUCKET_AVATARES).list(centroIdB);
+    expect(listagemB ?? [], 'professor A não devia listar nada na pasta do centro B').toHaveLength(0);
+  });
+
+  test('(f) sem sessão (anon): não lê nem lista nada no bucket avatares, e o URL público antigo deixa de funcionar', async () => {
+    const clientAnon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+
+    const { data: assinadoAnon, error: erroAnon } = await clientAnon.storage
+      .from(BUCKET_AVATARES).createSignedUrl(caminhoFicheiroB, 60);
+    expect(assinadoAnon?.signedUrl ?? null, 'anon não devia conseguir assinar nenhum ficheiro').toBeNull();
+    expect(erroAnon).not.toBeNull();
+
+    const { data: listaAnonB } = await clientAnon.storage.from(BUCKET_AVATARES).list(centroIdB);
+    expect(listaAnonB ?? [], 'anon não devia listar a pasta do centro B').toHaveLength(0);
+    const { data: listaAnonA } = await clientAnon.storage.from(BUCKET_AVATARES).list(centroId);
+    expect(listaAnonA ?? [], 'anon não devia listar a pasta do centro A').toHaveLength(0);
+
+    // O formato antigo (URL público direto, sem assinatura) tinha de deixar
+    // de funcionar — é exatamente o que motivou tornar o bucket privado.
+    const urlPublicoAntigo = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET_AVATARES}/${caminhoFicheiroB}`;
+    const respostaPublica = await fetch(urlPublicoAntigo);
+    expect(respostaPublica.ok, 'o URL público antigo tinha de deixar de funcionar com o bucket privado').toBe(false);
+
+    const urlPublicoAntigoA = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET_AVATARES}/${caminhoLegadoA}`;
+    const respostaPublicaA = await fetch(urlPublicoAntigoA);
+    expect(respostaPublicaA.ok, 'o URL público antigo do centro A também tinha de deixar de funcionar').toBe(false);
+  });
+
+  test('(g) professor do centro A consegue assinar e descarregar um ficheiro do PRÓPRIO centro (leitura permitida)', async () => {
+    const clientProfessorA = await sessaoComo(professor);
+
+    const { data: assinadoProprio, error: erroProprio } = await clientProfessorA.storage
+      .from(BUCKET_AVATARES).createSignedUrl(caminhoLegadoA, 60);
+    expect(erroProprio, 'professor devia conseguir assinar um ficheiro do seu próprio centro').toBeNull();
+    expect(assinadoProprio?.signedUrl).toBeTruthy();
+
+    const resposta = await fetch(assinadoProprio!.signedUrl);
+    expect(resposta.ok, 'o URL assinado do próprio centro tinha de carregar de facto').toBe(true);
+
+    const { data: listagemPropria } = await clientProfessorA.storage.from(BUCKET_AVATARES).list(centroId);
+    expect((listagemPropria || []).length).toBeGreaterThan(0);
+  });
+
+  // --- Upload do admin continua a funcionar com o bucket privado ----------
+
+  test('(h) admin carrega foto em "Novo Aluno" (antes de o aluno existir): upload funciona com o bucket privado, preview por URL assinado, e nasce com o caminho certo', async ({ browser }: { browser: Browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await loginUI(page, admin.email, admin.password);
+    await page.goto(`${BASE_URL}/admin/alunos/novo`, { waitUntil: 'networkidle' });
+
+    await page.setInputFiles('input[type="file"]', { name: 'foto-novo.png', mimeType: 'image/png', buffer: PNG_VALIDO });
+    const preview = page.locator('img');
+    await expect(preview).toHaveAttribute('src', /\/storage\/v1\/object\/sign\/avatares\//, { timeout: 15_000 });
+
+    const nome = `Aluno Novo Upload ${MARCADOR}`;
+    await page.locator('input[type="text"]').first().fill(nome);
+    await page.locator('select').selectOption('8');
+    await page.locator('input[placeholder="Ex: 912345678"]').nth(1).fill('912999010');
+    await page.fill('input[placeholder="email@exemplo.com"]', `enc-novo-${SUFIXO}@zzteste.invalid`);
+    await page.fill('input[placeholder="0.00"]', '50');
+    await page.getByRole('button', { name: /finalizar matrícula/i }).click();
+    await expect(page.getByText(/matrícula criada/i)).toBeVisible({ timeout: 20_000 });
+
+    const { data: alunoNovo, error } = await supabaseAdmin.from('alunos').select('id, avatar_url').eq('centro_id', centroId).eq('nome', nome).single();
+    expect(error).toBeNull();
+    limpeza.push(() => supabaseAdmin.auth.admin.deleteUser(alunoNovo!.id));
+    limpeza.push(() => supabaseAdmin.from('alunos').delete().eq('id', alunoNovo!.id));
+
+    expect(alunoNovo?.avatar_url).not.toBeNull();
+    expect(alunoNovo!.avatar_url.startsWith('http')).toBe(false);
+    expect(alunoNovo!.avatar_url.startsWith(`${centroId}/`)).toBe(true);
+
+    const { data: ficheiros } = await supabaseAdmin.storage.from(BUCKET_AVATARES).list(centroId);
+    expect((ficheiros || []).some((f) => alunoNovo!.avatar_url.endsWith(f.name))).toBe(true);
 
     await context.close();
   });
