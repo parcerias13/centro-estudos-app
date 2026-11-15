@@ -4,6 +4,10 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useStatusToast, StatusToast } from '@/lib/statusToast';
 import {
+  BUCKET_MATERIAIS, ACCEPT_MATERIAL_DISCIPLINA, validarFicheiroMaterialDisciplina,
+  construirCaminhoMaterialDisciplina, type TipoPermitidoMaterialDisciplina,
+} from '@/lib/materiaisDisciplina';
+import {
   BookOpen, Plus, Trash2, Loader2, Library, ChevronDown, ChevronRight,
   FileText, Youtube, Link as LinkIcon, Download, Upload, X, AlertCircle,
 } from 'lucide-react';
@@ -271,17 +275,23 @@ export default function DisciplinasEMateriais() {
     let finalUrl = matUrl;
 
     if (matType === 'pdf' && matFile) {
-      const fileExt = matFile.name.split('.').pop();
-      const filePath = `${centro_id}/uploads/${Math.random()}.${fileExt}`;
+      const erroValidacao = validarFicheiroMaterialDisciplina(matFile);
+      if (erroValidacao) {
+        setMatError(erroValidacao);
+        setUploadingMat(false);
+        return;
+      }
+      const tipo = matFile.type as TipoPermitidoMaterialDisciplina;
+      const filePath = construirCaminhoMaterialDisciplina(centro_id, tipo);
       const { error: uploadError } = await supabase.storage
-        .from('materiais')
-        .upload(filePath, matFile);
+        .from(BUCKET_MATERIAIS)
+        .upload(filePath, matFile, { contentType: tipo });
       if (uploadError) {
         setMatError('Erro no upload: ' + uploadError.message);
         setUploadingMat(false);
         return;
       }
-      finalUrl = supabase.storage.from('materiais').getPublicUrl(filePath).data.publicUrl;
+      finalUrl = supabase.storage.from(BUCKET_MATERIAIS).getPublicUrl(filePath).data.publicUrl;
     }
 
     const { error } = await supabase.from('resources').insert({
@@ -308,9 +318,9 @@ export default function DisciplinasEMateriais() {
 
   const handleDeleteMaterial = async (id: string, url: string) => {
     if (!confirm('Apagar este material permanentemente?')) return;
-    if (url.includes('materiais')) {
-      const path = url.split('materiais/').pop();
-      if (path) await supabase.storage.from('materiais').remove([path]);
+    if (url.includes(BUCKET_MATERIAIS)) {
+      const path = url.split(`${BUCKET_MATERIAIS}/`).pop();
+      if (path) await supabase.storage.from(BUCKET_MATERIAIS).remove([path]);
     }
     await supabase.from('resources').delete().eq('id', id);
     fetchAll();
@@ -552,7 +562,7 @@ export default function DisciplinasEMateriais() {
                                 </span>
                                 <input
                                   type="file"
-                                  accept="application/pdf"
+                                  accept={ACCEPT_MATERIAL_DISCIPLINA}
                                   className="hidden"
                                   onChange={(e) => setMatFile(e.target.files?.[0] || null)}
                                 />

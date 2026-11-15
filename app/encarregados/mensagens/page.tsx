@@ -12,7 +12,7 @@ import { sanitizarAlteracaoExplicacao, tituloAlteracao, linhasAlteracao, type Ch
 import { disciplinasParaAno } from '@/lib/disciplinas';
 import {
   BUCKET_ANEXOS, MAX_ANEXOS_POR_MENSAGEM, validarAnexo, higienizarNomeFicheiro,
-  construirCaminhoAnexo, formatarTamanhoFicheiro,
+  construirCaminhoAnexo, formatarTamanhoFicheiro, type TipoPermitido,
 } from '@/lib/mensagensAnexos';
 import {
   ArrowLeft, Loader2, MessageCircle, Send, FileText, HelpCircle, CalendarCheck,
@@ -472,7 +472,7 @@ export default function MensagensEncarregadoPage() {
     for (const anexo of lista) {
       if (anexo.estado === 'enviado') { resultado.push(anexo); continue; }
 
-      const caminho = construirCaminhoAnexo(centroIdRef.current || '', userIdRef.current || '', anexo.file.name);
+      const caminho = construirCaminhoAnexo(centroIdRef.current || '', userIdRef.current || '', anexo.file.name, anexo.file.type as TipoPermitido);
       const { error: erroUpload } = await supabase.storage.from(BUCKET_ANEXOS).upload(caminho, anexo.file, { contentType: anexo.file.type });
       if (erroUpload) {
         resultado.push({ ...anexo, estado: 'erro', erro: erroUpload.message });

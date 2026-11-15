@@ -10,7 +10,7 @@ import { sanitizarAlteracaoExplicacao, tituloAlteracao, linhasAlteracao, type Ch
 import { avisarMensagensLidas } from '@/lib/eventoMensagensAdmin';
 import {
   BUCKET_ANEXOS, MAX_ANEXOS_POR_MENSAGEM, validarAnexo, higienizarNomeFicheiro,
-  construirCaminhoAnexo, formatarTamanhoFicheiro,
+  construirCaminhoAnexo, formatarTamanhoFicheiro, type TipoPermitido,
 } from '@/lib/mensagensAnexos';
 import {
   Loader2, Search, MessageCircle, Send, ArrowLeft, ExternalLink, ChevronUp,
@@ -501,7 +501,7 @@ export default function MensagensAdminPage() {
     for (const anexo of lista) {
       if (anexo.estado === 'enviado') { resultado.push(anexo); continue; }
 
-      const caminho = construirCaminhoAnexo(centroId || '', alunoId, anexo.file.name);
+      const caminho = construirCaminhoAnexo(centroId || '', alunoId, anexo.file.name, anexo.file.type as TipoPermitido);
       const { error: erroUpload } = await supabase.storage.from(BUCKET_ANEXOS).upload(caminho, anexo.file, { contentType: anexo.file.type });
       if (erroUpload) {
         resultado.push({ ...anexo, estado: 'erro', erro: erroUpload.message });

@@ -9,6 +9,14 @@ export const BUCKET_ANEXOS = 'mensagens-anexos';
 export const TIPOS_PERMITIDOS = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] as const;
 export type TipoPermitido = (typeof TIPOS_PERMITIDOS)[number];
 
+/** Extensão do CAMINHO — vem sempre daqui (tipo já validado), nunca do nome original. */
+const EXTENSAO_POR_TIPO: Record<TipoPermitido, string> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
 export const TAMANHO_MAXIMO_BYTES = 10 * 1024 * 1024; // 10 MB
 export const MAX_ANEXOS_POR_MENSAGEM = 3;
 const NOME_MAX = 120;
@@ -71,10 +79,19 @@ export function simplificarNomeParaCaminho(nomeOriginal: string): string {
   return `${baseSimplificada}${sufixo}`;
 }
 
-/** {centro_id}/{aluno_id}/{uuid}-{nome simplificado} — exigido pela RLS de storage.objects. */
-export function construirCaminhoAnexo(centroId: string, alunoId: string, nomeOriginal: string): string {
-  const nome = simplificarNomeParaCaminho(nomeOriginal);
-  return `${centroId}/${alunoId}/${crypto.randomUUID()}-${nome}`;
+/**
+ * {centro_id}/{aluno_id}/{uuid}-{nome simplificado}.{extensão do TIPO} —
+ * exigido pela RLS de storage.objects. A extensão vem sempre de `tipo`
+ * (já validado por validarAnexo), nunca do nome original, para um nome de
+ * ficheiro nunca poder ditar a extensão real guardada no bucket — mesmo
+ * padrão de lib/materialAluno.ts::construirCaminhoMaterial.
+ */
+export function construirCaminhoAnexo(centroId: string, alunoId: string, nomeOriginal: string, tipo: TipoPermitido): string {
+  const nomeSimplificado = simplificarNomeParaCaminho(nomeOriginal);
+  const pontoFinal = nomeSimplificado.lastIndexOf('.');
+  const baseSemExtensao = pontoFinal > 0 ? nomeSimplificado.slice(0, pontoFinal) : nomeSimplificado;
+  const extensao = EXTENSAO_POR_TIPO[tipo];
+  return `${centroId}/${alunoId}/${crypto.randomUUID()}-${baseSemExtensao}.${extensao}`;
 }
 
 export function formatarTamanhoFicheiro(bytes: number): string {

@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Search, FileText, Youtube, Link as LinkIcon, ExternalLink, Library, Loader2, BookOpen } from 'lucide-react';
 
 export default function StudentLibrary() {
+  const router = useRouter();
   const [resources, setResources] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -18,8 +20,16 @@ export default function StudentLibrary() {
 
       // 1. OBTER O UTILIZADOR ATUAL
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
+        router.replace('/login');
+        return;
+      }
+
+      // Centro do próprio aluno — nunca de outro sítio, para o filtro de
+      // centro_id abaixo não poder ser contornado nem vir vazio por engano.
+      const centro_id = user.app_metadata?.centro_id;
+      if (!centro_id) {
         setLoading(false);
         return;
       }
@@ -32,11 +42,14 @@ export default function StudentLibrary() {
         .single();
 
       if (profile) {
-        // 3. FILTRAR NA QUERY: Apenas recursos do ano deste aluno
+        // 3. FILTRAR NA QUERY: só recursos do ano E do centro deste aluno —
+        // defesa em profundidade, para nunca depender só da RLS mostrar
+        // recursos de outro centro com o mesmo ano escolar.
         const { data } = await supabase
           .from('resources')
           .select('*, subjects(name)')
           .eq('ano_escolar', profile.ano_escolar) // O filtro "Bulletproof"
+          .eq('centro_id', centro_id)
           .order('created_at', { ascending: false });
 
         if (data) {
@@ -46,12 +59,12 @@ export default function StudentLibrary() {
           setSubjectsList(['Todos', ...subs] as string[]);
         }
       }
-      
+
       setLoading(false);
     };
 
     fetchResources();
-  }, [supabase]);
+  }, [supabase, router]);
 
   // Ícone baseada no tipo (Mantido)
   const getIcon = (t: string) => {

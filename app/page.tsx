@@ -30,7 +30,8 @@ export default function StudentHome() {
   const fetchData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return (window.location.href = '/login');
-    if (user.app_metadata?.role === 'admin') return (window.location.href = '/admin');
+    const role = user.app_metadata?.role?.toLowerCase();
+    if (role === 'admin' || role === 'professor' || role === 'secretaria') return (window.location.href = '/admin');
     const centro_id = user.app_metadata?.centro_id;
 
     const { data: session } = await supabase
